@@ -7,10 +7,12 @@ import {
 } from './right-panels'
 
 describe('defaultCoreRightPanelPrefs', () => {
-  it('enables only files and run by default', () => {
+  it('enables files, terminal, git and run by default', () => {
     const prefs = defaultCoreRightPanelPrefs()
     expect(prefs.files).toBe(true)
     expect(prefs.run).toBe(true)
+    expect(prefs.terminal).toBe(true)
+    expect(prefs.git).toBe(true)
     expect(prefs.review).toBe(false)
     expect(prefs.context).toBe(false)
     expect(prefs.tree).toBe(false)
@@ -29,7 +31,7 @@ describe('CORE_RIGHT_PANEL_CATALOG tree icon', () => {
 describe('normalizeRightPanelPrefs', () => {
   it('falls back to files+run when all panels disabled', () => {
     const prefs = normalizeRightPanelPrefs(
-      { review: false, run: false, context: false, tree: false, files: false },
+      { review: false, run: false, context: false, tree: false, files: false, terminal: false, git: false },
       CORE_RIGHT_PANEL_CATALOG,
     )
     expect(prefs.files).toBe(true)
@@ -39,5 +41,12 @@ describe('normalizeRightPanelPrefs', () => {
   it('firstEnabledPanel prefers enabled core panels', () => {
     const prefs = defaultCoreRightPanelPrefs()
     expect(firstEnabledPanel(prefs, CORE_RIGHT_PANEL_CATALOG)).toBe('run')
+  })
+
+  it('turns on the new terminal and git panels for an older saved layout', () => {
+    const prefs = normalizeRightPanelPrefs({ files: true, run: true }, CORE_RIGHT_PANEL_CATALOG)
+    expect(prefs.terminal).toBe(true)
+    expect(prefs.git).toBe(true)
+    expect(prefs.files).toBe(true)
   })
 })

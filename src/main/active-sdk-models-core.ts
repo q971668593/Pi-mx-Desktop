@@ -17,6 +17,9 @@ export type ModelEntry = {
   maxOutput?: number
   maxTokens?: number
   available?: boolean
+  reasoning?: boolean
+  thinkingLevelMap?: Record<string, string | null>
+  availableThinkingLevels?: string[]
   managedBy?: 'active-sdk'
   auth?: ModelAuthProjection
 }

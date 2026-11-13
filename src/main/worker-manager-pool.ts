@@ -240,6 +240,14 @@ export function attachWorkerHandlers(
         .catch((error) => safeWrite(`[WorkerManager] browser tool failed: ${String(error)}`))
     }
 
+    if (data.type === 'terminal-tool-request') {
+      void import('./terminal/terminal-tool-bridge')
+        .then(({ handleTerminalToolRequest }) => handleTerminalToolRequest(data, slot, (message) => {
+          if (slot.worker === transport) transport.postMessage(message)
+        }))
+        .catch((error) => safeWrite(`[WorkerManager] terminal tool failed: ${String(error)}`))
+    }
+
     if (data.type === 'browser-tool-cancel') {
       void import('./browser/browser-tool-bridge')
         .then(({ cancelBrowserToolRequest }) => cancelBrowserToolRequest(String(data.callId ?? '')))

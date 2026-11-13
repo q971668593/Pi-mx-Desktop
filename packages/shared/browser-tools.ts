@@ -276,8 +276,7 @@ export const BROWSER_TOOL_NAMES: readonly string[] = BROWSER_TOOL_DEFS.map((d) =
 
 /**
  * Declared to the model whenever browser control is on. The other browser_* tools are deferred:
- * `tool_search` loads them when the model needs them, so each request carries 6 definitions
- * instead of 21. (Runtimes without tool_search declare all of them.)
+ * `tool_search` loads them when the model needs them. (Runtimes without tool_search declare all of them.)
  */
 export const BROWSER_CORE_TOOLS: readonly string[] = [
   'browser_navigate',

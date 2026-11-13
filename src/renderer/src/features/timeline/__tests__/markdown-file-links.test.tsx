@@ -21,6 +21,7 @@ beforeEach(async () => {
   await i18n.changeLanguage('en')
   vi.clearAllMocks()
   vi.mocked(ipcClient.invoke).mockReset().mockResolvedValue({ ok: true })
+  localStorage.clear()
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: vi.fn().mockResolvedValue(undefined) } })
   useUIStore.setState({ currentWorkspace: root, workspaceFileToOpen: null, activePanel: 'review', rightPanelCollapsed: true })
 })

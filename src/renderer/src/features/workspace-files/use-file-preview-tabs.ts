@@ -1,26 +1,37 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { workspacePathKey } from '@shared/workspace-path'
+import { getFileDraft } from './file-edit-guard'
 
 export type PreviewTab = {
   id: string
   rel: string
   name: string
+  pinned?: boolean
 }
 
-let tabSeq = 0
 function nextTabId() {
-  tabSeq += 1
-  return `ft-${tabSeq}`
+  return `ft-${crypto.randomUUID()}`
 }
 
-export function useFilePreviewTabs() {
-  const [tabs, setTabs] = useState<PreviewTab[]>([])
-  const [activeId, setActiveId] = useState<string | null>(null)
+export function useFilePreviewTabs(workspace: string | null) {
+  const storageKey = `pi-desktop:file-tabs:${workspacePathKey(workspace)}`
+  const [initial] = useState(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(storageKey) || '{}') as { tabs?: PreviewTab[]; activeId?: string }
+      return { tabs: Array.isArray(stored.tabs) ? stored.tabs.filter((tab) => typeof tab.id === 'string' && typeof tab.rel === 'string' && typeof tab.name === 'string') : [], activeId: stored.activeId || null }
+    } catch { return { tabs: [] as PreviewTab[], activeId: null } }
+  })
+  const [tabs, setTabs] = useState<PreviewTab[]>(initial.tabs)
+  const [activeId, setActiveId] = useState<string | null>(initial.activeId)
+
+  useEffect(() => {
+    try { localStorage.setItem(storageKey, JSON.stringify({ tabs, activeId })) } catch { void 0 }
+  }, [storageKey, tabs, activeId])
 
   const activeTab = useMemo(() => tabs.find((t) => t.id === activeId) ?? null, [tabs, activeId])
 
-  const openFile = useCallback((rel: string, name: string, mode: 'replace' | 'new-tab') => {
+  const openFile = useCallback((rel: string, name: string, _mode: 'replace' | 'new-tab') => {
     setTabs((prev) => {
-      if (mode === 'new-tab') {
         const hit = prev.find((t) => t.rel === rel)
         if (hit) {
           setActiveId(hit.id)
@@ -28,25 +39,15 @@ export function useFilePreviewTabs() {
         }
         const id = nextTabId()
         setActiveId(id)
-        return [...prev, { id, rel, name }]
-      }
-
-      if (prev.length === 0) {
-        const id = nextTabId()
-        setActiveId(id)
-        return [{ id, rel, name }]
-      }
-
-      if (prev.length === 1) {
-        setActiveId(prev[0].id)
-        return [{ ...prev[0], rel, name }]
-      }
-
-      const aid = activeId ?? prev[0]?.id ?? null
-      if (aid) setActiveId(aid)
-      return prev.map((t) => (t.id === aid ? { ...t, rel, name } : t))
+        const unpinned = prev.filter((tab) => !tab.pinned)
+        const evicted = unpinned.length >= 5 ? unpinned.find((tab) => !workspace || !getFileDraft(workspace, tab.rel))?.id : null
+        return [...prev.filter((tab) => tab.id !== evicted), { id, rel, name }]
     })
-  }, [activeId])
+  }, [workspace])
+
+  const togglePin = useCallback((id: string) => {
+    setTabs((prev) => prev.map((tab) => tab.id === id ? { ...tab, pinned: !tab.pinned } : tab))
+  }, [])
 
   const closeTab = useCallback((id: string) => {
     setTabs((prev) => {
@@ -79,7 +80,7 @@ export function useFilePreviewTabs() {
   }, [])
 
   const renameTabRel = useCallback((oldRel: string, newRel: string, newName: string) => {
-    setTabs((prev) => prev.map((t) => (t.rel === oldRel ? { ...t, rel: newRel, name: newName } : t)))
+    setTabs((prev) => prev.map((tab) => tab.rel === oldRel ? { ...tab, rel: newRel, name: newName } : tab.rel.startsWith(`${oldRel}/`) ? { ...tab, rel: `${newRel}${tab.rel.slice(oldRel.length)}` } : tab))
   }, [])
 
   const resetTabs = useCallback(() => {
@@ -95,6 +96,7 @@ export function useFilePreviewTabs() {
     closeTab,
     activateTab,
     reorderTabs,
+    togglePin,
     renameTabRel,
     resetTabs,
   }

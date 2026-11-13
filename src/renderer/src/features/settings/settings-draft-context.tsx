@@ -19,6 +19,7 @@ import {
   loadSettingsDraftFromDisk,
   previewDraftUi,
   type AgentRuntimeChoice,
+  type PluginModelChoice,
   type SettingsDraft,
   type ThemeChoice,
   type LanguageChoice,
@@ -76,6 +77,7 @@ type SettingsDraftContextValue = {
   setTimelineMaxAutoExpandedTools: (n: number) => void
   setTimelineVisibleTurns: (n: number) => void
   setAgentRuntime: (r: AgentRuntimeChoice) => void
+  setPluginModel: (model: PluginModelChoice) => void
   setExtensionOverride: (id: string, enabled: boolean) => void
   setRightPanelPref: (id: string, on: boolean) => void
   reorderRightPanels: (fromId: string, toIndex: number) => void
@@ -306,6 +308,7 @@ export function SettingsDraftProvider({ children }: { children: ReactNode }) {
         })),
       setTimelineVisibleTurns: (n) => patch((d) => ({ ...d, timelineVisibleTurns: normalizeTimelineVisibleTurns(n) })),
       setAgentRuntime: (r) => patch((d) => ({ ...d, agentRuntime: r })),
+      setPluginModel: (model) => patch((d) => ({ ...d, pluginModel: model })),
       setExtensionOverride: (id, enabled) =>
         patch((d) => ({
           ...d,

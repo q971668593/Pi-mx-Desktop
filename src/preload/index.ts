@@ -132,6 +132,11 @@ const api = {
     ipcRenderer.on('ipc:terminal-data', handler)
     return () => ipcRenderer.off('ipc:terminal-data', handler)
   },
+  onTerminalCreated(callback: (payload: unknown) => void): () => void {
+    const handler = (_event: unknown, data: unknown): void => callback(data)
+    ipcRenderer.on('ipc:terminal-created', handler)
+    return () => ipcRenderer.off('ipc:terminal-created', handler)
+  },
   onTerminalExit(callback: (payload: { id: string; code: number }) => void): () => void {
     const handler = (_event: unknown, data: { id: string; code: number }): void => callback(data)
     ipcRenderer.on('ipc:terminal-exit', handler)

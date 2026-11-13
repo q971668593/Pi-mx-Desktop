@@ -32,6 +32,7 @@ declare global {
       ) => () => void
       terminalWrite?: (id: string, data: string) => void
       onTerminalData?: (callback: (payload: { id: string; data: string }) => void) => () => void
+      onTerminalCreated?: (callback: (payload: { id: string; cwd: string; workspace: string; profile: import('@renderer/features/terminal/terminal-store').ShellProfile; previous?: string; task?: import('@renderer/features/terminal/terminal-store').TerminalTask }) => void) => () => void
       onTerminalExit?: (callback: (payload: { id: string; code: number }) => void) => () => void
       ping: () => string
     }

@@ -1,9 +1,17 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FsEntry } from './workspace-files-types'
 import { joinWorkspacePath } from './path-utils'
 import { FileTreeLevel, type DirLoadMeta } from './file-tree-folder-contents'
 import { useReviewGitData } from '@renderer/features/review/use-review-git-data'
 import { parseGitStatus } from '@renderer/features/review/review-git-utils'
+import { workspacePathKey } from '@shared/workspace-path'
+
+function readExpanded(workspace: string): string[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(`pi-desktop:file-tree:${workspacePathKey(workspace)}`) || '[]')
+    return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string').slice(0, 200) : []
+  } catch { return [] }
+}
 
 type Props = {
   workspaceRoot: string
@@ -40,7 +48,8 @@ export function FileTree({
   const [rootMeta, setRootMeta] = useState<DirLoadMeta | undefined>()
   const [childrenMap, setChildrenMap] = useState<Record<string, FsEntry[]>>({})
   const [childrenMeta, setChildrenMeta] = useState<Record<string, DirLoadMeta>>({})
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(readExpanded(workspaceRoot)))
+  const lastCollapse = useRef(collapseEpoch)
   const load = useCallback(
     async (rel: string) => {
       const res = await listDir(rel === '' ? '.' : rel)
@@ -56,8 +65,13 @@ export function FileTree({
     [listDir],
   )
   useEffect(() => {
-    if (collapseEpoch) setExpanded(new Set())
+    if (collapseEpoch !== lastCollapse.current) setExpanded(new Set())
+    lastCollapse.current = collapseEpoch
   }, [collapseEpoch])
+
+  useEffect(() => {
+    try { localStorage.setItem(`pi-desktop:file-tree:${workspacePathKey(workspaceRoot)}`, JSON.stringify([...expanded])) } catch { void 0 }
+  }, [workspaceRoot, expanded])
 
   useEffect(() => {
     const q = searchQuery.replace(/\\/g, '/').replace(/\/+$/, '')
@@ -93,13 +107,25 @@ export function FileTree({
     setRootMeta(undefined)
     setChildrenMap({})
     setChildrenMeta({})
-    setExpanded(new Set())
+    const remembered = readExpanded(workspaceRoot)
+    setExpanded(new Set(remembered))
     void load('.').then(({ entries, meta }) => {
       if (!cancelled) {
         setRootEntries(entries)
         setRootMeta(meta)
       }
     })
+    let nextFolder = 0
+    const restoreFolders = async () => {
+      while (!cancelled && nextFolder < remembered.length) {
+        const path = remembered[nextFolder++]
+        const { entries, meta } = await load(path)
+        if (cancelled) return
+        setChildrenMap((current) => current[path] ? current : { ...current, [path]: entries })
+        if (meta) setChildrenMeta((current) => current[path] ? current : { ...current, [path]: meta })
+      }
+    }
+    void Promise.all(Array.from({ length: Math.min(8, remembered.length) }, restoreFolders))
     return () => {
       cancelled = true
     }

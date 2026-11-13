@@ -13,6 +13,7 @@ import { resolveActiveAgentDir } from '../../agent-dir'
 import { sessionPreviewProcess } from '../../session-preview-process'
 import { contextPreviewSchema } from '../schemas'
 import type { ModelEntry } from '../../active-sdk-models'
+import { modelThinkingLevels } from '@shared/model-thinking-levels'
 import {
   listAvailableModelsWithSdk,
   listCatalogModelsWithSdk,
@@ -60,6 +61,7 @@ export function registerModelRuntimeHandlers(): void {
         contextWindow: m.contextWindow || 0,
         maxOutput: m.maxOutput || m.maxTokens || 0,
         available: m.available ?? true,
+        availableThinkingLevels: m.availableThinkingLevels ?? modelThinkingLevels(m),
         managedBy: m.managedBy,
         auth: m.auth,
       }))
@@ -144,8 +146,7 @@ export function registerModelRuntimeHandlers(): void {
       if (!cwd || isSandboxWorkspacePath(cwd)) throw new Error('Worker not started')
       await workerManager.start(cwd)
     }
-    const actualModel = await workerManager.setModel(provider, modelId, sessionFile)
-    return { modelId: actualModel }
+    return workerManager.setModelWithThinking(provider, modelId, sessionFile)
   })
 
   registerHandler('ipc:model.cycle', async () => ({

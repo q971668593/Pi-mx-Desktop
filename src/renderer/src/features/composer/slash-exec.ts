@@ -13,6 +13,7 @@ import { ensureAvailableModels } from '@renderer/lib/available-models-cache'
 import { commitSessionDisplayMeta } from '@renderer/lib/session-display-meta'
 import { sessionFilesEqual } from '@renderer/lib/session-file-key'
 import { enterBlankSession } from '@renderer/lib/blank-session-transition'
+import { draftModelThinking } from './thinking-level-actions'
 
 /** App-native builtins handled directly in the renderer (not forwarded as plain prompt text). */
 const APP_BUILTIN = new Set([
@@ -79,8 +80,10 @@ export async function executeSlashCommand(
         const requestedModel = `${provider}/${modelId}`
         const sessionFile = store.historySessionFile
         if (!sessionFile) {
-          store.setRunState({ model: requestedModel })
-          toast.success(i18n.t('composer:toast.modelSet', { model: requestedModel }))
+          const models = await ensureAvailableModels()
+          if (useUIStore.getState().viewSessionKey !== store.viewSessionKey) return true
+          const selected = models.find((model) => model.provider === provider && model.id === modelId)
+          store.setRunState(draftModelThinking(requestedModel, selected?.availableThinkingLevels, store.runState.thinkingLevel))
           return true
         }
         const response = await ipcClient.invoke('model.set', {
@@ -90,9 +93,9 @@ export async function executeSlashCommand(
           modelId,
         })
         // Lands on the session the command ran in, even if the view switched while it awaited.
-        useUIStore.getState().setSessionRunState(sessionFile, { model: response.modelId })
-        commitSessionDisplayMeta(sessionFile, { model: response.modelId })
-        toast.success(i18n.t('composer:toast.modelSet', { model: response.modelId }))
+        const confirmed = { model: response.modelId, thinkingLevel: response.thinkingLevel }
+        useUIStore.getState().setSessionRunState(sessionFile, { ...confirmed, availableThinkingLevels: response.availableThinkingLevels })
+        commitSessionDisplayMeta(sessionFile, confirmed)
       } catch (e) {
         console.error('/model failed:', e)
         toast.error(i18n.t('composer:switchModelFailed'))
@@ -105,8 +108,9 @@ export async function executeSlashCommand(
         store.setThinkingPickerOpen(true)
         return true
       }
-      if (!THINKING_ORDER.includes(arg)) {
-        toast.error(i18n.t('composer:invalidThinkingLevel', { arg, options: THINKING_ORDER.join('/') }))
+      const usableLevels = store.runState.availableThinkingLevels?.length ? store.runState.availableThinkingLevels : THINKING_ORDER
+      if (!THINKING_ORDER.includes(arg) || !usableLevels.includes(arg)) {
+        toast.error(i18n.t('composer:invalidThinkingLevel', { arg, options: usableLevels.join('/') }))
         return true
       }
       try {
@@ -123,7 +127,6 @@ export async function executeSlashCommand(
         commitSessionDisplayMeta(sessionFile, { thinkingLevel: arg })
         useUIStore.getState().setSessionRunState(sessionFile ?? sessionKey, { thinkingLevel: arg })
         if (sessionFile && !sessionFilesEqual(useUIStore.getState().historySessionFile, sessionFile)) return true
-        toast.success(`Thinking: ${arg}`)
       } catch (e) {
         console.error('/thinking failed:', e)
         toast.error(i18n.t('composer:switchThinkingFailed'))

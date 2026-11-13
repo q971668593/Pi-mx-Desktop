@@ -94,7 +94,7 @@ export interface AgentApp {
 }
 
 /** Launch pi Desktop against the scripted model with the Browser panel enabled. */
-export async function launchAgentApp(modelPort: number, opts: { language?: 'en' | 'zh'; home?: string; keepHome?: boolean; config?: Record<string, unknown> } = {}): Promise<AgentApp> {
+export async function launchAgentApp(modelPort: number, opts: { language?: 'en' | 'zh'; home?: string; keepHome?: boolean; config?: Record<string, unknown>; productionRenderer?: boolean; reasoningModel?: boolean } = {}): Promise<AgentApp> {
   const home = opts.home ?? fs.mkdtempSync(path.join(os.tmpdir(), 'pi-e2e-agent-'))
   const agentDir = path.join(home, '.pi', 'agent')
   const project = path.join(home, 'code', 'demo')
@@ -112,11 +112,17 @@ export async function launchAgentApp(modelPort: number, opts: { language?: 'en' 
         api: 'openai-completions',
         apiKey: 'test-key',
         compat: { supportsDeveloperRole: false, supportsReasoningEffort: false },
-        models: [{ id: 'scripted', name: 'Scripted', reasoning: false, input: ['text', 'image'], contextWindow: 200000, maxTokens: 8000 }],
+        models: [
+          { id: 'scripted', name: 'Scripted', reasoning: false, input: ['text', 'image'], contextWindow: 200000, maxTokens: 8000 },
+          ...(opts.reasoningModel ? [{ id: 'scripted-reasoner', name: 'Scripted Reasoner', reasoning: true, input: ['text'], contextWindow: 200000, maxTokens: 8000 }] : []),
+        ],
       },
     },
   }))
-  fs.writeFileSync(path.join(agentDir, 'settings.json'), JSON.stringify({ defaultProvider: 'mock', defaultModel: 'scripted', defaultThinkingLevel: 'off' }))
+  fs.writeFileSync(path.join(agentDir, 'settings.json'), JSON.stringify({
+    defaultProvider: 'mock', defaultModel: 'scripted', defaultThinkingLevel: 'off',
+    ...(opts.reasoningModel ? { modelThinkingLevels: { 'mock/scripted-reasoner': 'high' } } : {}),
+  }))
   fs.writeFileSync(path.join(configDir, 'pi-desktop.json'), JSON.stringify({
     language: opts.language ?? 'en',
     currentProject: project,
@@ -135,14 +141,14 @@ export async function launchAgentApp(modelPort: number, opts: { language?: 'en' 
       HOME: home,
       XDG_CONFIG_HOME: path.join(home, '.config'),
       PI_CODING_AGENT_DIR: agentDir,
-      PI_E2E: '1',
+      PI_E2E: opts.productionRenderer ? '0' : '1',
       LANG: 'en_US.UTF-8',
       ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
     },
     timeout: 60_000,
   })
   const win = await app.firstWindow({ timeout: 45_000 })
-  await win.waitForFunction(() => !!(window as unknown as { __piE2E?: unknown }).__piE2E, null, { timeout: 45_000 })
+  if (!opts.productionRenderer) await win.waitForFunction(() => !!(window as unknown as { __piE2E?: unknown }).__piE2E, null, { timeout: 45_000 })
   await win.waitForTimeout(2500)
 
   const pickBrowserMode = async (name: RegExp) => {

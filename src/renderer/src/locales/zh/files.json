@@ -10,10 +10,16 @@
     "collapsePreview": "收起预览"
   },
   "tabs": {
-    "close": "关闭标签"
+    "close": "关闭标签",
+    "pin": "固定标签页",
+    "unpin": "取消固定"
   },
   "search": {
-    "placeholder": "搜索当前目录…"
+    "placeholder": "搜索项目文件…",
+    "loading": "正在搜索项目…",
+    "failed": "搜索失败，请检查项目搜索工具是否可用。",
+    "empty": "没有匹配的文件或文件夹",
+    "limit": "仅显示前 200 个结果，请输入更多字符缩小范围。"
   },
   "tree": {
     "folder": "文件夹",
@@ -22,7 +28,11 @@
     "dirTruncated": "目录项过多，仅列出前 {{shown}} / {{total}} 项",
     "searchCapped": "匹配过多，仅显示前 {{shown}} / {{total}} 项",
     "dotfiles": "显示隐藏文件",
-    "git": { "modified": "已修改", "added": "新增", "deleted": "已删除" },
+    "git": {
+      "modified": "已修改",
+      "added": "新增",
+      "deleted": "已删除"
+    },
     "collapseAll": "折叠全部"
   },
   "preview": {
@@ -39,7 +49,24 @@
     "expandAll": "展开全部（{{count}} 行）",
     "collapse": "收起",
     "tryExpandRead": "加载更多（最多 8MB）",
-    "deleted": "文件已删除或已移走"
+    "deleted": "文件已删除或已移走",
+    "edit": "编辑",
+    "editing": "正在编辑",
+    "wordWrap": "自动换行",
+    "ready": "预览",
+    "unsaved": "未保存",
+    "save": "保存",
+    "saving": "正在保存…",
+    "saved": "已保存",
+    "saveFailed": "保存失败，请重试",
+    "cancelEdit": "取消",
+    "discardEdits": "有未保存的修改，离开后会丢掉。仍要离开吗？",
+    "externalChange": "文件已在其他位置修改，是否用当前内容覆盖？",
+    "find": "查找",
+    "previous": "上一个",
+    "next": "下一个",
+    "closeFind": "关闭查找",
+    "resetZoom": "重置"
   },
   "menu": {
     "preview": "预览",
@@ -52,6 +79,7 @@
     "rename": "重命名",
     "openInNewTab": "在新窗口打开",
     "searchInFolder": "在此文件夹搜索"
+    ,"newTerminal": "在此处新建终端"
   },
   "rename": {
     "title": "重命名",

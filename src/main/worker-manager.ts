@@ -507,11 +507,18 @@ export class WorkerManager {
     return { steering: (r.steering as string[]) || [], followUp: (r.followUp as string[]) || [] }
   }
   async setModel(provider: string, modelId: string, sessionFile?: string): Promise<string> {
+    return (await this.setModelWithThinking(provider, modelId, sessionFile)).modelId
+  }
+  async setModelWithThinking(provider: string, modelId: string, sessionFile?: string) {
     const response = await this.request('setModel', { provider, modelId, sessionFile })
     if (sessionFile && response.leafId !== undefined) {
       setSessionLeafOverride(sessionFile, response.leafId as string | null)
     }
-    return String(response.modelId || '')
+    return {
+      modelId: String(response.modelId || ''),
+      thinkingLevel: typeof response.thinkingLevel === 'string' ? response.thinkingLevel : undefined,
+      availableThinkingLevels: Array.isArray(response.availableThinkingLevels) ? response.availableThinkingLevels as string[] : undefined,
+    }
   }
   async setThinkingLevel(level: string, sessionFile?: string): Promise<void> {
     const response = await this.request('setThinkingLevel', { level, sessionFile })

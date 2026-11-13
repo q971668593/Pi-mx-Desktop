@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
@@ -13,8 +14,10 @@ import { cn } from '@renderer/lib/utils'
 import { attachWriter, resizePty, shellPath, writeToPty } from './terminal-bridge'
 import { terminalActions, useTerminalStore, type TerminalPaneState } from './terminal-store'
 import { TERMINAL_FONT, terminalTheme } from './terminal-theme'
+import { sendToComposer } from '@renderer/features/browser/browser-composer'
+import { toast } from 'sonner'
 
-type Instance = { term: Terminal; host: HTMLDivElement; fit: FitAddon; search: SearchAddon; dispose: () => void }
+type Instance = { term: Terminal; host: HTMLDivElement; fit: FitAddon; search: SearchAddon; syncSize: () => void; dispose: () => void }
 
 /**
  * xterm instances outlive their React pane: a terminal cannot be re-opened into a new element,
@@ -100,7 +103,8 @@ function createInstance(pane: TerminalPaneState): Instance {
     }
     writeToPty(pane.ptyId, d)
   })
-  const offResize = term.onResize(({ cols, rows }) => resizePty(pane.ptyId, cols, rows))
+  let initialSizeSent = false
+  const offResize = term.onResize(({ cols, rows }) => { initialSizeSent = true; resizePty(pane.ptyId, cols, rows) })
   const offOutput = attachWriter(pane.ptyId, (d) => term.write(d))
 
   // Images on the clipboard: save as a temp file and type its path (CLI agents read image paths).
@@ -121,19 +125,13 @@ function createInstance(pane: TerminalPaneState): Instance {
   }
   host.addEventListener('paste', onPaste, true)
 
-  // Follow light / dark switches.
-  const themeObserver = new MutationObserver(() => {
-    term.options.theme = terminalTheme()
-  })
-  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style'] })
-
   return {
     term,
     host,
     fit,
     search,
+    syncSize: () => { if (!initialSizeSent) { initialSizeSent = true; resizePty(pane.ptyId, term.cols, term.rows) } },
     dispose: () => {
-      themeObserver.disconnect()
       host.removeEventListener('paste', onPaste, true)
       offInput.dispose()
       offResize.dispose()
@@ -152,6 +150,13 @@ export function terminalSelection(ptyId: string): string {
   return instances.get(ptyId)?.term.getSelection() ?? ''
 }
 
+export function clearTerminalDisplay(ptyId: string): void {
+  const instance = instances.get(ptyId)
+  if (!instance) return
+  instance.term.clear()
+  instance.term.focus()
+}
+
 export function onTerminalSelection(ptyId: string, cb: (has: boolean) => void): () => void {
   const inst = instances.get(ptyId)
   if (!inst) return () => {}
@@ -164,6 +169,17 @@ export function TerminalPane({ tabId, index, pane, active, visible, split, onClo
   const ref = useRef<HTMLDivElement>(null)
   const [searching, setSearching] = useState(false)
   const [query, setQuery] = useState('')
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+
+  useEffect(() => {
+    if (!contextMenu) return
+    const close = () => setContextMenu(null)
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') close() }
+    window.addEventListener('pointerdown', close)
+    window.addEventListener('blur', close)
+    window.addEventListener('keydown', onKey)
+    return () => { window.removeEventListener('pointerdown', close); window.removeEventListener('blur', close); window.removeEventListener('keydown', onKey) }
+  }, [contextMenu])
 
   useEffect(() => {
     const el = ref.current
@@ -178,14 +194,21 @@ export function TerminalPane({ tabId, index, pane, active, visible, split, onClo
       if (!el.offsetWidth || !el.offsetHeight) return
       try {
         inst!.fit.fit()
+        inst!.syncSize()
       } catch {
         /* not laid out yet */
       }
     }
-    const ro = new ResizeObserver(() => requestAnimationFrame(fitNow))
+    let frame = 0
+    const scheduleFit = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(fitNow)
+    }
+    const ro = new ResizeObserver(scheduleFit)
     ro.observe(el)
-    requestAnimationFrame(fitNow)
+    scheduleFit()
     return () => {
+      cancelAnimationFrame(frame)
       ro.disconnect()
       if (inst!.host.parentElement === el) el.removeChild(inst!.host)
     }
@@ -223,8 +246,9 @@ export function TerminalPane({ tabId, index, pane, active, visible, split, onClo
 
   return (
     <div
-      className={cn('relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden', !active && 'terminal-pane-inactive')}
-      onMouseDown={() => !active && terminalActions.focusPane(tabId, index)}
+      className={cn('relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#161616]', !active && 'terminal-pane-inactive')}
+      onMouseDown={() => { if (!active) { terminalActions.focusTab(tabId); terminalActions.focusPane(tabId, index) } }}
+      onContextMenu={(event) => { event.preventDefault(); setContextMenu({ x: Math.max(8, Math.min(event.clientX, window.innerWidth - 175)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 155)) }) }}
     >
       {split ? (
         <div className="terminal-pane-header group/pane flex h-6 shrink-0 items-center gap-1.5 pl-2.5 pr-1 text-[11.5px] text-foreground-tertiary" data-active={active || undefined}>
@@ -268,6 +292,14 @@ export function TerminalPane({ tabId, index, pane, active, visible, split, onClo
           </div>
         ) : null}
       </div>
+      {contextMenu ? createPortal(
+        <div role="menu" className="fixed z-[500] min-w-[160px] rounded-md border border-border bg-popover p-1 text-[12px] text-popover-foreground shadow-lg" style={{ left: contextMenu.x, top: contextMenu.y }} onPointerDown={(event) => event.stopPropagation()}>
+          <button type="button" role="menuitem" className="block w-full rounded px-2 py-1.5 text-left hover:bg-muted disabled:opacity-50" disabled={!terminalSelection(pane.ptyId)} onClick={() => { void navigator.clipboard.writeText(terminalSelection(pane.ptyId)).catch(() => toast.error(t('common:terminal.clipboardError'))); setContextMenu(null) }}>{t('common:terminal.copy')}</button>
+          <button type="button" role="menuitem" className="block w-full rounded px-2 py-1.5 text-left hover:bg-muted" onClick={() => { void navigator.clipboard.readText().then((text) => { if (text) instances.get(pane.ptyId)?.term.paste(text) }).catch(() => toast.error(t('common:terminal.clipboardError'))); setContextMenu(null) }}>{t('common:terminal.paste')}</button>
+          <button type="button" role="menuitem" className="block w-full rounded px-2 py-1.5 text-left hover:bg-muted disabled:opacity-50" disabled={!terminalSelection(pane.ptyId)} onClick={() => { sendToComposer({ text: `\`\`\`\n${terminalSelection(pane.ptyId).trimEnd()}\n\`\`\`` }); setContextMenu(null) }}>{t('common:terminal.addToChat')}</button>
+          <button type="button" role="menuitem" className="block w-full rounded px-2 py-1.5 text-left hover:bg-muted" onClick={() => { clearTerminalDisplay(pane.ptyId); setContextMenu(null) }}>{t('common:terminal.clearDisplay')}</button>
+        </div>, document.body,
+      ) : null}
     </div>
   )
 }

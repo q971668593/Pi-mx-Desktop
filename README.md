@@ -49,9 +49,9 @@ Pick a scope — this turn, this session, or the whole Git working tree — and 
 
 ## Files
 
-<img src="doc/assets/readme/en/files-preview.gif" alt="links.mjs opens in the Files panel, links.test.mjs opens in a second tab, a line is quoted into the composer, and the preview expands over the chat column" width="100%" />
-
-- Browse the project next to the chat; `Ctrl`/`⌘`+click opens a file in another tab.
+- Open multiple files in tabs; up to five unpinned tabs are retained. Pin tabs from the context menu, drag to reorder, or close them manually.
+- Markdown opens in preview; other text files open in a syntax-highlighted editor. Use `Ctrl`/`⌘`+`F` to find and `Ctrl`/`⌘`+`S` to save. Unsaved edits remain in memory while switching tabs.
+- Hidden files are shown by default. Search across the project, create files or folders from the tree background, and zoom or drag image previews.
 - The gutter button quotes `path:line` into the composer as a reference.
 - **Expand preview** gives the file the whole chat column; click again to go back. Drag a file onto the composer to attach it.
 
@@ -72,15 +72,13 @@ Each session runs in its own worker. Start a turn, open another session and star
 
 ## Built-in terminal
 
-<img src="doc/assets/readme/en/terminal.gif" alt="Ctrl+` opens a shell in the project under the chat; git log and the tests run, a second shell opens beside it and is closed again on its own" width="100%" />
+`` Ctrl+` `` opens the right-side terminal page. Terminals are grouped by project and stacked vertically. Use **+** to create one, the adjacent menu to choose a shell, and the context menu to copy, paste or add selected output to chat. A task terminal can rerun its recorded command; for an ordinary shell, enter a command the first time you use its restart button.
 
-`` Ctrl+` `` pulls a terminal up from under the chat, in the current project. It starts the same shell pi runs commands in (Git Bash on Windows) with pi's tools on `PATH`; **+** also offers PowerShell 7, Windows PowerShell, cmd, each WSL distribution, zsh or fish. Tabs and up to four side-by-side panes per tab — drag the borders, close one pane with its **✕** or `Ctrl+Shift+W`. Hiding the drawer keeps the shells and their output; selected output goes into the composer with one click.
+The terminal page reads `.vscode/tasks.json` for one-click run and publish actions. The AI button drafts task configuration and lets you choose what to run. Conversations can use `desktop_terminal` to inspect, start and restart project terminals. Pi's ordinary short-command `bash` tool still runs separately, so not every short command appears in the sidebar.
 
 ## Branches
 
-<img src="doc/assets/readme/en/branches.gif" alt="The status bar shows main; the branch picker opens, filters to feat/remote-checks and switches to it" width="80%" />
-
-The status bar shows the project's branch, uncommitted changes and ahead / behind. Click it (or **Switch branch…** in the command palette) to search local and remote branches, switch, or create one from `HEAD`. Changes travel with the switch when Git allows it; when they would be overwritten you can stash them first, and they are offered back when you return to the branch. If a session is still working in the project you are asked before anything changes under it.
+The right-side **Git** panel manages changes, the commit graph, branches, stashes, tags, remotes and worktrees. The bottom status bar no longer contains a branch picker. The selected panel and file tabs are remembered separately for each project.
 
 ## Usage
 

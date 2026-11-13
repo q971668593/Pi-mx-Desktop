@@ -3,6 +3,7 @@ import { app, shell, type BrowserWindow, dialog, session, Menu } from 'electron'
 import { createWindow, getMainWindow } from './window'
 import { refreshGitWorkspaceWatch } from './git-workspace-watch'
 import { registerAllHandlers } from './ipc'
+import { installGitCommandLogStore } from './git-command-log-store'
 import { workerManager } from './worker-manager'
 import { sessionPreviewProcess } from './session-preview-process'
 import { guardAppQuit, setRunningTerminalsProbe } from './window-close-guard'
@@ -121,6 +122,7 @@ app.whenReady().then(() => {
     }
   }
   registerAllHandlers()
+  installGitCommandLogStore()
   void import('./clipboard-temp-images').then(({ pruneStaleClipboardImages }) => {
     try {
       pruneStaleClipboardImages()

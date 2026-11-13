@@ -254,5 +254,26 @@
     "earlierCalls": "展开更早的 {{count}} 次调用",
     "collapseCalls": "收起较早调用",
     "modelCost": "模型调用: {{cost}}"
+  },
+  "image": {
+    "open": "点击放大；右键可复制、另存为、添加到对话或标注",
+    "openNamed": "放大查看 {{name}}",
+    "generating": "正在生成图片…",
+    "copy": "复制图片",
+    "copied": "图片已复制",
+    "saveAs": "图片另存为…",
+    "saved": "图片已保存",
+    "annotate": "标注…",
+    "color": "颜色",
+    "brush": "粗细",
+    "close": "关闭",
+    "addToChat": "添加到对话",
+    "addedToChat": "已添加到对话",
+    "resetZoom": "重置",
+    "adding": "正在添加…",
+    "loading": "正在加载图片…",
+    "discardAnnotation": "标注还没添加到对话，关闭后这些笔迹会丢掉。仍要关闭吗？",
+    "annotationPrompt": "请按照这张标注修改原图：{{path}}",
+    "actionFailed": "图片操作失败，请重试"
   }
 }

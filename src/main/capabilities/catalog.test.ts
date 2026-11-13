@@ -54,12 +54,12 @@ describe('deferred browser tools', () => {
     expect(capabilitySections(['browser'])[0]).not.toContain('tool_search')
     defer = true
     const lean = capabilityCatalog().find((c) => c.id === 'browser')!
-    expect(lean.coreTools).toBe(6)
+    expect(lean.coreTools).toBe(10)
     expect(lean.promptTokens).toBeLessThan(all.promptTokens * 0.65)
     // Measured in a real request: ~736 tokens of tool definitions + ~471 of prompt section.
     expect(lean.promptTokens).toBeGreaterThan(1000)
-    // 2026-10-08 after merging tools (28 → 24) and moving situational guidance into results: ~1270.
-    expect(lean.promptTokens).toBeLessThan(1350)
+    // 2026-11-12 with 10 core tools after the PI 1.5.2 upgrade: ~1700.
+    expect(lean.promptTokens).toBeLessThan(1900)
     expect(capabilitySectionMap(['browser', 'pi-ui'])).toEqual({
       'pi-ui': '# pi-ui blocks\n\nUse blocks.',
       browser: expect.stringContaining('tool_search'),

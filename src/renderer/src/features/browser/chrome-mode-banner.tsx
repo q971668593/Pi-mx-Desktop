@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Monitor } from '@renderer/components/icons'
+import { Monitor, X } from '@renderer/components/icons'
 import { ipcClient } from '@renderer/lib/ipc-client'
 import { capabilityKey, useSessionCapabilitiesStore } from '@renderer/lib/session-capabilities'
 import { useUIStore } from '@renderer/stores/ui-store'
 
 type ChromeTab = { tabId: string; title: string; url: string }
+const dismissedSessions = new Set<string>()
 
 /**
  * When this conversation drives the user's Chrome, the Browser panel says so and lists the tabs
@@ -17,6 +18,10 @@ export function ChromeModeBanner() {
   const usesChrome = useSessionCapabilitiesStore((s) => (s.byKey[capabilityKey(sessionFile)] ?? []).includes('chrome'))
   const [tabs, setTabs] = useState<ChromeTab[]>([])
   const [connected, setConnected] = useState(true)
+  const sessionKey = sessionFile || '__none__'
+  const [dismissed, setDismissed] = useState(() => dismissedSessions.has(sessionKey))
+
+  useEffect(() => setDismissed(dismissedSessions.has(sessionKey)), [sessionKey])
 
   useEffect(() => {
     if (!usesChrome) return
@@ -35,12 +40,13 @@ export function ChromeModeBanner() {
     return () => clearInterval(timer)
   }, [usesChrome, sessionFile])
 
-  if (!usesChrome) return null
+  if (!usesChrome || dismissed) return null
   return (
     <div className="shrink-0 border-b border-primary/25 bg-primary/5 px-3 py-2 text-[12px]">
       <div className="flex items-center gap-1.5 font-medium text-foreground">
         <Monitor className="h-3.5 w-3.5 text-primary" />
         {t('chromeMode.title')}
+        <button type="button" className="ml-auto rounded p-1 hover:bg-muted" aria-label={t('common:close')} onClick={() => { dismissedSessions.add(sessionKey); setDismissed(true) }}><X className="h-3.5 w-3.5" /></button>
       </div>
       <div className="mt-0.5 text-foreground-secondary">{connected ? t('chromeMode.hint') : t('chromeMode.disconnected')}</div>
       {tabs.length ? (

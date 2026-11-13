@@ -1,5 +1,7 @@
 import { ipcClient } from '@renderer/lib/ipc-client'
 import { terminalActions, useTerminalStore, type ShellProfile, type TerminalPaneState } from './terminal-store'
+import { useUIStore } from '@renderer/stores/ui-store'
+import { workspacePathsEqual } from '@shared/workspace-path'
 
 type Writer = (data: string) => void
 
@@ -11,6 +13,20 @@ let wired = false
 function wire(): void {
   if (wired) return
   wired = true
+  window.piDesktop?.onTerminalCreated?.((event) => {
+    const old = event.previous ? useTerminalStore.getState().tabs.flatMap((tab) => tab.panes).find((pane) => pane.ptyId === event.previous) : undefined
+    const pane = { ptyId: event.id, profile: event.profile, task: event.task || old?.task, rawCommand: old?.rawCommand }
+    if (old && event.previous) {
+      void import('./terminal-pane').then(({ disposeTerminalInstance }) => disposeTerminalInstance(event.previous!))
+      terminalActions.replacePane(event.previous, pane)
+    }
+    else terminalActions.addTab(pane, event.cwd, event.workspace)
+    const ui = useUIStore.getState()
+    if (workspacePathsEqual(ui.currentWorkspace, event.workspace)) {
+      ui.setActivePanel('terminal')
+      ui.revealRightPanel()
+    }
+  })
   window.piDesktop?.onTerminalData?.(({ id, data }) => {
     const w = writers.get(id)
     if (w) w(data)
@@ -18,6 +34,8 @@ function wire(): void {
   })
   window.piDesktop?.onTerminalExit?.(({ id, code }) => terminalActions.markExited(id, code))
 }
+
+export function initializeTerminalBridge(): void { wire() }
 
 export function attachWriter(id: string, w: Writer): () => void {
   wire()
@@ -47,17 +65,17 @@ export async function loadProfiles(refresh = false): Promise<ShellProfile[]> {
 }
 
 /** Spawn a shell (default: pi's own) in `cwd`; the pane sizes it on mount. */
-export async function spawnPane(profileId: string | undefined, cwd: string | undefined): Promise<TerminalPaneState | { error: string }> {
+export async function spawnPane(profileId: string | undefined, cwd: string | undefined, workspace = useUIStore.getState().currentWorkspace || cwd, rawCommand?: string): Promise<TerminalPaneState | { error: string }> {
   wire()
-  const r = (await ipcClient.invoke('terminal.create', { profileId, cwd, cols: 100, rows: 24 })) as { ok: boolean; id?: string; profile?: ShellProfile; error?: string }
+  const r = (await ipcClient.invoke('terminal.create', { profileId, cwd, workspace, rawCommand, cols: 100, rows: 24 })) as { ok: boolean; id?: string; profile?: ShellProfile; error?: string }
   if (!r?.ok || !r.id || !r.profile) return { error: r?.error || 'spawn failed' }
-  return { ptyId: r.id, profile: r.profile }
+  return { ptyId: r.id, profile: r.profile, ...(rawCommand ? { rawCommand } : {}) }
 }
 
-export function killPty(id: string): void {
+export async function killPty(id: string): Promise<void> {
   writers.delete(id)
   pending.delete(id)
-  void ipcClient.invoke('terminal.kill', { id }).catch(() => {})
+  await ipcClient.invoke('terminal.kill', { id })
 }
 
 /** Quote a path for the shell it is typed into (WSL sees Windows drives under /mnt). */

@@ -3,7 +3,7 @@ import { StringDecoder } from 'node:string_decoder'
 import { WORKSPACE_TEXT_MAX_BYTES } from '../../packages/shared/workspace-preview'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'path'
 
-export type WorkspaceFsError = 'missing_root' | 'outside_workspace' | 'not_found' | 'not_a_file' | 'too_large' | 'read_failed'
+export type WorkspaceFsError = 'missing_root' | 'outside_workspace' | 'not_found' | 'not_a_file' | 'too_large' | 'read_failed' | 'write_failed'
 
 function isMissing(error: unknown): boolean {
   const code = (error as NodeJS.ErrnoException | null)?.code
@@ -158,6 +158,22 @@ export async function workspaceFsReadText(req: { workspaceRoot: string; path: st
     }
   } catch (e) {
     return { ok: false as const, error: 'read_failed' as const }
+  }
+}
+
+export async function workspaceFsWriteText(req: { workspaceRoot: string; path: string; content: string }) {
+  const content = String(req.content ?? '')
+  if (Buffer.byteLength(content) > WORKSPACE_TEXT_MAX_BYTES) return { ok: false as const, error: 'too_large' as const }
+  const resolved = await resolvePathUnderWorkspace(String(req.workspaceRoot || ''), String(req.path || ''))
+  if (!resolved.ok) return { ok: false as const, error: resolved.error }
+  const info = await stat(resolved.abs).catch(() => null)
+  if (!info) return { ok: false as const, error: 'not_found' as const }
+  if (!info.isFile()) return { ok: false as const, error: 'not_a_file' as const }
+  try {
+    await writeFile(resolved.abs, content, 'utf8')
+    return { ok: true as const }
+  } catch {
+    return { ok: false as const, error: 'write_failed' as const }
   }
 }
 

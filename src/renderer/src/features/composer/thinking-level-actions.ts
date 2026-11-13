@@ -3,12 +3,23 @@ import i18n from '@renderer/lib/i18n'
 import { ipcClient } from '@renderer/lib/ipc-client'
 import { commitSessionDisplayMeta } from '@renderer/lib/session-display-meta'
 import { sessionFilesEqual } from '@renderer/lib/session-file-key'
-import { formatThinkingChip, normalizeThinkingLevel } from '@renderer/lib/format-run-display'
+import { normalizeThinkingLevel } from '@renderer/lib/format-run-display'
 import { boundThinkingLevelFor, setModelThinkingBinding } from '@renderer/lib/model-thinking-bindings'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { getSessionState } from '@renderer/stores/use-view-session'
 
 export const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
+
+export function draftModelThinking(model: string, levels: string[] | undefined, current: string | undefined) {
+  const bound = boundThinkingLevelFor(model)
+  return {
+    model,
+    availableThinkingLevels: levels,
+    thinkingLevel: bound && (!levels?.length || levels.includes(bound))
+      ? bound
+      : levels?.includes(current || '') ? current : levels?.[0],
+  }
+}
 
 /** Next level the current model supports, wrapping around (pi TUI Shift+Tab). */
 export function nextThinkingLevel(current: string | undefined, available: readonly string[] | undefined): string {
@@ -38,7 +49,6 @@ export async function applyThinkingLevel(level: string): Promise<void> {
   try {
     await ipcClient.invoke('thinkingLevel.set', { sessionId: '', sessionFile, level })
     commitSessionDisplayMeta(sessionFile, { thinkingLevel: level })
-    toast.success(i18n.t('composer:thinkingPicker.switched', { level: formatThinkingChip(level) }))
   } catch (e) {
     // Roll back only if nothing newer set this session's level meanwhile.
     if (getSessionState(sessionKey)?.runState.thinkingLevel !== level) return

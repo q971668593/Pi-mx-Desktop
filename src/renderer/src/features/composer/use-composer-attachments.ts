@@ -98,6 +98,7 @@ export function useComposerAttachments(opts: {
     const onAttach = (e: Event) => {
       // `text` (optional) is inserted before the files, e.g. browser annotations or page logs.
       const detail = (e as CustomEvent<{ files?: { path: string; name: string; kind: string }[]; text?: string }>).detail
+      const incoming = detail as { files?: Array<{ path: string; name: string; kind: string; dataUrl?: string }> }
       const files = detail?.files ?? []
       const text = typeof detail?.text === 'string' ? detail.text : ''
       if (!files.length && !text) return
@@ -108,16 +109,17 @@ export function useComposerAttachments(opts: {
       }
       // Files handed over by another surface (browser annotations, workspace tree) keep their
       // inline chip and also load image thumbnails when inside the workspace.
-      const metas: AttachmentMeta[] = files.map((f) => {
+      const metas: AttachmentMeta[] = incoming.files?.map((f) => {
         const kind = (f.kind as AttachmentMeta['kind']) || getAttachmentKind(f.name)
-        if (kind === 'image') stageImagePath(f.path, f.name)
+        if (kind === 'image' && f.dataUrl) stageImage({ path: f.path, name: f.name, mimeType: imageMimeFromName(f.name), dataUrl: f.dataUrl })
+        else if (kind === 'image') stageImagePath(f.path, f.name)
         return { path: f.path, name: f.name, kind }
-      })
+      }) ?? []
       insertMetas(metas)
     }
     window.addEventListener('pi-desktop:composer-attach-files', onAttach)
     return () => window.removeEventListener('pi-desktop:composer-attach-files', onAttach)
-  }, [editorRef, insertMetas, stageImagePath, updateFromEditor])
+  }, [editorRef, insertMetas, stageImage, stageImagePath, updateFromEditor])
 
   const insertPastedScreenshot = useCallback(
     async (base64: string, mimeType: string) => {

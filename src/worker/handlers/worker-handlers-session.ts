@@ -69,8 +69,10 @@ export async function handleSetmodel(msg: WorkerIncomingMessage, reply: WorkerRe
     // Model bound to a thinking level (Settings → Models / picker "remember for this model").
     const bound = boundThinkingLevel(provider, modelId)
     if (bound && bound !== st.session.thinkingLevel) setSessionThinkingPreservingDefault(bound)
-    emit({ ...baseEvent(), type: 'run', phase: 'state', model: actualModel, thinkingLevel: st.session.thinkingLevel, availableThinkingLevels: availableThinkingLevels() })
-    reply({ type: 'setModel-done', modelId: actualModel })
+    const thinkingLevel = st.session.thinkingLevel
+    const levels = availableThinkingLevels()
+    emit({ ...baseEvent(), type: 'run', phase: 'state', model: actualModel, thinkingLevel, availableThinkingLevels: levels })
+    reply({ type: 'setModel-done', modelId: actualModel, thinkingLevel, availableThinkingLevels: levels })
   } catch (e: unknown) {
     // setModel 在写默认之后才可能抛错（如 setThinkingLevel 重钳制）：同样还原默认。
     restoreGlobalDefault()

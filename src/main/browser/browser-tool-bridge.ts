@@ -1,3 +1,4 @@
+import { projectBrowserSessionKey } from '@shared/browser-types'
 import { configStore } from '../config-store'
 import { getMainWindow } from '../window'
 import { getBrowserHost } from './browser-host'
@@ -42,7 +43,7 @@ export async function handleBrowserToolRequest(
       result = await executeBrowserTool(host, {
         tool: String(data.tool ?? ''),
         args: data.args,
-        sessionKey: slot.sessionFile || slot.poolKey,
+        sessionKey: projectBrowserSessionKey(slot.cwd) || slot.sessionFile || slot.poolKey,
         cwd: slot.cwd,
         signal: abort.signal,
       })

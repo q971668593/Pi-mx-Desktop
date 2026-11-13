@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useUIStore } from '@renderer/stores/ui-store'
-import { ChevronRight, FolderOpen, Plus, Search, X } from '@renderer/components/icons'
+import { ChevronRight, EyeOff, FolderOpen, ListOrdered, Plus, Search, X } from '@renderer/components/icons'
 import { ipcClient } from '@renderer/lib/ipc-client'
 import { activateWorkspace } from '@renderer/lib/activate-workspace'
 import { SidebarAnimatedCollapse } from '@renderer/components/ui/sidebar-animated-collapse'
@@ -28,8 +28,26 @@ import { groupSidebarProjects } from './project-worktree-groups'
 import { useProjectWorktrees } from './use-project-worktrees'
 import { resolveProjectDisplayName, uniqueWorkspacePaths, workspacePathKey, workspacePathsEqual } from '@shared/workspace-path'
 import type { GitWorktree } from '@shared/git-worktree'
+import { toast } from 'sonner'
+
+import { HiddenProjectsDialog } from './hidden-projects-dialog'
+import { moveSidebarItem, useSidebarReorder } from './sidebar-reorder'
+import './project-sidebar.css'
 
 const TEMP_CHATS_OPEN_KEY = 'pi-desktop:sidebar-temp-chats-open'
+const HIDDEN_PROJECTS_KEY = 'pi-desktop:hidden-projects'
+const MANUAL_PROJECT_ORDER_KEY = 'pi-desktop:project-manual-order'
+
+function readPathList(key: string): string[] {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(key) || '[]')
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+  } catch { return [] }
+}
+
+function savePathList(key: string, paths: string[]) {
+  try { localStorage.setItem(key, JSON.stringify(paths)) } catch { /* storage unavailable */ }
+}
 
 function readSectionOpen(): boolean {
   try {
@@ -71,6 +89,9 @@ export function ProjectSidebar({
   const [sandboxes, setSandboxes] = useState<SandboxEntry[]>([])
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set())
   const [recentProjectsFixedOrder, setRecentProjectsFixedOrder] = useState(false)
+  const [hiddenProjects, setHiddenProjects] = useState(() => readPathList(HIDDEN_PROJECTS_KEY))
+  const [manualOrder, setManualOrder] = useState(() => readPathList(MANUAL_PROJECT_ORDER_KEY))
+  const [hiddenOpen, setHiddenOpen] = useState(false)
   const fixedOrderRef = useRef(false)
   // Temporary chats start collapsed (remembered); they open by themselves when the active
   // conversation lives there (new temp chat / opened sandbox) so it is never hidden.
@@ -86,15 +107,66 @@ export function ProjectSidebar({
   const [sessionScope, setSessionScope] = useState<'project' | 'all'>('project')
   const scopeLabel = t(sessionScope === 'project' ? 'common:sidebar.thisProject' : 'common:sidebar.allProjects')
   const searchActive = sessionQuery.trim().length > 0
-  const projectPaths = useMemo(() => projectFolderOrder(
-    recentProjects.filter((path) => !isSandboxPath(path)),
-    currentWorkspace && !isSandboxPath(currentWorkspace) ? currentWorkspace : null,
-    recentProjectsFixedOrder,
-  ), [recentProjects, currentWorkspace, recentProjectsFixedOrder])
+  const projectPaths = useMemo(() => {
+    const order = projectFolderOrder(
+      recentProjects.filter((path) => !isSandboxPath(path)),
+      currentWorkspace && !isSandboxPath(currentWorkspace) ? currentWorkspace : null,
+      recentProjectsFixedOrder,
+    )
+    const sorted = recentProjectsFixedOrder
+      ? [...order].sort((a, b) => {
+        const ai = manualOrder.findIndex((p) => workspacePathsEqual(p, a))
+        const bi = manualOrder.findIndex((p) => workspacePathsEqual(p, b))
+        return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (bi < 0 ? Number.MAX_SAFE_INTEGER : bi)
+      })
+      : order
+    return sorted.filter((path) => !hiddenProjects.some((hidden) => workspacePathsEqual(hidden, path)))
+  }, [recentProjects, currentWorkspace, recentProjectsFixedOrder, manualOrder, hiddenProjects])
+
+  const setOrderMode = (fixed: boolean) => {
+    fixedOrderRef.current = fixed
+    setRecentProjectsFixedOrder(fixed)
+    void ipcClient.invoke('settings.set', { key: 'recentProjectsFixedOrder', value: fixed }).catch(() => {
+      fixedOrderRef.current = !fixed
+      setRecentProjectsFixedOrder(!fixed)
+      toast.error('保存排序设置失败，请重试')
+    })
+  }
+  const hideProjects = (paths: string[]) => {
+    const next = uniqueWorkspacePaths([...hiddenProjects, ...paths])
+    setHiddenProjects(next)
+    savePathList(HIDDEN_PROJECTS_KEY, next)
+  }
+  const restoreProject = async (path: string) => {
+    if (!recentProjects.some((item) => workspacePathsEqual(item, path))) {
+      const recent = uniqueWorkspacePaths([path, ...recentProjects]).slice(0, 16)
+      try {
+        await ipcClient.invoke('settings.set', { key: 'recentProjects', value: recent })
+        useUIStore.setState({ recentProjects: recent })
+      } catch { toast.error('恢复项目失败，请重试'); return }
+    }
+    const next = hiddenProjects.filter((item) => !workspacePathsEqual(item, path))
+    setHiddenProjects(next)
+    savePathList(HIDDEN_PROJECTS_KEY, next)
+  }
   const worktrees = useProjectWorktrees(projectPaths)
   const projectGroups = useMemo(() => groupSidebarProjects(
     projectPaths.filter((path) => !worktrees.missingPaths.has(workspacePathKey(path))), worktrees.listings,
-  ), [projectPaths, worktrees.listings, worktrees.missingPaths])
+  ).map((group) => ({
+    ...group,
+    projects: group.projects.filter((project) => !hiddenProjects.some((hidden) => workspacePathsEqual(hidden, project.path))),
+  })).filter((group) => group.projects.length > 0), [projectPaths, worktrees.listings, worktrees.missingPaths, hiddenProjects])
+  const projectKey = (group: (typeof projectGroups)[number]) =>
+    projectPaths.find((path) => group.projects.some((project) => workspacePathsEqual(path, project.path))) || group.projects[0].path
+  const projectDrag = useSidebarReorder((source, target, after) => {
+    const order = projectGroups.map(projectKey)
+    const moved = moveSidebarItem(order, source, target, after)
+    if (moved === order) return
+    const next = uniqueWorkspacePaths([...moved, ...projectPaths, ...manualOrder])
+    setManualOrder(next)
+    savePathList(MANUAL_PROJECT_ORDER_KEY, next)
+    if (!recentProjectsFixedOrder) setOrderMode(true)
+  })
   const diskPaths = useMemo(() => projectGroups.flatMap((group) => group.projects.map((project) => project.path)), [projectGroups])
   const activeRepository = projectGroups.find((group) => group.repositoryPath && group.projects.some((project) => workspacePathsEqual(project.path, currentWorkspace)))?.key
 
@@ -425,7 +497,7 @@ export function ProjectSidebar({
       && box.label.toLowerCase().includes(sessionQuery.trim().toLowerCase()))
     : sandboxes
 
-  const renderProject = (project: GitWorktree, grouped: boolean, repositoryPath?: string | null, siblingPaths?: string[]) => {
+  const renderProject = (project: GitWorktree, grouped: boolean, repositoryPath?: string | null, siblingPaths?: string[], sortKey?: string) => {
     const { path } = project
     const key = workspacePathKey(path)
     const open = searchActive || expandedPaths.has(key)
@@ -455,6 +527,8 @@ export function ProjectSidebar({
         if (willExpand && !(key in mergedSessionsByWorkspace)) void loadWorkspaceSessions(path)
       }}
       onNewSession={() => void handleNewSessionInProject(path)}
+      dragSource={!searchActive && sortKey ? { draggable: true, onDragStart: (event) => projectDrag.start(event, sortKey, 'projects'), onDragEnd: projectDrag.end } : undefined}
+      dropTarget={!searchActive && sortKey ? projectDrag.target(sortKey, 'projects') : undefined}
       onProjectContextMenu={(event) =>
         projectMenu.open(event, path, displayName, {
           repositoryPath: repositoryPath || path,
@@ -599,11 +673,14 @@ export function ProjectSidebar({
         menu={projectMenu.menu}
         onClose={projectMenu.close}
         onListChange={handleProjectListChange}
+        onHide={hideProjects}
       />
 
       <div className="mt-3 px-3" hidden={searchActive && visiblePaths.length === 0}>
         <div className="sidebar-section-head">
           <span className="sidebar-section-title flex-1 px-1">{t('common:sidebar.projects')}</span>
+          <button type="button" className="sidebar-section-action project-tool" aria-pressed={recentProjectsFixedOrder} title={recentProjectsFixedOrder ? '手动排序 · 点击切换为最近访问' : '最近访问 · 点击切换为手动排序'} aria-label="切换项目排序" onClick={() => setOrderMode(!recentProjectsFixedOrder)}><ListOrdered size={15} /></button>
+          <button type="button" className="sidebar-section-action project-tool" title={`管理隐藏项目（${hiddenProjects.length}）`} aria-label="管理隐藏项目" aria-haspopup="dialog" onClick={() => setHiddenOpen(true)}><EyeOff size={15} />{hiddenProjects.length > 0 && <span className="project-hidden-dot" />}</button>
           {/* Projects come from opening a folder; refreshing lives in the top-right reload button. */}
           <button
             type="button"
@@ -616,6 +693,7 @@ export function ProjectSidebar({
             <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
           </button>
         </div>
+        {hiddenOpen && <HiddenProjectsDialog paths={hiddenProjects} name={(path) => resolveProjectDisplayName(projectDisplayNames, path, diskProjectName(path))} onRestore={restoreProject} onClose={() => setHiddenOpen(false)} />}
         {worktrees.failed && <div role="status" className="px-3 pb-2 text-xs text-foreground-secondary">{t('common:sidebar.worktreeReadFailed')}</div>}
         {diskPaths.length === 0 ? (
           <button type="button" onClick={onOpenProject}
@@ -627,7 +705,7 @@ export function ProjectSidebar({
           projectGroups.map((group) => {
             const projects = group.projects.filter((project) => visiblePaths.includes(project.path))
             if (!projects.length) return null
-            if (!group.repositoryPath) return projects.map((project) => renderProject(project, false))
+            if (!group.repositoryPath) return projects.map((project) => renderProject(project, false, undefined, undefined, projectKey(group)))
             const name = resolveProjectDisplayName(
               projectDisplayNames,
               group.repositoryPath,
@@ -636,7 +714,9 @@ export function ProjectSidebar({
             )
             const open = searchActive || (repositoryOpen[group.key] ?? group.key === activeRepository)
             const groupPaths = group.projects.map((p) => p.path)
-            return <div key={group.key} className="sidebar-repository-group mb-2" role="group" aria-label={name} data-repository={group.repositoryPath}>
+            return <div key={group.key} className="sidebar-repository-group sidebar-project-card" role="group" aria-label={name} data-repository={group.repositoryPath}>
+              <div className="sidebar-project-header sidebar-drop-target" {...(!searchActive ? projectDrag.target(projectKey(group), 'projects') : {})}
+                draggable={!searchActive} onDragStart={(event) => projectDrag.start(event, projectKey(group), 'projects')} onDragEnd={projectDrag.end}>
               <button
                 type="button"
                 className="sidebar-repository-hit flex min-h-[36px] w-full min-w-0 items-center gap-0.5 rounded-lg pl-0.5 pr-1 text-left hover:bg-[var(--bg-hover)]"
@@ -654,6 +734,7 @@ export function ProjectSidebar({
                 <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center">
                   <ChevronRight className="chevron-expand h-3.5 w-3.5 shrink-0 text-foreground-secondary/80" data-open={open ? 'true' : 'false'} />
                 </span>
+                <span className="project-folder-tile"><FolderOpen size={15} /></span>
                 <span className="min-w-0 flex-1 truncate px-1 text-[13px] font-semibold">{name}</span>
                 <span
                   className="ml-0.5 inline-flex h-[26px] w-[26px] shrink-0 items-center justify-center text-[11px] tabular-nums text-foreground-secondary"
@@ -662,8 +743,9 @@ export function ProjectSidebar({
                   {group.projects.length}
                 </span>
               </button>
+              </div>
               <SidebarAnimatedCollapse open={open}>
-                <div className="ml-3 border-l border-border/40 pl-1.5 pt-1">
+                <div className="px-1.5 pt-1">
                   {projects.map((project) =>
                     renderProject(
                       project,

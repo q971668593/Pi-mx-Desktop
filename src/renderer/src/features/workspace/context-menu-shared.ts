@@ -14,6 +14,7 @@ export function useDismissContextMenu(
   open: boolean,
   ref: RefObject<HTMLElement | null>,
   onClose: () => void,
+  dismissOnScroll = true,
 ) {
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
@@ -48,7 +49,7 @@ export function useDismissContextMenu(
     }, 0)
 
     document.addEventListener('keydown', onKey)
-    window.addEventListener('scroll', onScroll, true)
+    if (dismissOnScroll) window.addEventListener('scroll', onScroll, true)
     window.addEventListener('resize', onResize)
 
     return () => {
@@ -59,5 +60,5 @@ export function useDismissContextMenu(
       window.removeEventListener('scroll', onScroll, true)
       window.removeEventListener('resize', onResize)
     }
-  }, [open, ref])
+  }, [open, ref, dismissOnScroll])
 }

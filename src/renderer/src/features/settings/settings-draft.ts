@@ -34,6 +34,7 @@ export type ThemeChoice = 'light' | 'dark' | 'system'
 export type LanguageChoice = 'zh' | 'en'
 
 export type AgentRuntimeChoice = { mode: 'host' | 'wsl'; distro: string | null }
+export type PluginModelChoice = { provider: string; modelId: string; thinkingLevel?: import('@shared/model-thinking-levels').ModelThinkingLevel } | null
 
 export type SettingsDraft = {
   theme: ThemeChoice
@@ -66,6 +67,19 @@ export type SettingsDraft = {
   rightPanelOrder: string[]
   asrConfig: AsrConfig
   agentRuntime: AgentRuntimeChoice
+  pluginModel: PluginModelChoice
+}
+
+export function normalizePluginModelChoice(raw: unknown): PluginModelChoice {
+  if (!raw || typeof raw !== 'object') return null
+  const provider = (raw as { provider?: unknown }).provider
+  const modelId = (raw as { modelId?: unknown }).modelId
+  if (typeof provider !== 'string' || typeof modelId !== 'string') return null
+  const cleanProvider = provider.trim()
+  const cleanModel = modelId.trim()
+  const level = (raw as { thinkingLevel?: unknown }).thinkingLevel
+  const thinkingLevel = typeof level === 'string' && ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(level) ? level as NonNullable<PluginModelChoice>['thinkingLevel'] : undefined
+  return cleanProvider && cleanModel ? { provider: cleanProvider, modelId: cleanModel, ...(thinkingLevel ? { thinkingLevel } : {}) } : null
 }
 
 function normalizeLanguage(raw: unknown, fallback: LanguageChoice): LanguageChoice {
@@ -139,6 +153,7 @@ export function draftSignature(d: SettingsDraft): string {
     rightPanelOrder: d.rightPanelOrder,
     asrConfig: normalizeAsrForSignature(d.asrConfig),
     agentRuntime: d.agentRuntime,
+    pluginModel: d.pluginModel,
   })
 }
 
@@ -183,6 +198,7 @@ export async function loadSettingsDraftFromDisk(i18nLanguage: string): Promise<S
     rightPanelOrder: order,
     asrConfig: asrConfigFromSettingsResponse((s.asrConfig || {}) as AsrConfig),
     agentRuntime: normalizeAgentRuntime(s.agentRuntime),
+    pluginModel: normalizePluginModelChoice(s.pluginModel),
   }
 }
 
@@ -334,6 +350,7 @@ export async function commitSettingsDraft(draft: SettingsDraft, i18n: I18n): Pro
   draft.asrConfig = savedAsr
 
   await ipcClient.invoke('settings.set', { key: 'agentRuntime', value: draft.agentRuntime })
+  await ipcClient.invoke('settings.set', { key: 'pluginModel', value: draft.pluginModel })
 
   useUIStore.getState().setTheme(draft.theme)
   applyIconTheme(draft.iconTheme)

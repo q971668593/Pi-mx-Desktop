@@ -3,11 +3,15 @@ import { ensureWorkerSessionBound } from '../../session-bind-state'
 import { normalizeSessionKey } from '../../worker-session-key'
 import { registerHandler, registerHandlerWithSchema } from '../registry'
 import { readRemoteAttachment, writeClipboardTempImage } from '../../clipboard-temp-images'
+import { readActionableImage, resolveActionableImage } from '../../image-file-access'
 import { capabilityCatalog, capabilitySectionMap, capabilityToolFamilies } from '../../capabilities/catalog'
-import { clipboardReadTempImageSchema, clipboardWriteTempImageSchema, promptTextSchema } from '../schemas'
+import { clipboard, nativeImage } from 'electron'
+import { clipboardReadTempImageSchema, clipboardWriteTempImageSchema, dialogSaveImageSchema, promptTextSchema } from '../schemas'
 import { peekBrowserHost } from '../../browser/browser-host'
 import { noteBrowserTarget } from '../../browser/targets'
 import { configStore } from '../../config-store'
+import { readSessionMetaFromFile } from '../../session-file-meta'
+import { projectBrowserSessionKey } from '@shared/browser-types'
 
 /** Matches the composer's paste limit, so a re-read can never return more than was written. */
 const CLIPBOARD_READ_IMAGE_MAX_BYTES = 8 * 1024 * 1024
@@ -38,16 +42,28 @@ export function registerPromptHandlers(): void {
     return got === want
   }
 
+  /** Browser tabs are owned per project, so resolve this session's workspace key for auto-mount. */
+  const sessionBrowserKey = async (sessionFile?: string): Promise<string | null> => {
+    if (!sessionFile) return null
+    const st = await workerManager.getState(sessionFile).catch(() => null)
+    const cwd = String((st as { currentCwd?: string } | null)?.currentCwd || '')
+    const key = projectBrowserSessionKey(cwd)
+    if (key) return key
+    const meta = await readSessionMetaFromFile(sessionFile).catch(() => null)
+    return projectBrowserSessionKey(meta?.cwd) || null
+  }
+
   // Enabled capabilities travel with each message so drafts and restarted workers stay in sync.
   // If this session already owns browser tabs (or pinned tabs exist), auto-mount built-in browser tools.
   const applyCapabilities = async (req: { capabilities?: string[]; sessionFile?: string }) => {
     if (req.capabilities === undefined) return
     let caps = req.capabilities
+    const browserKey = await sessionBrowserKey(req.sessionFile)
     if (
       !caps.includes('browser') &&
       !caps.includes('chrome') &&
       configStore.get('rightPanelPrefs')?.browser &&
-      peekBrowserHost()?.hasSessionTabs(req.sessionFile)
+      (browserKey ? peekBrowserHost()?.hasSessionTabs(browserKey) : peekBrowserHost()?.hasSessionTabs(req.sessionFile))
     ) {
       caps = [...caps, 'browser']
     }
@@ -93,6 +109,15 @@ export function registerPromptHandlers(): void {
     if (!file.mime.startsWith('image/')) return { ok: false as const, error: 'not_image' }
     if (file.bytes.length > CLIPBOARD_READ_IMAGE_MAX_BYTES) return { ok: false as const, error: 'too_large' }
     return { ok: true as const, dataUrl: `data:${file.mime};base64,${file.bytes.toString('base64')}` }
+  })
+
+  registerHandlerWithSchema('ipc:clipboard.copyImageFile', dialogSaveImageSchema, async (req) => {
+    const source = await resolveActionableImage(req.path, req.workspaceRoot)
+    if ('error' in source) return { ok: false as const, error: source.error }
+    const image = nativeImage.createFromBuffer(await readActionableImage(source.abs))
+    if (image.isEmpty()) return { ok: false as const, error: 'not_image' }
+    clipboard.writeImage(image)
+    return { ok: true as const }
   })
 
   registerHandlerWithSchema('ipc:prompt.steer', promptTextSchema, async (req) => {

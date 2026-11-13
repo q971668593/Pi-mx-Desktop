@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { MAX_PANES, MIN_PANE_SHARE, tabTitle, terminalActions, useTerminalStore, type TerminalPaneState } from './terminal-store'
+import { workspacePathKey } from '@shared/workspace-path'
 
 const pane = (id: string, name = 'bash'): TerminalPaneState => ({ ptyId: id, profile: { id: name, name, path: `/bin/${name}`, args: [], kind: name } })
 const tab = () => useTerminalStore.getState().tabs[0]
 
 describe('terminal store splits', () => {
-  beforeEach(() => useTerminalStore.setState({ open: false, tabs: [], activeTab: null }))
+  beforeEach(() => useTerminalStore.setState({ open: false, tabs: [], activeTab: null, activeByWorkspace: {} }))
 
   it('inserts a split right of the focused pane, up to MAX_PANES, with equal widths', () => {
     const id = terminalActions.addTab(pane('a'))
@@ -56,5 +57,17 @@ describe('terminal store splits', () => {
     terminalActions.markExited('a', 0)
     terminalActions.replacePane('a', pane('a2'))
     expect(tab().panes.map((p) => [p.ptyId, p.exited])).toEqual([['a2', undefined], ['b', undefined]])
+  })
+
+  it('remembers the focused terminal independently for each project', () => {
+    const first = terminalActions.addTab(pane('a'), 'project-a', 'project-a')
+    const second = terminalActions.addTab(pane('b'), 'project-a', 'project-a')
+    const third = terminalActions.addTab(pane('c'), 'project-b', 'project-b')
+    terminalActions.focusTab(first)
+    expect(useTerminalStore.getState().activeByWorkspace[workspacePathKey('project-a')]).toBe(first)
+    expect(useTerminalStore.getState().activeByWorkspace[workspacePathKey('project-b')]).toBe(third)
+    terminalActions.closePane('a')
+    expect(useTerminalStore.getState().tabs.some((item) => item.id === second)).toBe(true)
+    expect(useTerminalStore.getState().activeByWorkspace[workspacePathKey('project-b')]).toBe(third)
   })
 })

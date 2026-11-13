@@ -17,7 +17,8 @@ import {
   flushStreamPendingSync,
   queueStreamDelta,
 } from '@renderer/stores/ui-store-stream'
-import { createShellSlice, DEFAULT_RIGHT_PANEL_WIDTH } from '@renderer/stores/ui-store-shell-slice'
+import { createShellSlice, DEFAULT_RIGHT_PANEL_WIDTH, projectPanelKey } from '@renderer/stores/ui-store-shell-slice'
+import { coerceActivePanel } from '@shared/right-panels'
 import { createRuntimeSlice } from '@renderer/stores/ui-store-runtime-slice'
 import { workspacePathKey } from '@shared/workspace-path'
 import { isAbortQueueIgnoreActive } from '@renderer/lib/abort-ui-hold'
@@ -58,6 +59,8 @@ export const useUIStore = create<UIState>()(
   setWorkspace: (path) =>
     set((s) => {
       const changed = workspacePathKey(path) !== workspacePathKey(s.currentWorkspace)
+      let rememberedPanel = 'review'
+      if (changed && path) try { rememberedPanel = localStorage.getItem(projectPanelKey(path)) || 'review' } catch { void 0 }
       return {
         currentWorkspace: path,
         ephemeralSandboxDraft: false,
@@ -66,6 +69,7 @@ export const useUIStore = create<UIState>()(
         // 此处 unshift 会让固定顺序模式下列表先跳顶再弹回（闪烁），MRU 模式也由磁盘路径列表当前置顶兜底。
         ...(changed
           ? {
+            activePanel: coerceActivePanel(rememberedPanel, s.rightPanelPrefs, s.rightPanelCatalog, s.rightPanelOrder),
             workspaceFileToOpen: null,
             sessions: [],
             sessionsWorkspace: null,

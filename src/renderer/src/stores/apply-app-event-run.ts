@@ -145,16 +145,18 @@ export function handleRun(event: RunEvent, api: StoreApi): boolean {
     if (viewFile && evFile && !isViewingWorkerBoundSession(viewFile, evFile)) {
       return false
     }
-    const patch: Record<string, string | undefined> = {}
+    const patch: { model?: string; thinkingLevel?: string } = {}
     if (event.model !== undefined) {
       // Empty model from bound runtime clears stale JSONL/display model.
       patch.model = event.model ? String(event.model) : undefined
     }
     if (event.thinkingLevel !== undefined) patch.thinkingLevel = event.thinkingLevel
-    if (Object.keys(patch).length > 0) state.setRunState(patch)
-    if (Array.isArray(event.availableThinkingLevels)) {
-      state.setRunState({ availableThinkingLevels: event.availableThinkingLevels })
-    }
+    const modelChanged = event.model !== undefined && patch.model !== state.runState.model
+    if (Object.keys(patch).length > 0 || Array.isArray(event.availableThinkingLevels)) state.setRunState({
+      ...patch,
+      ...(modelChanged && event.thinkingLevel === undefined ? { thinkingLevel: undefined } : {}),
+      ...(modelChanged || Array.isArray(event.availableThinkingLevels) ? { availableThinkingLevels: event.availableThinkingLevels } : {}),
+    })
     const fallback = (event as { modelFallbackMessage?: string }).modelFallbackMessage
     void import('@renderer/lib/session-display-meta').then((m) => {
       // Live runtime state is the freshest source: remember it and supersede slower refreshes.

@@ -17,6 +17,7 @@ export interface WorkspaceFsSearchRequest {
   workspaceRoot: string
   query: string
   maxResults?: number
+  includeIgnored?: boolean
 }
 export interface WorkspaceFsSearchEntry {
   path: string
@@ -118,6 +119,7 @@ export interface ModelInfo {
   contextWindow: number
   maxOutput: number
   available: boolean
+  availableThinkingLevels?: string[]
   managedBy?: 'active-sdk'
   auth?: ModelAuthProjection
 }
@@ -133,7 +135,7 @@ export interface ModelSetRequest {
   provider?: string
   modelId: string
 }
-export interface ModelSetResponse { modelId: string }
+export interface ModelSetResponse { modelId: string; thinkingLevel?: string; availableThinkingLevels?: string[] }
 export interface ModelCycleRequest { sessionId: string; direction?: 'next' | 'prev' }
 export interface ModelCycleResponse { modelId: string; thinkingLevel: string }
 

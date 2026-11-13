@@ -22,21 +22,21 @@ test.describe('built-in terminal', () => {
       await expect(rows.first()).toContainText('demo')
       if (process.env.SHOT) await win.screenshot({ path: process.env.SHOT.replace('.png', '-terminal.png') })
 
-      // Hide keeps the shell; showing again shows the same output.
+      // Hiding the right panel keeps the shell; showing again shows the same output.
       await win.keyboard.press('Control+Backquote')
-      await expect(win.locator('.shell-track-bottom')).toHaveClass(/invisible/)
+      await expect(win.locator('.shell-track-right')).toHaveClass(/shell-track-right-rail/)
       await win.keyboard.press('Control+Backquote')
       await expect(rows.first()).toContainText('PI_TERM_42')
 
       // Split: a second shell beside the first.
-      await win.getByRole('button', { name: 'Split right' }).click()
+      await win.getByRole('button', { name: 'Split down' }).click()
       await win.getByRole('menuitem').first().click()
       await expect(rows).toHaveCount(2, { timeout: 15_000 })
       // A third, then close the middle one on its own: the other two stay.
-      await win.getByRole('button', { name: 'Split right' }).click()
+      await win.getByRole('button', { name: 'Split down' }).click()
       await win.getByRole('menuitem').first().click()
       await expect(rows).toHaveCount(3, { timeout: 15_000 })
-      await expect(win.locator('.terminal-drawer [role="separator"][aria-orientation="vertical"]')).toHaveCount(2)
+      await expect(win.locator('.terminal-drawer [role="separator"][aria-orientation="horizontal"]')).toHaveCount(2)
       if (process.env.SHOT) await win.screenshot({ path: process.env.SHOT.replace('.png', '-split.png') })
       const closePane = win.locator('.terminal-drawer').getByRole('button', { name: 'Close pane' })
       await expect(closePane).toHaveCount(3)
@@ -47,16 +47,19 @@ test.describe('built-in terminal', () => {
       await win.keyboard.press('Control+Shift+W')
       await expect(rows).toHaveCount(1)
       await expect(closePane).toHaveCount(0)
-      await win.getByRole('button', { name: 'Split right' }).click()
+      await win.getByRole('button', { name: 'Split down' }).click()
       await win.getByRole('menuitem').first().click()
       await expect(rows).toHaveCount(2, { timeout: 15_000 })
 
-      // Closing the tab ends both shells and hides the drawer.
+      // Closing the terminal ends both shells and leaves the terminal page empty.
       const tab = win.locator('.terminal-drawer [role="tab"]').first()
       await tab.hover()
       await tab.getByRole('button', { name: 'Close terminal' }).click()
-      await expect(win.locator('.terminal-drawer [role="tab"]')).toHaveCount(0)
-      await expect(win.locator('.shell-track-bottom')).toHaveClass(/invisible/)
+      await expect(win.locator('.terminal-drawer').getByRole('button', { name: 'Close terminal' })).toHaveCount(0)
+      const newTerminal = win.locator('.terminal-drawer').getByRole('button', { name: 'New terminal' })
+      await expect(newTerminal).toHaveCount(2)
+      await expect(newTerminal.first()).toBeVisible()
+      await expect(newTerminal.last()).toBeVisible()
     } finally {
       // Running terminals make the close guard ask first; end them so the app can quit.
       await win.evaluate(() => document.querySelectorAll<HTMLButtonElement>('.terminal-drawer [aria-label="Close terminal"]').forEach((b) => b.click())).catch(() => {})

@@ -2,6 +2,7 @@ import { buildSessionContextPreview } from '@shared/session-context-preview'
 import { errorMessage } from '@shared/error-message'
 import type { SkillCatalogResponse } from '@shared/skill-catalog'
 import { projectModelCatalog } from '@shared/model-auth-projection'
+import { modelThinkingLevels } from '@shared/model-thinking-levels'
 import type { WorkerCommandRow, WorkerIncomingMessage } from '../worker-port-types.js'
 import type { WorkerReply } from '../worker-handler-types.js'
 import { st, isSessionBusy, applyPendingAdapterCatalog } from '../worker-runtime.js'
@@ -35,13 +36,14 @@ export async function handleGetmodels(msg: WorkerIncomingMessage, reply: WorkerR
             : []
           reply({
             type: 'getModels-done',
-            models: models.map((m: { id: string; name?: string; provider: string; contextWindow?: number; maxOutput?: number }) => ({
+            models: models.map((m: { id: string; name?: string; provider: string; contextWindow?: number; maxOutput?: number; reasoning?: boolean; thinkingLevelMap?: Record<string, string | null> }) => ({
               id: m.id,
               name: m.name || m.id,
               provider: m.provider,
               contextWindow: m.contextWindow || 0,
               maxOutput: m.maxOutput || 0,
               available: true,
+              availableThinkingLevels: modelThinkingLevels(m),
             })),
           })
         } catch (e: unknown) {

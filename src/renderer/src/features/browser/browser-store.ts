@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import {
+  projectBrowserSessionKey,
   isTabVisibleInSession,
   normalizeBrowserSessionKey,
   type BrowserDownloadInfo,
@@ -217,17 +218,18 @@ export function ensureBrowserSubscription(): void {
     useBrowserStore.setState((s) => applyBrowserEvent(s, event))
     for (const listener of sideListeners) listener(event)
   })
-  let lastSessionFile = useUIStore.getState().historySessionFile
+  let lastProjectKey = projectBrowserSessionKey(useUIStore.getState().currentWorkspace)
   useUIStore.subscribe((s) => {
-    if (s.historySessionFile === lastSessionFile) return
-    lastSessionFile = s.historySessionFile
-    void browserActions.setSession(s.historySessionFile).catch(() => {})
+    const nextProjectKey = projectBrowserSessionKey(s.currentWorkspace)
+    if (nextProjectKey === lastProjectKey) return
+    lastProjectKey = nextProjectKey
+    void browserActions.setSession(nextProjectKey).catch(() => {})
   })
   void ipcClient
     .invoke('browser.tabs.list')
     .then((res: { tabs?: BrowserTabInfo[]; activeTabId?: string | null } | undefined) => {
       const tabs = res?.tabs ?? []
-      const currentSession = useUIStore.getState().historySessionFile
+      const currentSession = projectBrowserSessionKey(useUIStore.getState().currentWorkspace)
       useBrowserStore.setState((prev) =>
         switchBrowserSession(
           {
@@ -267,7 +269,7 @@ export function onBrowserSideEvent(listener: Listener): () => void {
 export const browserActions = {
   open: (url?: string, sessionKey?: string | null) => {
     const resolvedKey = normalizeBrowserSessionKey(
-      sessionKey !== undefined ? sessionKey : useUIStore.getState().historySessionFile,
+      sessionKey !== undefined ? sessionKey : projectBrowserSessionKey(useUIStore.getState().currentWorkspace),
     )
     return ipcClient.invoke('browser.tabs.open', {
       ...(url ? { url } : {}),

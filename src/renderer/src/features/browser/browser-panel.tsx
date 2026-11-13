@@ -7,6 +7,7 @@ import {
   formatSelectionForComposer,
   normalizeAddressInput,
   normalizeBrowserSessionKey,
+  projectBrowserSessionKey,
   type BrowserEvent,
   type BrowserLogEntry,
   type PageContextResult,
@@ -17,7 +18,13 @@ import { wheelToHorizontal } from '@renderer/lib/horizontal-wheel'
 import { useRightPanelHidden } from '@renderer/lib/use-right-panel-hidden'
 import { cn } from '@renderer/lib/utils'
 import { useUIStore } from '@renderer/stores/ui-store'
-import { browserActions, ensureBrowserSubscription, onBrowserSideEvent, useBrowserStore, visibleTabOrder } from './browser-store'
+import {
+  browserActions,
+  ensureBrowserSubscription,
+  onBrowserSideEvent,
+  useBrowserStore,
+  visibleTabOrder,
+} from './browser-store'
 import { useOverlayCovering, useViewPlacement } from './use-view-placement'
 import { AnnotationLayer } from './annotation-layer'
 import { saveImageAttachment, sendToComposer } from './browser-composer'
@@ -48,8 +55,8 @@ export function BrowserPanel() {
   const addressRef = useRef<HTMLInputElement>(null)
   const expandButtonRef = useRef<HTMLButtonElement>(null)
 
-  const sessionFile = useUIStore((s) => s.historySessionFile)
-  const sessionKey = normalizeBrowserSessionKey(sessionFile)
+  const workspace = useUIStore((s) => s.currentWorkspace)
+  const sessionKey = normalizeBrowserSessionKey(projectBrowserSessionKey(workspace))
   const tabs = useBrowserStore((s) => s.tabs)
   const rawOrder = useBrowserStore((s) => s.order)
   const storeActiveTabId = useBrowserStore((s) => s.activeTabId)

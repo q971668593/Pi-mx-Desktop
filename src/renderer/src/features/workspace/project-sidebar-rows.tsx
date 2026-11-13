@@ -1,7 +1,7 @@
 import { requestOpenInPane, startSessionDrag } from '@renderer/features/split/split-dnd'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronRight, GitFork, Plus } from '@renderer/components/icons'
+import { ChevronRight, FolderOpen, GitFork, Plus } from '@renderer/components/icons'
 import { cn } from '@renderer/lib/utils'
 import { activateWorkspace, switchSessionInPlace } from '@renderer/lib/activate-workspace'
 import { guardSessionSwitch } from '@renderer/lib/session-switch-guard'
@@ -18,6 +18,8 @@ import { SessionAttentionDot } from './session-attention-dot'
 import { selectSessionAttention } from '@renderer/lib/session-attention'
 import type { SandboxEntry, SessionItem } from './project-sidebar-types'
 import type { SessionMenuFork, SessionMenuTarget } from './session-context-menu-types'
+
+import { moveSidebarItem, readSidebarOrder, saveSidebarOrder, useSidebarReorder } from './sidebar-reorder'
 
 const NO_CHILDREN: SubagentSessionChild[] = []
 
@@ -74,6 +76,17 @@ export function ProjectSessionTree({
     }
     return buildSessionTree(projectSessions, groups)
   }, [currentWorkspace, historySessionFile, liveChildren, projectSessions, subagentSessionGroup, workspacePath])
+  const storageKey = `pi-desktop:session-order:${workspacePathKey(workspacePath)}`
+  const [manualOrder, setManualOrder] = useState(() => readSidebarOrder(storageKey))
+  const rank = useMemo(() => new Map(manualOrder.map((key, index) => [key, index])), [manualOrder])
+  const sortNodes = (nodes: SessionNode[]) => [...nodes].sort((a, b) => (rank.get(a.key) ?? Infinity) - (rank.get(b.key) ?? Infinity))
+  const sessionDrag = useSidebarReorder((source, target, after) => {
+    const order = sortNodes([...tree.byKey.values()]).map((node) => node.key)
+    const next = moveSidebarItem(order, source, target, after)
+    if (next === order) return
+    setManualOrder(next)
+    saveSidebarOrder(storageKey, next)
+  })
   const visibleRoots = useMemo(() => filterSessionTree(tree.roots, searchQuery), [tree, searchQuery])
   const { sessionsByFile, forksBySource } = useMemo(() => {
     const byFile = new Map<string, SessionItem>()
@@ -140,6 +153,8 @@ export function ProjectSessionTree({
     const s = node.session
     // Child sessions (subagents) render one step down: compact single line, quieter text.
     const isChild = depth > 0
+    const sortScope = node.parentKey || 'roots'
+    const sortable = !!node.session.sessionFile && !node.liveChild && !searchQuery.trim()
     const sessionFile = s.sessionFile
     const { children, liveChildren: transientChildren } = node
     const childCount = children.length + transientChildren.length
@@ -157,15 +172,19 @@ export function ProjectSessionTree({
     return (
       <div
         key={node.key}
-        className="mb-0.5"
+        className="mb-1"
+        onDragEnd={sessionDrag.end}
         data-session-file={sessionFile}
         draggable={!!sessionFile && !node.liveChild}
         onDragStart={(e) => {
           if (!sessionFile) return
+          if (sortable) sessionDrag.start(e, node.key, sortScope)
+          e.stopPropagation()
           startSessionDrag(e, { sessionId: s.sessionId, sessionFile, workspace: workspacePath, title: s.title || s.firstMessage || '' })
         }}
       >
         <div
+          {...(sortable ? sessionDrag.target(node.key, sortScope) : {})}
           onContextMenu={(event) =>
             onSessionContextMenu(event, {
               sessionId: s.sessionId,
@@ -176,10 +195,10 @@ export function ProjectSessionTree({
             })
           }
           className={cn(
-            'nav-row sidebar-session-row flex items-center gap-0.5',
-            isChild ? 'sidebar-child-row min-h-[30px] rounded-md px-0.5' : 'min-h-[38px] rounded-lg px-1 py-0.5',
+            'nav-row sidebar-session-row sidebar-drop-target flex items-center gap-0.5',
+            isChild ? 'sidebar-child-row min-h-[30px] rounded-md px-0.5' : 'min-h-[38px] rounded-lg border border-transparent px-1 py-0.5 transition-colors hover:border-border/50',
             parentActive
-              ? 'nav-row-active'
+              ? 'nav-row-active border-border/60 shadow-sm'
               : 'text-foreground-secondary hover:text-foreground',
           )}
         >
@@ -295,7 +314,7 @@ export function ProjectSessionTree({
           >
           <div className="sidebar-children-collapse-inner">
           <div className="sidebar-children-guide">
-            {children.map((child) => renderSession(child, depth + 1))}
+            {sortNodes(children).map((child) => renderSession(child, depth + 1))}
             {transientChildren.map((child) => {
               const childActive = !!child.sessionFile
                         && workspacePathsEqual(workspacePath, currentWorkspace)
@@ -347,7 +366,7 @@ export function ProjectSessionTree({
   }
 
   return (
-    <div className="sidebar-session-tree ml-3 border-l border-border/40 pl-1.5 pt-0.5">
+    <div className="sidebar-session-tree px-1.5 pt-0.5">
       {error && <div role="status" className="px-2 py-2 text-xs text-foreground-secondary" title={error}>
         <p>{t('common:sidebar.sessionReadFailed')}</p>
         <button type="button" className="workbench-button mt-1" disabled={loading} onClick={onRetry}>{t('common:retry')}</button>
@@ -368,7 +387,7 @@ export function ProjectSessionTree({
         <p className="px-2 py-2 text-[12px] text-foreground-secondary/80">{t('common:loading')}</p>
       ) : visibleRoots.length === 0 ? (
         !error && !pendingNew && <p className="px-2 py-2 text-[12px] text-foreground-secondary/80">{t('common:sidebar.noSessions')}</p>
-      ) : visibleRoots.map((node) => renderSession(node))}
+      ) : sortNodes(visibleRoots).map((node) => renderSession(node))}
     </div>
   )
 }
@@ -384,6 +403,8 @@ export function ProjectDiskRow({
   onOpenProject,
   onNewSession,
   onProjectContextMenu,
+  dragSource,
+  dropTarget,
   sessionTree,
 }: {
   path: string
@@ -396,13 +417,16 @@ export function ProjectDiskRow({
   onOpenProject?: () => void
   onNewSession: () => void
   onProjectContextMenu: (e: React.MouseEvent) => void
+  dragSource?: Pick<React.HTMLAttributes<HTMLDivElement>, 'draggable' | 'onDragStart' | 'onDragEnd'>
+  dropTarget?: ReturnType<ReturnType<typeof useSidebarReorder>['target']>
   sessionTree: React.ReactNode
 }) {
   const { t } = useTranslation()
   return (
-    <div key={path} className="sidebar-project-row mb-0.5" data-workspace={path} onContextMenu={onProjectContextMenu}>
+    <div key={path} className={cn('sidebar-project-row sidebar-drop-target', worktree ? 'sidebar-worktree-row' : 'sidebar-project-card')} data-active={active} data-workspace={path} onContextMenu={onProjectContextMenu} {...dropTarget}>
       <div
-        className="nav-row flex min-h-[36px] items-center gap-0.5 rounded-lg pl-0.5 pr-1"
+        className="sidebar-project-header"
+        {...dragSource}
       >
         <button
           type="button"
@@ -423,6 +447,7 @@ export function ProjectDiskRow({
           title={path}
           aria-current={active ? 'location' : undefined}
         >
+          <span className="project-folder-tile"><FolderOpen size={15} /></span>
           <span className="min-w-0 flex-1">
             <span className={cn('block truncate text-[13px] leading-5', active ? 'font-semibold text-foreground' : 'font-medium text-foreground-secondary')}>{name}</span>
             {branch && branch !== name ? <span className="block truncate text-[11px] text-foreground-secondary" title={branch}>{branch.replace(/^refs\/heads\//, '')}</span> : null}

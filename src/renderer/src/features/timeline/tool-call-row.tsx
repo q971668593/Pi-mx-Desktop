@@ -6,6 +6,12 @@ import { cn } from '@renderer/lib/utils'
 import { normalizeSessionFileKey } from '@renderer/lib/session-file-key'
 import { ToolIcon } from './tool-icon'
 import { renderToolCard } from './tool-card-templates'
+import {
+  ChatImageGallery,
+  ChatImageGeneratingCard,
+  extractImagePrompt,
+  isImageGenerationTool,
+} from './chat-image'
 import { resolveAdapterToolCardTemplate, resolveToolCardTemplate } from './tool-card-registry'
 import { tryRenderAdapterToolCard } from '@extension-compat/renderer/render-adapter-tool-card'
 import { parseCodemodeCalls, stripCodemodeOutputHeader, summarizeCodemodeCalls } from '@shared/tool-call-detail'
@@ -21,6 +27,8 @@ import { resolveSkillContextActivity } from './skill-context-activity'
 const NATIVE_TOOLS = new Set(['read', 'edit', 'insert', 'write', 'grep', 'ffgrep', 'fffind', 'find', 'bash', 'ls', 'codemode'])
 
 function ToolOutputExpanded({ item }: { item: ToolTimelineItem }) {
+  const outputText = extractToolText(item.toolOutput || '')
+  const imageText = [outputText, JSON.stringify(item.toolDetails || ''), JSON.stringify(item.toolArgs || '')].filter(Boolean).join('\n')
   const name = item.toolName || ''
   const adapterTpl = resolveAdapterToolCardTemplate(name)
   const adapterPreview = tryRenderAdapterToolCard(item, adapterTpl)
@@ -31,7 +39,10 @@ function ToolOutputExpanded({ item }: { item: ToolTimelineItem }) {
     if (native) return <>{native}</>
   }
   const template = resolveToolCardTemplate(item.toolName)
-  return <>{renderToolCard(item, template)}</>
+  return <>
+    <ChatImageGallery text={imageText} />
+    {renderToolCard(item, template)}
+  </>
 }
 
 function toolArgSummary(item: ToolTimelineItem): string {
@@ -97,6 +108,7 @@ function ToolCallRowImpl({
   const [localExpanded, setLocalExpanded] = useState<boolean | null>(null)
   const isCurrentRun = !!item.runId && item.runId === activeRunId
   const isRunning = item.toolPhase === 'start' || item.toolPhase === 'update'
+  const isGeneratingImage = isRunning && isImageGenerationTool(item.toolName, item.toolArgs, item.toolDetails)
   const hasToolBody = !!(item.toolOutput || item.toolDetails || item.toolArgs || item.toolDetail)
   const autoExpanded = autoExpandedInBudget && agentRunning && isCurrentRun && hasToolBody
   const expanded =
@@ -202,6 +214,11 @@ function ToolCallRowImpl({
           className="ml-auto pl-2"
         />
       </button>
+      {isGeneratingImage ? (
+        <div className="ml-3.5 pl-1.5 pb-1">
+          <ChatImageGeneratingCard prompt={extractImagePrompt(item.toolArgs)} />
+        </div>
+      ) : null}
       {expanded && hasToolBody ? (
         <div className="tool-call-body ml-3.5 border-l border-border/12 pl-1.5 pb-0.5 pt-0.5">
           <ToolOutputExpanded item={item} />

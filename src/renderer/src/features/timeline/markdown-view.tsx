@@ -19,6 +19,8 @@ import {
   type MarkdownBlockCache,
 } from '@renderer/features/timeline/markdown-blocks'
 import { MarkdownPathText } from '@renderer/features/timeline/markdown-inline-paths'
+import { ChatImageGallery } from '@renderer/features/timeline/chat-image'
+import { plainTextFromNode } from '@shared/chat-image-paths'
 import { MarkdownLink } from '@renderer/features/timeline/markdown-link'
 import { FencedMathBlock } from '@renderer/features/timeline/markdown-math'
 import { MermaidBlock } from '@renderer/features/timeline/mermaid-block'
@@ -339,14 +341,15 @@ const MarkdownView = memo(function MarkdownView({
         <h3 className="mb-1 mt-2 text-[15px] font-semibold">{ch}</h3>
       ),
       p: ({ children: ch }: ComponentPropsWithoutRef<'p'>) => {
-        if (typeof ch === 'string') {
-          return (
+        const text = plainTextFromNode(ch)
+        return (
+          <>
             <p className="my-1 leading-relaxed">
-              <MarkdownPathText text={ch} />
+              {typeof ch === 'string' ? <MarkdownPathText text={ch} /> : ch}
             </p>
-          )
-        }
-        return <p className="my-1 leading-relaxed">{ch}</p>
+            {text ? <ChatImageGallery text={text} /> : null}
+          </>
+        )
       },
       hr: () => <hr className="my-3 border-border/35" />,
     }),
@@ -357,6 +360,7 @@ const MarkdownView = memo(function MarkdownView({
     return (
       <div className={cn('prose-chat prose-chat-streaming', className)}>
         <StreamLiveTailBlock text={liveTail} streaming />
+        <ChatImageGallery text={liveTail} />
       </div>
     )
   }
@@ -385,6 +389,7 @@ const MarkdownView = memo(function MarkdownView({
           )
         ) : null}
         {openUIFence ? <UIBlockHost raw={openUIFence.raw} streaming /> : null}
+        <ChatImageGallery text={`${committedPrefix}\n${tailMarkdown}`} />
       </div>
     )
   }

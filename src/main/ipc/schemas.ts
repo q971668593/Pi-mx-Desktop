@@ -21,13 +21,20 @@ export const workspaceFsListDirSchema = z.object({
 export const workspaceFsSearchSchema = z.object({
   workspaceRoot: z.string().min(1),
   query: z.string().max(512),
-  maxResults: z.number().int().min(1).max(20).optional(),
+  maxResults: z.number().int().min(1).max(200).optional(),
+  includeIgnored: z.boolean().optional(),
 })
 
 export const workspaceFsReadTextSchema = z.object({
   workspaceRoot: z.string(),
   path: z.string(),
   maxBytes: z.number().optional(),
+})
+
+export const workspaceFsWriteTextSchema = z.object({
+  workspaceRoot: z.string().min(1),
+  path: z.string().min(1),
+  content: z.string().max(8_000_000),
 })
 
 export const workspaceFsRenameSchema = z.object({
@@ -134,6 +141,14 @@ export const clipboardWriteTempImageSchema = z
 
 export const clipboardReadTempImageSchema = z.object({
   path: z.string().min(1),
+})
+
+export const dialogSaveImageSchema = z.object({
+  path: z.string().min(1),
+  workspaceRoot: z.string().optional(),
+  suggestedName: z.string().min(1).max(255).optional(),
+  data: z.string().min(1).max(30_000_000).optional(),
+  mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/bmp']).optional(),
 })
 
 export const piSettingsSetSchema = z.object({
@@ -284,6 +299,14 @@ const settingsValueSchemas: Record<string, z.ZodTypeAny> = {
       distro: z.string().nullable(),
     })
     .strict(),
+  pluginModel: z
+    .object({
+      provider: z.string().trim().min(1).max(200),
+      modelId: z.string().trim().min(1).max(300),
+      thinkingLevel: z.enum(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']).optional(),
+    })
+    .strict()
+    .nullable(),
 }
 
 export const settingsSetSchema = z

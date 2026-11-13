@@ -29,6 +29,7 @@ type Props = {
   onRename: () => void
   onReveal: () => void
   onOpenInNewTab?: () => void
+  onNewTerminal?: () => void
 }
 
 function clampMenuPosition(x: number, y: number, el: HTMLElement | null) {
@@ -56,11 +57,12 @@ export function FilesContextMenuPortal({
   onRename,
   onReveal,
   onOpenInNewTab,
+  onNewTerminal,
 }: Props) {
   const { t } = useTranslation('files')
   const ref = useRef<HTMLDivElement>(null)
 
-  useDismissContextMenu(!!menu, ref, onClose)
+  useDismissContextMenu(!!menu, ref, onClose, false)
 
   useLayoutEffect(() => {
     if (!menu || !ref.current) return
@@ -152,7 +154,12 @@ export function FilesContextMenuPortal({
           {t('menu.searchInFolder')}
         </button>
       ) : null}
-      <button
+      {onNewTerminal ? (
+        <button type="button" className={item} onPointerDown={stop} onClick={() => { onNewTerminal(); onClose() }}>
+          {t('menu.newTerminal')}
+        </button>
+      ) : null}
+      {menu.rel ? <button
         type="button"
         className={item}
         onPointerDown={stop}
@@ -162,7 +169,7 @@ export function FilesContextMenuPortal({
         }}
       >
         {t('menu.rename')}
-      </button>
+      </button> : null}
       <button
         type="button"
         className={item}

@@ -11,11 +11,15 @@ import { ipcClient } from '@renderer/lib/ipc-client'
 import { toast } from 'sonner'
 import { useWorkspaceFs } from './use-workspace-fs'
 import { FilePreviewRouter } from './file-preview-router'
+import { clearFileDraft, getFileDraft, moveFileDrafts } from './file-edit-guard'
 import { FileTree } from './file-tree'
 import { FilesContextMenuPortal, type FilesCtxTarget } from './files-context-menu-portal'
+import { openTerminalAt } from '@renderer/features/terminal/terminal-run-bar'
 import { FilePreviewTabBar } from './file-preview-tab-bar'
 import { useFilePreviewTabs } from './use-file-preview-tabs'
 import { RenamePromptDialog } from '@renderer/features/workspace/rename-prompt-dialog'
+import type { WorkspaceFsSearchEntry } from '@shared/ipc-contract'
+import { workspacePathKey } from '@shared/workspace-path'
 
 type RenameTarget = Pick<FilesCtxTarget, 'abs' | 'name' | 'rel'>
 
@@ -29,7 +33,12 @@ export function WorkspaceFilesPanel() {
   const filesPreviewChatExpand = useUIStore((s) => s.filesPreviewChatExpand)
   const rightPanelCollapsed = useRightPanelHidden()
   const revealRightPanel = useUIStore((s) => s.revealRightPanel)
-  const [showDotfiles, setShowDotfiles] = useState(false)
+  const preferenceKey = `pi-desktop:file-panel:${workspacePathKey(workspaceRoot)}`
+  const [initialPrefs] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(preferenceKey) || '{}') as { showDotfiles?: boolean; explorerCollapsed?: boolean; searchQuery?: string } }
+    catch { return {} }
+  })
+  const [showDotfiles, setShowDotfiles] = useState(typeof initialPrefs.showDotfiles === 'boolean' ? initialPrefs.showDotfiles : true)
   const { listDir, readText } = useWorkspaceFs(workspaceRoot, showDotfiles)
   const {
     tabs,
@@ -38,11 +47,13 @@ export function WorkspaceFilesPanel() {
     closeTab,
     activateTab,
     reorderTabs,
+    togglePin,
     renameTabRel,
-    resetTabs,
-  } = useFilePreviewTabs()
-  const [explorerCollapsed, setExplorerCollapsed] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
+  } = useFilePreviewTabs(workspaceRoot)
+  const [explorerCollapsed, setExplorerCollapsed] = useState(typeof initialPrefs.explorerCollapsed === 'boolean' ? initialPrefs.explorerCollapsed : false)
+  const [searchQuery, setSearchQuery] = useState(typeof initialPrefs.searchQuery === 'string' ? initialPrefs.searchQuery : '')
+  const [searchResults, setSearchResults] = useState<WorkspaceFsSearchEntry[]>([])
+  const [searchState, setSearchState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [treeEpoch, setTreeEpoch] = useState(0)
   const [collapseEpoch, setCollapseEpoch] = useState(0)
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0)
@@ -56,6 +67,29 @@ export function WorkspaceFilesPanel() {
   const selectedPath = activeTab?.rel ?? null
   const previewPath = activeTab?.rel ?? null
   const explorerHidden = explorerCollapsed && !!activeTab
+
+  useEffect(() => {
+    try { localStorage.setItem(preferenceKey, JSON.stringify({ showDotfiles, explorerCollapsed, searchQuery })) } catch { void 0 }
+  }, [preferenceKey, showDotfiles, explorerCollapsed, searchQuery])
+
+  useEffect(() => {
+    if (!workspaceRoot || !searchQuery.trim()) {
+      setSearchResults([])
+      setSearchState('idle')
+      return
+    }
+    let cancelled = false
+    setSearchState('loading')
+    const timer = window.setTimeout(() => {
+      void ipcClient.invoke('workspace.fs.search', { workspaceRoot, query: searchQuery.trim(), maxResults: 200, includeIgnored: true })
+        .then((result) => {
+          if (cancelled) return
+          setSearchResults(result.ok ? result.entries : [])
+          setSearchState(result.ok ? 'done' : 'error')
+        }).catch(() => { if (!cancelled) setSearchState('error') })
+    }, 200)
+    return () => { cancelled = true; window.clearTimeout(timer) }
+  }, [workspaceRoot, searchQuery])
 
   useEffect(() => {
     if (activePanel !== 'files' || !previewPath) {
@@ -86,11 +120,6 @@ export function WorkspaceFilesPanel() {
       useUIStore.setState({ filesPreviewChatExpand: false })
     }
   }, [])
-
-  useEffect(() => {
-    resetTabs()
-    setSourceLocation(null)
-  }, [workspaceRoot, resetTabs])
 
   useEffect(() => {
     // Refresh preview only when the files panel is the active right-panel tab and visible.
@@ -214,6 +243,7 @@ export function WorkspaceFilesPanel() {
       return
     }
     const newRel = res.newRelativePath as string
+    moveFileDrafts(workspaceRoot, renameTarget.rel, newRel)
     renameTabRel(renameTarget.rel, newRel, name)
     bumpTree()
     toast.message(t('toast.renamed'))
@@ -232,8 +262,14 @@ export function WorkspaceFilesPanel() {
         tabs={tabs}
         activeId={activeTab?.id ?? null}
         onActivate={activateTab}
-        onClose={closeTab}
+        onClose={(id) => {
+          const target = tabs.find((tab) => tab.id === id)
+          if (!target || (getFileDraft(workspaceRoot, target.rel) && !window.confirm(t('preview.discardEdits')))) return
+          clearFileDraft(workspaceRoot, target.rel)
+          closeTab(id)
+        }}
         onReorder={reorderTabs}
+        onTogglePin={togglePin}
         trailing={chromeTrailing}
       />
 
@@ -267,7 +303,10 @@ export function WorkspaceFilesPanel() {
           )}
         </div>
 
-        <div className="files-explorer-rail flex min-h-0 min-w-0 flex-col overflow-hidden">
+        <div className="files-explorer-rail flex min-h-0 min-w-0 flex-col overflow-hidden" onContextMenu={(event) => {
+          if (event.target instanceof Element && event.target.closest('input, textarea, button, [contenteditable="true"]')) return
+          onContextMenuEntry(event, workspaceRoot, workspaceRoot.split(/[\\/]/).pop() || workspaceRoot, '', true)
+        }}>
           <div className="files-explorer-toolbar flex shrink-0 flex-wrap items-center gap-1 border-b border-border/40 px-2 py-2">
             <div className="workbench-search files-search min-w-0 flex-1">
               <Search className="h-3.5 w-3.5 shrink-0" aria-hidden />
@@ -301,7 +340,21 @@ export function WorkspaceFilesPanel() {
             </button>
           </div>
           <OverlayScrollHost className="min-h-0 flex-1" scrollClassName="px-1.5 pb-2">
-            <FileTree
+            {searchQuery.trim() ? (
+              <div className="py-1 text-[12px]">
+                {searchState === 'loading' ? <p className="px-2 py-2 text-foreground-secondary">{t('search.loading')}</p> : null}
+                {searchState === 'error' ? <p className="px-2 py-2 text-destructive">{t('search.failed')}</p> : null}
+                {searchState === 'done' && !searchResults.length ? <p className="px-2 py-2 text-foreground-secondary">{t('search.empty')}</p> : null}
+                {searchResults.map((entry) => (
+                  <button key={entry.path} type="button" className="block w-full rounded px-2 py-1 text-left hover:bg-muted" title={entry.path}
+                    onClick={() => { if (entry.isDirectory) setSearchQuery(`${entry.path}/`); else onSelectPath(entry.path, false) }}
+                    onContextMenu={(event) => onContextMenuEntry(event, `${workspaceRoot}/${entry.path}`, entry.name, entry.path, entry.isDirectory)}>
+                    <span className="block truncate text-foreground">{entry.name}</span><span className="block truncate text-[10px] text-foreground-tertiary">{entry.path}</span>
+                  </button>
+                ))}
+                {searchResults.length >= 200 ? <p className="px-2 py-2 text-foreground-tertiary">{t('search.limit')}</p> : null}
+              </div>
+            ) : <FileTree
               key={treeEpoch}
               workspaceRoot={workspaceRoot}
               listDir={listDir}
@@ -310,7 +363,7 @@ export function WorkspaceFilesPanel() {
               searchQuery={searchQuery}
               collapseEpoch={collapseEpoch}
               onContextMenuEntry={onContextMenuEntry}
-            />
+            />}
           </OverlayScrollHost>
         </div>
       </div>
@@ -362,6 +415,11 @@ export function WorkspaceFilesPanel() {
           if (!menu) return
           void ipcClient.invoke('shell.showItemInFolder', { path: menu.abs })
         }}
+        onNewTerminal={() => {
+          if (!menu) return
+          const cwd = menu.isDirectory ? menu.abs : menu.abs.slice(0, Math.max(menu.abs.lastIndexOf('/'), menu.abs.lastIndexOf('\\')))
+          void openTerminalAt(cwd)
+        }}
       />
 
       <RenamePromptDialog
@@ -370,12 +428,16 @@ export function WorkspaceFilesPanel() {
         defaultValue=""
         onConfirm={async (name) => {
           if (!createTarget || !workspaceRoot) return
-          const relativePath = `${createTarget.rel.replace(/\\/g, '/')}/${name}`
-          await ipcClient.invoke('workspace.fs.create', {
+          const relativePath = [createTarget.rel.replace(/\\/g, '/'), name].filter(Boolean).join('/')
+          const result = await ipcClient.invoke('workspace.fs.create', {
             workspaceRoot,
             relativePath,
             isDirectory: createTarget.isDirectory,
           })
+          if (!result.ok) {
+            toast.error(result.error || '创建失败')
+            return
+          }
           setCreateTarget(null)
           bumpTree()
         }}

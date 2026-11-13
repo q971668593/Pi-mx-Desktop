@@ -70,6 +70,7 @@ function baseDraft(): SettingsDraft {
       builtinServePort: 18788,
     },
     agentRuntime: { mode: 'host', distro: null },
+    pluginModel: null,
   }
 }
 

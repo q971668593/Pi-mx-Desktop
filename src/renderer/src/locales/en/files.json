@@ -10,10 +10,16 @@
     "collapsePreview": "Collapse preview"
   },
   "tabs": {
-    "close": "Close tab"
+    "close": "Close tab",
+    "pin": "Pin tab",
+    "unpin": "Unpin tab"
   },
   "search": {
-    "placeholder": "Filter in tree…"
+    "placeholder": "Search project files…",
+    "loading": "Searching project…",
+    "failed": "Search failed. Check the project search tool.",
+    "empty": "No matching files or folders",
+    "limit": "Showing the first 200 results. Refine your search for more."
   },
   "tree": {
     "folder": "Folder",
@@ -22,7 +28,11 @@
     "dirTruncated": "Large folder — showing {{shown}} of {{total}}",
     "searchCapped": "Too many matches — showing {{shown}} of {{total}}",
     "dotfiles": "Show hidden files",
-    "git": { "modified": "Modified", "added": "Added", "deleted": "Deleted" },
+    "git": {
+      "modified": "Modified",
+      "added": "Added",
+      "deleted": "Deleted"
+    },
     "collapseAll": "Collapse all"
   },
   "preview": {
@@ -39,7 +49,24 @@
     "expandAll": "Show all ({{count}} lines)",
     "collapse": "Collapse",
     "tryExpandRead": "Load more (up to 8MB)",
-    "deleted": "File was deleted or moved"
+    "deleted": "File was deleted or moved",
+    "edit": "Edit",
+    "editing": "Editing",
+    "wordWrap": "Word wrap",
+    "ready": "Preview",
+    "unsaved": "Unsaved",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Saved",
+    "saveFailed": "Could not save the file. Try again.",
+    "cancelEdit": "Cancel",
+    "discardEdits": "This file has unsaved changes. Leave and discard them?",
+    "externalChange": "The file changed elsewhere. Overwrite it with your edits?",
+    "find": "Find",
+    "previous": "Previous",
+    "next": "Next",
+    "closeFind": "Close search",
+    "resetZoom": "Reset"
   },
   "menu": {
     "preview": "Preview",
@@ -52,6 +79,7 @@
     "rename": "Rename",
     "openInNewTab": "Open in new tab",
     "searchInFolder": "Search in this folder"
+    ,"newTerminal": "New terminal here"
   },
   "rename": {
     "title": "Rename",

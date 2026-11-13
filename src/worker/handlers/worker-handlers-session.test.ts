@@ -166,7 +166,7 @@ describe('handleSetmodel', () => {
     await handleSetmodel({ provider: 'openai', modelId: 'gpt/new' }, reply)
 
     expect(modelRuntime.getModel).toHaveBeenCalledWith('openai', 'gpt/new')
-    expect(reply).toHaveBeenCalledWith({ type: 'setModel-done', modelId: 'openai/gpt/new' })
+    expect(reply).toHaveBeenCalledWith({ type: 'setModel-done', modelId: 'openai/gpt/new', thinkingLevel: 'medium', availableThinkingLevels: undefined })
   })
 
   it('rejects a model missing from the service-owned ModelRuntime', async () => {
@@ -203,18 +203,21 @@ describe('handleSetmodel', () => {
     expect(reply).toHaveBeenCalledWith({ type: 'error', error: 'MODEL_NOT_CONFIRMED: anthropic/old' })
   })
 
-  it('returns the actual runtime model after confirmation', async () => {
+  it('returns the new model and its effective thinking settings together', async () => {
     const current = { provider: 'anthropic', id: 'old' }
     st.modelRuntime = modelRuntimeWith(() => ({ provider: 'openai', id: 'gpt/new' }))
     st.session = sessionWith({
       current,
-      setModel: async () => { Object.assign(current, { provider: 'openai', id: 'gpt/new' }) },
+      setModel: async () => {
+        Object.assign(current, { provider: 'openai', id: 'gpt/new' })
+        Object.assign(st.session!, { thinkingLevel: 'off', getAvailableThinkingLevels: () => ['off'] })
+      },
     })
     const reply = vi.fn()
 
     await handleSetmodel({ provider: 'openai', modelId: 'gpt/new' }, reply)
 
-    expect(reply).toHaveBeenCalledWith({ type: 'setModel-done', modelId: 'openai/gpt/new' })
+    expect(reply).toHaveBeenCalledWith({ type: 'setModel-done', modelId: 'openai/gpt/new', thinkingLevel: 'off', availableThinkingLevels: ['off'] })
   })
 
   it('restores the global default model after a session-scoped switch', async () => {
@@ -248,7 +251,7 @@ describe('handleSetmodel', () => {
 
     // 会话模型已切换，但全局默认被还原为切前的值。
     expect(setDefault).toHaveBeenCalledWith('anthropic', 'old')
-    expect(reply).toHaveBeenCalledWith({ type: 'setModel-done', modelId: 'openai/gpt/new' })
+    expect(reply).toHaveBeenCalledWith({ type: 'setModel-done', modelId: 'openai/gpt/new', thinkingLevel: 'medium', availableThinkingLevels: undefined })
   })
 
   it('restores the global default even when the switch fails after the SDK wrote it', async () => {
@@ -302,7 +305,7 @@ describe('handleSetmodel', () => {
     await handleSetmodel({ provider: 'openai', modelId: 'gpt/new' }, reply)
 
     expect(setDefault).not.toHaveBeenCalled()
-    expect(reply).toHaveBeenCalledWith({ type: 'setModel-done', modelId: 'openai/gpt/new' })
+    expect(reply).toHaveBeenCalledWith({ type: 'setModel-done', modelId: 'openai/gpt/new', thinkingLevel: 'medium', availableThinkingLevels: undefined })
   })
 
   it('leaves the default untouched when the session has no settings manager', async () => {
@@ -316,7 +319,7 @@ describe('handleSetmodel', () => {
 
     await handleSetmodel({ provider: 'openai', modelId: 'gpt/new' }, reply)
 
-    expect(reply).toHaveBeenCalledWith({ type: 'setModel-done', modelId: 'openai/gpt/new' })
+    expect(reply).toHaveBeenCalledWith({ type: 'setModel-done', modelId: 'openai/gpt/new', thinkingLevel: 'medium', availableThinkingLevels: undefined })
   })
 })
 

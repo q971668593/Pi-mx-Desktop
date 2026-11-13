@@ -1,6 +1,6 @@
 /** 右侧栏 Tab：核心栏目 + 适配器声明的 sidePanel（合并后用于 Tab / 设置开关） */
 
-export const CORE_RIGHT_PANEL_IDS = ['review', 'run', 'context', 'tree', 'files', 'browser'] as const
+export const CORE_RIGHT_PANEL_IDS = ['review', 'run', 'context', 'tree', 'files', 'terminal', 'git', 'browser'] as const
 
 export type CoreRightPanelId = (typeof CORE_RIGHT_PANEL_IDS)[number]
 
@@ -28,6 +28,8 @@ export const CORE_RIGHT_PANEL_CATALOG: RightPanelCatalogItem[] = [
   { id: 'context', labelKey: 'panel.context', fallbackLabel: 'Context', description: 'Session context preview', descriptionKey: 'panel.contextDesc', icon: 'FileSearch', source: 'core' },
   { id: 'tree', labelKey: 'panel.tree', fallbackLabel: 'Tree', description: 'Session tree / rewind (like /tree)', descriptionKey: 'panel.treeDesc', icon: 'ListTree', source: 'core' },
   { id: 'files', labelKey: 'panel.files', fallbackLabel: 'Files', description: 'Workspace file preview & explorer', descriptionKey: 'panel.filesDesc', icon: 'FolderTree', source: 'core' },
+  { id: 'terminal', labelKey: 'panel.terminal', fallbackLabel: 'Terminal', description: 'Project terminals and one-click tasks', descriptionKey: 'panel.terminalDesc', icon: 'Terminal', source: 'core' },
+  { id: 'git', labelKey: 'panel.git', fallbackLabel: 'Git', description: 'Branches, history, commits and sync', descriptionKey: 'panel.gitDesc', icon: 'GitCommitHorizontal', source: 'core' },
   { id: 'browser', labelKey: 'panel.browser', fallbackLabel: 'Browser', description: 'Built-in browser (experimental)', descriptionKey: 'panel.browserDesc', icon: 'Globe', source: 'core' },
 ]
 
@@ -44,6 +46,8 @@ export function defaultCoreRightPanelPrefs(): RightPanelPrefs {
     context: false,
     tree: false,
     files: true,
+    terminal: true,
+    git: true,
     // Experimental: off until the user enables it in Settings → Right panels.
     browser: false,
   }
@@ -168,6 +172,8 @@ export function normalizeRightPanelPrefs(raw: unknown, catalog: RightPanelCatalo
     out.files = true
     out.run = true
   }
+  if (ids.includes('terminal') && typeof o.terminal !== 'boolean') out.terminal = true
+  if (ids.includes('git') && typeof o.git !== 'boolean') out.git = true
   return out
 }
 

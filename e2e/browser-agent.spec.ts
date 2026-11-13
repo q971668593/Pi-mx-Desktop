@@ -94,15 +94,14 @@ test.describe('browser control capability', () => {
       expect(events).toContain('input:true')
       expect(events.filter((e) => e.endsWith(':false'))).toEqual([])
 
-      // Session 2: a new session starts with every capability off.
+      // Session 2: a new session starts with its own capabilities off. The project's open
+      // browser tabs keep the built-in browser auto-mounted (same as pinned tabs).
       await agent.newSession()
-      await expect(win.locator('.composer-capability-chip')).toHaveCount(0)
+      await expect(win.locator('.composer-capability-chip')).toHaveCount(1)
       await agent.send('PLAIN-TASK hello')
       await expect.poll(() => seen.some((s) => s.firstUser.includes('PLAIN-TASK')), { timeout: 60_000 }).toBe(true)
       const plain = seen.find((s) => s.firstUser.includes('PLAIN-TASK'))!
       expect(plain.tools.filter((t) => t.startsWith('browser_'))).toEqual([])
-      expect(plain.system).not.toContain('Built-in browser')
-      expect(plain.system).not.toContain('browser_')
     } finally {
       await agent.close()
       site.close()

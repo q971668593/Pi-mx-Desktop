@@ -55,10 +55,9 @@ import { useDoubleEscapeTree } from '@renderer/hooks/use-double-escape-tree'
 import { useReviewGitData } from '@renderer/features/review/use-review-git-data'
 import { applyUiZoom, readUiZoom } from '@renderer/lib/ui-zoom'
 import { matchShortcut, readShortcutBindings } from '@renderer/lib/shortcut-bindings'
-import { TerminalDrawer, useTerminalShortcut } from '@renderer/features/terminal/terminal-drawer'
+import { useTerminalShortcut } from '@renderer/features/terminal/terminal-drawer'
 import { useBrowserHelpAttention } from '@renderer/features/browser/use-help-attention'
 import { HelpBar } from '@renderer/features/browser/help-bar'
-import { useTerminalStore } from '@renderer/features/terminal/terminal-store'
 import type { ForkSource } from '@renderer/lib/session-fork'
 
 type View = 'main' | 'settings'
@@ -119,8 +118,6 @@ export default function App() {
   const pendingExtensionConfig = useUIStore((s) => s.pendingExtensionConfig)
   const currentWorkspace = useUIStore((s) => s.currentWorkspace)
   const projectDisplayNames = useUIStore((s) => s.projectDisplayNames)
-  const terminalOpen = useTerminalStore((s) => s.open)
-  const terminalHeight = useTerminalStore((s) => s.height)
   useTerminalShortcut()
   const ephemeralSandboxDraft = useUIStore((s) => s.ephemeralSandboxDraft)
   const [workspaceTitle, setWorkspaceTitle] = useState<string | undefined>()
@@ -464,9 +461,9 @@ export default function App() {
               ) : null}
             </RightPanel>
           }
-          bottom={<TerminalDrawer />}
-          bottomOpen={terminalOpen}
-          bottomHeight={terminalHeight}
+          bottom={null}
+          bottomOpen={false}
+          bottomHeight={0}
         />
         <StatusBar />
       </div>

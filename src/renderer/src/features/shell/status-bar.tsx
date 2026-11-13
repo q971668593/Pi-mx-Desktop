@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, Cpu, RefreshCw, ArrowUp, Terminal } from '@renderer/components/icons'
-import { openTerminalTab } from '@renderer/features/terminal/terminal-drawer'
-import { terminalActions, useTerminalStore } from '@renderer/features/terminal/terminal-store'
+import { openTerminalTab } from '@renderer/features/terminal/terminal-panel'
+import { useTerminalStore } from '@renderer/features/terminal/terminal-store'
+import { useRightPanelHidden } from '@renderer/lib/use-right-panel-hidden'
 import type { SessionItem } from '@renderer/stores/ui-store-types'
 import { ipcClient, onAppUpdateAvailable } from '@renderer/lib/ipc-client'
 import { useVisibleInterval } from '@renderer/hooks/use-visible-interval'
@@ -14,7 +15,6 @@ import { loadWorkspaceSessionList } from '@renderer/lib/refresh-workspace-sessio
 import { workspacePathKey, workspacePathsEqual } from '@shared/workspace-path'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { SessionAttentionDot } from '@renderer/features/workspace/session-attention-dot'
-import { BranchStatusTrigger } from '@renderer/features/git/branch-status'
 import { ShellPopover } from './shell-popover'
 
 type WorkerRow = { sessionFile: string; running: boolean; cwd: string }
@@ -41,12 +41,13 @@ type Popover = 'workers' | 'board' | null
 const GROUPS: SessionAttention[] = ['needs-you', 'working', 'done']
 
 export function StatusBar() {
-  const terminalOpen = useTerminalStore((s) => s.open)
-  const terminalTabs = useTerminalStore((s) => s.tabs.length)
+  const currentWorkspace = useUIStore((s) => s.currentWorkspace)
+  const terminalTabs = useTerminalStore((s) => s.tabs.filter((tab) => currentWorkspace ? workspacePathsEqual(tab.workspace, currentWorkspace) : !tab.workspace).length)
+  const activePanel = useUIStore((s) => s.activePanel)
+  const rightHidden = useRightPanelHidden()
   const { t, i18n } = useTranslation()
   const attention = useUIStore((s) => s.sessionAttention)
   const sessions = useUIStore((s) => s.sessions)
-  const currentWorkspace = useUIStore((s) => s.currentWorkspace)
   const counts = countAttention(attention)
   const [status, setStatus] = useState<DesktopStatus | null>(null)
   const [sessionsByWorkspace, setSessionsByWorkspace] = useState<Record<string, SessionItem[]>>({})
@@ -170,7 +171,6 @@ export function StatusBar() {
 
   return (
     <footer className="workbench-statusbar electron-no-drag" aria-label={t('common:statusBar.title')}>
-      <BranchStatusTrigger />
       <button ref={boardAnchor} type="button" className="workbench-status-trigger" aria-haspopup="dialog" aria-expanded={popover === 'board'} aria-label={t('common:board.title')} onClick={() => setPopover((v) => v === 'board' ? null : 'board')}>
         {live === 0 ? (runFailed
           ? <span className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-destructive" />{t('common:statusBar.failed')}</span>
@@ -184,7 +184,16 @@ export function StatusBar() {
         <ChevronDown className="h-3 w-3 shrink-0 rotate-180 opacity-60" />
       </button>
       <div className="ml-auto flex shrink-0 items-center">
-        <button type="button" className="workbench-status-trigger" aria-pressed={terminalOpen} title={t('common:terminal.toggle')} aria-label={t('common:terminal.toggle')} onClick={() => (!terminalOpen && terminalTabs === 0 ? void openTerminalTab() : terminalActions.toggle())}>
+        <button type="button" className="workbench-status-trigger" aria-pressed={!rightHidden && activePanel === 'terminal'} title={t('common:terminal.toggle')} aria-label={t('common:terminal.toggle')} onClick={() => {
+          const state = useUIStore.getState()
+          const visible = !rightHidden && state.activePanel === 'terminal'
+          if (visible) state.toggleRightPanel()
+          else if (terminalTabs === 0) void openTerminalTab()
+          else {
+            state.setActivePanel('terminal')
+            state.revealRightPanel()
+          }
+        }}>
           <Terminal className="h-3 w-3" />{terminalTabs > 0 ? <span className="tabular-nums">{terminalTabs}</span> : null}
         </button>
         <button ref={workersAnchor} type="button" className="workbench-status-trigger tabular-nums" data-level={level} aria-haspopup="dialog" aria-expanded={popover === 'workers'} aria-label={t('common:statusBar.resources')} title={t('common:statusBar.memoryHint')} onClick={() => { setPopover((v) => v === 'workers' ? null : 'workers'); void refresh() }}>

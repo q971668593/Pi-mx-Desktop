@@ -17,6 +17,11 @@ import {
   revealRightPanelPatch,
 } from '@renderer/lib/right-panel-visibility'
 import type { UIState } from '@renderer/stores/ui-store-types'
+import { workspacePathKey } from '@shared/workspace-path'
+
+export function projectPanelKey(path: string | null): string {
+  return `pi-desktop:project-panel:${workspacePathKey(path)}`
+}
 
 /** Wide enough for the browser toolbar to keep forward / expand on one row. */
 export const DEFAULT_RIGHT_PANEL_WIDTH = 460
@@ -64,16 +69,18 @@ export function createShellSlice(set: StoreSet, get: StoreGet): ShellSlice {
     activePanel: 'review',
     rightPanelCatalog: [...CORE_RIGHT_PANEL_CATALOG],
     setActivePanel: (panel) =>
-      set((state) => ({
-        activePanel: state.rightPanelPrefs[panel]
+      set((state) => {
+        const activePanel = state.rightPanelPrefs[panel]
           ? panel
           : coerceActivePanel(
               panel,
               state.rightPanelPrefs,
               state.rightPanelCatalog,
               state.rightPanelOrder,
-            ),
-      })),
+            )
+        if (state.currentWorkspace) try { localStorage.setItem(projectPanelKey(state.currentWorkspace), activePanel) } catch { void 0 }
+        return { activePanel }
+      }),
     rightPanelPrefs: defaultCoreRightPanelPrefs(),
     rightPanelOrder: [],
     applyRightPanelRuntime: (catalog, prefs, order) =>

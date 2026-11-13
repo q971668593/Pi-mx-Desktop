@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { BrowserTabInfo } from '@shared/browser-types'
+import { projectBrowserSessionKey, type BrowserTabInfo } from '@shared/browser-types'
 import {
   adoptBrowserSessionInState,
   applyBrowserEvent,
@@ -106,5 +106,29 @@ describe('session tab isolation and pinned tabs', () => {
     expect(s.tabs['draft-tab'].openedBy).toEqual({ sessionKey: '/created.jsonl' })
     expect(s.activeSessionKey).toBe('/created.jsonl')
     expect(visibleTabOrder(s, '/created.jsonl')).toEqual(['draft-tab'])
+  })
+})
+
+describe('project browser binding', () => {
+  it('maps one workspace to one tab-ownership key regardless of separators or drive casing', () => {
+    expect(projectBrowserSessionKey('F:\\maxv\\PI\\pi-app\\')).toBe(projectBrowserSessionKey('f:/maxv/PI/pi-app'))
+    expect(projectBrowserSessionKey('F:\\maxv\\PI\\pi-app')).not.toBe(projectBrowserSessionKey('F:\\maxv\\PI\\other'))
+    expect(projectBrowserSessionKey(null)).toBe('')
+  })
+
+  it('keeps tabs and the remembered active tab per project, shared across its conversations', () => {
+    const projA = projectBrowserSessionKey('F:\\proj\\a')
+    const projB = projectBrowserSessionKey('F:\\proj\\b')
+    let s = switchBrowserSession(empty, projA)
+    s = applyBrowserEvent(s, { type: 'tab-updated', tab: tab('ta', { openedBy: { sessionKey: projA }, url: 'https://a.test/' }) })
+    expect(s.activeTabId).toBe('ta')
+
+    // Switching projects swaps the panel and remembers each project's active tab.
+    s = switchBrowserSession(s, projB)
+    expect(s.activeTabId).toBeNull()
+    s = applyBrowserEvent(s, { type: 'tab-updated', tab: tab('tb', { openedBy: { sessionKey: projB }, url: 'https://b.test/' }) })
+    expect(s.activeTabId).toBe('tb')
+    s = switchBrowserSession(s, projA)
+    expect(s.activeTabId).toBe('ta')
   })
 })

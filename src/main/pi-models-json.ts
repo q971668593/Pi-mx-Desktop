@@ -6,6 +6,7 @@ import { resolveActiveSdk } from './sdk-loader'
 import { normalizeModelsConfig } from './models-config-normalize'
 import { validateModelsConfigWithSdk } from './active-sdk-models'
 import { resolveActiveAgentDir } from './agent-dir'
+import { modelThinkingLevels } from '@shared/model-thinking-levels'
 
 export type PiModelDefinition = {
   id: string
@@ -94,6 +95,7 @@ export type ModelsJsonCatalogEntry = {
   contextWindow: number
   maxOutput: number
   available: boolean
+  availableThinkingLevels?: string[]
 }
 
 /** 从 ~/.pi/agent/models.json 展开全部 provider/model（与项目无关） */
@@ -109,6 +111,7 @@ export function modelsCatalogFromConfig(config: PiModelsConfig): ModelsJsonCatal
         contextWindow: model.contextWindow ?? 0,
         maxOutput: model.maxTokens ?? 0,
         available: true,
+        availableThinkingLevels: modelThinkingLevels(model),
       })
     }
   }

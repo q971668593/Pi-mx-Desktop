@@ -22,6 +22,7 @@ export function FilePreviewTabBar({
   onActivate,
   onClose,
   onReorder,
+  onTogglePin,
   trailing,
 }: {
   workspaceRoot: string
@@ -30,6 +31,7 @@ export function FilePreviewTabBar({
   onActivate: (id: string) => void
   onClose: (id: string) => void
   onReorder: (fromId: string, toId: string) => void
+  onTogglePin: (id: string) => void
   trailing: React.ReactNode
 }) {
   const { t } = useTranslation('files')
@@ -117,8 +119,8 @@ export function FilePreviewTabBar({
                 )}
               >
                 <Icon className={cn('h-3.5 w-3.5 shrink-0 stroke-[1.75]', iconClass)} />
-                <span className="min-w-0 flex-1 truncate text-[11px] font-medium">{tab.name}</span>
-                {tabs.length > 1 ? (
+                <span className="min-w-0 flex-1 truncate text-[11px] font-medium">{tab.pinned ? '📌 ' : ''}{tab.name}</span>
+                {
                   <button
                     type="button"
                     className="chrome-icon-btn -mr-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded opacity-0 group-hover:opacity-100"
@@ -131,7 +133,7 @@ export function FilePreviewTabBar({
                   >
                     <X className="h-3 w-3" />
                   </button>
-                ) : null}
+                }
               </div>
             )
           })}
@@ -149,6 +151,9 @@ export function FilePreviewTabBar({
               onPointerDown={(e) => e.stopPropagation()}
               onContextMenu={(e) => e.preventDefault()}
             >
+              <button type="button" className={contextMenuItemClass} onClick={() => { onTogglePin(ctx.tab.id); setCtx(null) }}>
+                {t(ctx.tab.pinned ? 'tabs.unpin' : 'tabs.pin')}
+              </button>
               <button
                 type="button"
                 className={contextMenuItemClass}

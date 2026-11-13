@@ -4,6 +4,11 @@ import { FilePreviewRouter } from './file-preview-router'
 import { WORKSPACE_TEXT_MAX_BYTES } from '@shared/workspace-preview'
 
 vi.mock('@renderer/lib/ipc-client', () => ({ ipcClient: { invoke: vi.fn() } }))
+// i18n resources load async in unit tests; pin the translation to the key for determinism.
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+  initReactI18next: { type: '3rdParty', init: () => {} },
+}))
 vi.mock('@renderer/features/timeline/markdown-view', () => ({ default: ({ children }: { children: string }) => <div>{children}</div> }))
 vi.mock('./file-source-preview', () => ({ FileSourcePreview: ({ code, sourceLocation }: { code: string; sourceLocation?: { line: number } }) => <pre data-line={sourceLocation?.line}>{code}</pre> }))
 afterEach(cleanup)
@@ -26,6 +31,8 @@ describe('file preview', () => {
   it('allows HTML animation scripts without same-origin or top-navigation privileges', async () => {
     const readText = vi.fn().mockResolvedValue({ ok: true, content: '<script>requestAnimationFrame(() => {})</script>', size: 60 })
     render(<FilePreviewRouter workspaceRoot="/ws" relativePath="动画.html" readText={readText} />)
+    // Non-markdown files open in edit mode; switch back to the rendered preview.
+    fireEvent.click(await screen.findByRole('button', { name: 'preview.ready' }))
     const frame = await screen.findByTitle('html-preview')
     expect(frame.getAttribute('sandbox')).toBe('allow-scripts')
     expect(frame.getAttribute('srcdoc')).toContain('Content-Security-Policy')

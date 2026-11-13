@@ -577,6 +577,17 @@
     "loading": "Loading…",
     "empty": "No desktop adapters registered. Plugins still appear on the Extensions page; to integrate a new plugin, declare an adapter.json in the compat layer."
   },
+  "pluginModel": {
+    "title": "Plugin model",
+    "description": "Git commit messages, terminal task detection and other plugin features use this model instead of the main chat model.",
+    "label": "Model for plugins",
+    "hint": "Only the provider and model name are saved. Credentials stay in the model settings.",
+    "none": "Not selected",
+    "thinking": "Plugin thinking level",
+    "thinkingHint": "Available levels depend on the selected model.",
+    "thinkingAuto": "Default",
+    "thinkingUnavailable": "not currently available"
+  },
   "models": {
     "title": "Models",
     "description": "Default model and thinking level, and the providers in {{path}}. Shared with terminal pi.",

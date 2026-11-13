@@ -26,8 +26,9 @@ export function ThinkingPicker() {
   const { t } = useTranslation()
   const open = useUIStore((s) => s.thinkingPickerOpen)
   const setOpen = useUIStore((s) => s.setThinkingPickerOpen)
-  const current = normalizeThinkingLevel(useUIStore((s) => s.runState.thinkingLevel)) ?? 'medium'
   const available = useUIStore((s) => s.runState.availableThinkingLevels)
+  const level = normalizeThinkingLevel(useUIStore((s) => s.runState.thinkingLevel)) ?? 'off'
+  const current = available?.length && !available.includes(level) ? available[0] : level
   const model = useUIStore((s) => s.runState.model) || ''
   const [bound, setBound] = useState(() => boundThinkingLevelFor(model))
   const [bindBusy, setBindBusy] = useState(false)
@@ -36,6 +37,11 @@ export function ThinkingPicker() {
   // Level shown while dragging; committed on release so one drag is one switch.
   const [preview, setPreview] = useState<string | null>(null)
   const dragging = useRef(false)
+
+  useEffect(() => {
+    dragging.current = false
+    setPreview(null)
+  }, [model, open])
 
   useEffect(() => {
     if (!open) return
@@ -54,10 +60,11 @@ export function ThinkingPicker() {
   if (!open) return null
 
   const supported = (level: string) => !available || available.length === 0 || available.includes(level)
-  const usable = THINKING_LEVELS.map((level) => supported(level))
+  const levels = THINKING_LEVELS.filter(supported)
+  const usable = levels.map(() => true)
   const shown = preview ?? current
-  const shownIndex = Math.max(0, THINKING_LEVELS.indexOf(shown as (typeof THINKING_LEVELS)[number]))
-  const pct = (i: number) => `${(i / (THINKING_LEVELS.length - 1)) * 100}%`
+  const shownIndex = Math.max(0, levels.indexOf(shown as (typeof THINKING_LEVELS)[number]))
+  const pct = (i: number) => `${levels.length <= 1 ? 0 : (i / (levels.length - 1)) * 100}%`
 
   const commit = (level: string) => {
     setPreview(null)
@@ -67,8 +74,8 @@ export function ThinkingPicker() {
   const levelAt = (clientX: number): string | null => {
     const rect = trackRef.current?.getBoundingClientRect()
     if (!rect || rect.width === 0) return null
-    const i = nearestUsableStop((clientX - rect.left) / rect.width, THINKING_LEVELS.length, usable)
-    return i < 0 ? null : THINKING_LEVELS[i]
+    const i = nearestUsableStop((clientX - rect.left) / rect.width, levels.length, usable)
+    return i < 0 ? null : levels[i]
   }
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -90,7 +97,7 @@ export function ThinkingPicker() {
   }
 
   const onSliderKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    const i = THINKING_LEVELS.indexOf(current as (typeof THINKING_LEVELS)[number])
+    const i = levels.indexOf(current as (typeof THINKING_LEVELS)[number])
     let next = -1
     if (e.key === 'ArrowRight' || e.key === 'ArrowUp') next = stepUsableStop(i, 1, usable)
     else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') next = stepUsableStop(i, -1, usable)
@@ -102,7 +109,7 @@ export function ThinkingPicker() {
       return
     } else return
     e.preventDefault()
-    if (next >= 0) commit(THINKING_LEVELS[next])
+    if (next >= 0) commit(levels[next])
   }
 
   const toggleBinding = async (next: boolean) => {
@@ -147,7 +154,7 @@ export function ThinkingPicker() {
             tabIndex={0}
             aria-label={t('composer:thinkingPicker.title')}
             aria-valuemin={0}
-            aria-valuemax={THINKING_LEVELS.length - 1}
+            aria-valuemax={Math.max(0, levels.length - 1)}
             aria-valuenow={shownIndex}
             aria-valuetext={formatThinkingChip(shown)}
             onKeyDown={onSliderKeyDown}
@@ -163,7 +170,7 @@ export function ThinkingPicker() {
             <div ref={trackRef} className="absolute inset-x-1.5 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-foreground/10">
               <div className="thinking-slider-fill absolute inset-y-0 left-0 rounded-full bg-foreground/65" style={{ width: pct(shownIndex) }} />
               {/* Stops ahead of the value only; the filled part stays one clean line. */}
-              {THINKING_LEVELS.map((level, i) =>
+              {levels.map((level, i) =>
                 i <= shownIndex && usable[i] ? null : (
                   <span
                     key={level}
@@ -182,8 +189,8 @@ export function ThinkingPicker() {
             </div>
           </div>
           <div className="mt-0.5 flex justify-between text-[10px] text-muted-foreground/50">
-            <span>{formatThinkingChip('off')}</span>
-            <span>{formatThinkingChip('max')}</span>
+            <span>{formatThinkingChip(levels[0] ?? 'off')}</span>
+            <span>{levels.length > 1 ? formatThinkingChip(levels[levels.length - 1]) : ''}</span>
           </div>
           <div className="mb-2 mt-1.5 truncate text-[11px] text-muted-foreground/75">
             {supported(shown) ? t(`composer:thinkingPicker.desc.${shown}`) : t('composer:thinkingPicker.unsupported')}

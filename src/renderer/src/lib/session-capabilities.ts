@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { sessionHasBrowserTabs } from '@shared/browser-types'
+import { projectBrowserSessionKey, sessionHasBrowserTabs } from '@shared/browser-types'
 import { normalizeCapabilities, type CapabilityId } from '@shared/capabilities'
 import { browserActions, useBrowserStore } from '@renderer/features/browser/browser-store'
 import { ipcClient } from '@renderer/lib/ipc-client'
@@ -106,13 +106,14 @@ export function setSessionCapability(sessionFile: string | null | undefined, id:
   persist(byKey)
 }
 
-/** Auto-mount built-in browser tools when the conversation already has browser tabs open. */
+/** Auto-mount built-in browser tools when the project already has browser tabs open. */
 export function withAutoBrowserCapability(base: readonly CapabilityId[], sessionKey: string): CapabilityId[] {
   if (base.includes('browser') || base.includes('chrome') || browserExplicitlyOff.has(sessionKey)) {
     return [...base]
   }
   const tabs = Object.values(useBrowserStore.getState().tabs)
-  if (tabs.length > 0 && sessionHasBrowserTabs(tabs, sessionKey)) {
+  const projectKey = projectBrowserSessionKey(useUIStore.getState().currentWorkspace)
+  if (tabs.length > 0 && projectKey && sessionHasBrowserTabs(tabs, projectKey)) {
     return [...base, 'browser']
   }
   return [...base]

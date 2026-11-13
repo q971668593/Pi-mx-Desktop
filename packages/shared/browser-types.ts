@@ -1,6 +1,7 @@
 /** Built-in browser: wire types and pure helpers shared by Renderer and Main. */
 
 import { normalizeSessionFileKey } from './session-file-key'
+import { workspacePathKey } from './workspace-path'
 
 export type BrowserEngineId = 'electron' | 'stealth' | 'chrome'
 
@@ -24,6 +25,15 @@ export function normalizeBrowserSessionKey(sessionKey: string | null | undefined
   const raw = String(sessionKey ?? '').trim()
   if (!raw || raw === DRAFT_BROWSER_SESSION_KEY) return DRAFT_BROWSER_SESSION_KEY
   return normalizeSessionFileKey(raw) || raw
+}
+
+/**
+ * Browser tabs belong to the project (workspace), not to a single conversation: switching
+ * conversations inside one project keeps the same tabs, switching projects swaps the panel.
+ */
+export function projectBrowserSessionKey(workspace: string | null | undefined): string {
+  const key = workspacePathKey(workspace)
+  return key ? `project:${key}` : ''
 }
 
 /** Whether `tab` belongs to `sessionKey` or is shared across conversations (pinned / legacy user tab). */

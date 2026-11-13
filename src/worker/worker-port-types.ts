@@ -38,4 +38,5 @@ export type WorkerModelRow = {
   contextWindow: number
   maxOutput: number
   available: boolean
+  availableThinkingLevels?: string[]
 }

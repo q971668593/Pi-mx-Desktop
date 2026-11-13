@@ -1,20 +1,23 @@
 import { create } from 'zustand'
+import { workspacePathKey } from '@shared/workspace-path'
 
 export type ShellProfile = { id: string; name: string; path: string; args: string[]; kind: string; piDefault?: boolean }
 /** One pty, shown in a pane. `exited` keeps the pane (with its output) until the user closes it. */
-export type TerminalPaneState = { ptyId: string; profile: ShellProfile; exited?: number }
-/** `sizes`: each pane's share of the tab width (sums to 1). */
-export type TerminalTab = { id: string; panes: TerminalPaneState[]; activePane: number; sizes: number[] }
+export type TerminalTask = { label: string; command: string; args: string[]; cwd: string }
+export type TerminalPaneState = { ptyId: string; profile: ShellProfile; exited?: number; task?: TerminalTask; rawCommand?: string }
+/** `sizes`: each pane's share of the tab height (sums to 1). */
+export type TerminalTab = { id: string; panes: TerminalPaneState[]; activePane: number; sizes: number[]; cwd?: string; workspace?: string; height?: number | null }
 
 export const MAX_PANES = 4
-/** Narrowest a pane can be dragged, as a share of the tab width. */
+/** Smallest a pane can be dragged, as a share of the tab height. */
 export const MIN_PANE_SHARE = 0.12
 
 const equal = (n: number) => Array.from({ length: n }, () => 1 / n)
 
 /** Tab label: the focused pane's shell, `+N` for the others. */
 export function tabTitle(tab: TerminalTab): string {
-  const name = tab.panes[tab.activePane]?.profile.name ?? tab.panes[0]?.profile.name ?? ''
+  const pane = tab.panes[tab.activePane] ?? tab.panes[0]
+  const name = pane?.task?.label || pane?.profile.name || ''
   return tab.panes.length > 1 ? `${name} +${tab.panes.length - 1}` : name
 }
 
@@ -35,10 +38,11 @@ type State = {
   height: number
   tabs: TerminalTab[]
   activeTab: string | null
+  activeByWorkspace: Record<string, string>
   profiles: ShellProfile[] | null
 }
 
-export const useTerminalStore = create<State>(() => ({ open: false, height: readHeight(), tabs: [], activeTab: null, profiles: null }))
+export const useTerminalStore = create<State>(() => ({ open: false, height: readHeight(), tabs: [], activeTab: null, activeByWorkspace: {}, profiles: null }))
 
 let tabSeq = 0
 const set = useTerminalStore.setState
@@ -63,12 +67,12 @@ export const terminalActions = {
   setProfiles(profiles: ShellProfile[]) {
     set({ profiles })
   },
-  addTab(pane: TerminalPaneState): string {
+  addTab(pane: TerminalPaneState, cwd?: string, workspace = cwd): string {
     const id = `tab${++tabSeq}`
-    set((s) => ({ tabs: [...s.tabs, { id, panes: [pane], activePane: 0, sizes: [1] }], activeTab: id, open: true }))
+    set((s) => ({ tabs: [...s.tabs, { id, panes: [pane], activePane: 0, sizes: [1], cwd, workspace, height: null }], activeTab: id, activeByWorkspace: { ...s.activeByWorkspace, [workspacePathKey(workspace)]: id }, open: true }))
     return id
   },
-  /** A new pane right of the focused one (up to MAX_PANES); widths reset to equal. Returns false when full. */
+  /** A new pane below the focused one (up to MAX_PANES); heights reset to equal. Returns false when full. */
   splitTab(tabId: string, pane: TerminalPaneState): boolean {
     const tab = get().tabs.find((t) => t.id === tabId)
     if (!tab || tab.panes.length >= MAX_PANES) return false
@@ -77,7 +81,10 @@ export const terminalActions = {
     set((s) => ({ tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, panes, activePane: at, sizes: equal(panes.length) } : t)) }))
     return true
   },
-  /** Drag the border right of pane `index` by `delta` (share of the tab width). */
+  setTabHeight(tabId: string, height: number | null) {
+    set((s) => ({ tabs: s.tabs.map((tab) => (tab.id === tabId ? { ...tab, height } : tab)) }))
+  },
+  /** Drag the border below pane `index` by `delta` (share of the tab height). */
   resizeSplit(tabId: string, index: number, delta: number) {
     set((s) => ({
       tabs: s.tabs.map((t) => {
@@ -96,7 +103,8 @@ export const terminalActions = {
     set((s) => ({ tabs: s.tabs.map((t) => ({ ...t, panes: t.panes.map((p) => (p.ptyId === oldPtyId ? pane : p)) })) }))
   },
   focusTab(tabId: string) {
-    set({ activeTab: tabId })
+    const tab = get().tabs.find((item) => item.id === tabId)
+    set((state) => ({ activeTab: tabId, ...(tab ? { activeByWorkspace: { ...state.activeByWorkspace, [workspacePathKey(tab.workspace)]: tabId } } : {}) }))
   },
   focusPane(tabId: string, index: number) {
     set((s) => ({ tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, activePane: index } : t)) }))
@@ -123,7 +131,8 @@ export const terminalActions = {
         })
         .filter((t) => t.panes.length > 0)
       const activeTab = tabs.some((t) => t.id === s.activeTab) ? s.activeTab : (tabs[tabs.length - 1]?.id ?? null)
-      return { tabs, activeTab, open: tabs.length ? s.open : false }
+      const activeByWorkspace = Object.fromEntries(Object.entries(s.activeByWorkspace).filter(([, id]) => tabs.some((tab) => tab.id === id)))
+      return { tabs, activeTab, activeByWorkspace, open: tabs.length ? s.open : false }
     })
   },
   closeTab(tabId: string): string[] {

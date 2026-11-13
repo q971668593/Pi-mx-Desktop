@@ -1,8 +1,9 @@
 import { open, stat } from 'node:fs/promises'
 import { extname } from 'path'
 import { shell } from 'electron'
-import { workspaceFsCreate, workspaceFsListDir, workspaceFsReadText, workspaceFsRename, resolvePathUnderWorkspace } from '../../workspace-fs'
-import { workspaceFsSearch } from '../../workspace-file-search'
+import { workspaceFsCreate, workspaceFsListDir, workspaceFsReadText, workspaceFsRename, workspaceFsWriteText } from '../../workspace-fs'
+import { resolveActionableImage } from '../../image-file-access'
+import { invalidateWorkspaceFileSearchIndex, primeWorkspaceFileSearchIndex, workspaceFsSearch } from '../../workspace-file-search'
 import { registerHandler, registerHandlerWithSchema } from '../registry'
 import { wslPathToWindows } from '@shared/wsl-path'
 import { getAgentRuntimeConfig } from '../../wsl/runtime-config'
@@ -13,6 +14,7 @@ import {
   workspaceFsListDirSchema,
   workspaceFsSearchSchema,
   workspaceFsReadTextSchema,
+  workspaceFsWriteTextSchema,
   workspaceFsRenameSchema,
   workspaceFsCreateSchema,
 } from '../schemas'
@@ -29,12 +31,8 @@ async function resolveImagePreviewPath(req: { workspaceRoot: string; path: strin
   | { ok: true; abs: string }
   | { ok: false; error: string }
 > {
-  const pathInput = String(req.path || '')
-  const root = String(req.workspaceRoot || '').trim()
-  if (!root) return { ok: false, error: 'missing_root' }
-  const resolved = await resolvePathUnderWorkspace(root, pathInput)
-  if (!resolved.ok) return { ok: false, error: resolved.error }
-  return { ok: true, abs: resolved.abs }
+  const resolved = await resolveActionableImage(String(req.path || ''), req.workspaceRoot)
+  return 'abs' in resolved ? { ok: true, abs: resolved.abs } : { ok: false, error: resolved.error }
 }
 
 /** Read at most `maxBytes`; null when the file holds more (e.g. it grew after the size check). */
@@ -76,6 +74,7 @@ export function registerWorkspaceFsHandlers(): void {
   })
 
   registerHandlerWithSchema('ipc:workspace.fs.listDir', workspaceFsListDirSchema, async (req) => {
+    if (!req.path || req.path === '.') void primeWorkspaceFileSearchIndex(req.workspaceRoot)
     return workspaceFsListDir({
       workspaceRoot: req.workspaceRoot,
       path: req.path != null ? req.path : '.',
@@ -95,20 +94,28 @@ export function registerWorkspaceFsHandlers(): void {
     })
   })
 
+  registerHandlerWithSchema('ipc:workspace.fs.writeText', workspaceFsWriteTextSchema, async (req) => {
+    return workspaceFsWriteText(req)
+  })
+
   registerHandlerWithSchema('ipc:workspace.fs.rename', workspaceFsRenameSchema, async (req) => {
-    return workspaceFsRename({
+    const result = await workspaceFsRename({
       workspaceRoot: req.workspaceRoot,
       relativePath: req.relativePath,
       newName: req.newName,
     })
+    if (result.ok) invalidateWorkspaceFileSearchIndex(req.workspaceRoot)
+    return result
   })
 
   registerHandlerWithSchema('ipc:workspace.fs.create', workspaceFsCreateSchema, async (req) => {
-    return workspaceFsCreate({
+    const result = await workspaceFsCreate({
       workspaceRoot: req.workspaceRoot,
       relativePath: req.relativePath,
       isDirectory: req.isDirectory === true,
     })
+    if (result.ok) invalidateWorkspaceFileSearchIndex(req.workspaceRoot)
+    return result
   })
 
   registerHandlerWithSchema('ipc:shell.readImagePreview', shellReadImagePreviewSchema, async (req) => {

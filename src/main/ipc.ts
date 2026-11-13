@@ -8,6 +8,7 @@ import { registerWindowControlHandlers } from './ipc/handlers/window-controls'
 import { registerTerminalHandlers } from './ipc/handlers/terminal'
 import { registerUsageHandlers } from './ipc/handlers/usage'
 import { registerGitBranchHandlers } from './ipc/handlers/git-branches'
+import { registerGitBoardHandlers } from './ipc/handlers/git-board'
 import { registerBackgroundHandlers } from './ipc/handlers/background'
 import { registerModelRuntimeHandlers } from './ipc/handlers/model-runtime'
 import { registerExtensionHandlers } from './ipc/handlers/extensions'
@@ -25,6 +26,7 @@ import { registerMcpHandlers } from './ipc/handlers/mcp'
 import { registerModelRouterHandlers } from './ipc/handlers/model-routers'
 import { registerRemoteHandlers } from './ipc/handlers/remote'
 import { registerLinkHandlers } from './ipc/handlers/links'
+import { registerWorkspaceTaskHandlers } from './ipc/handlers/workspace-tasks'
 
 export { registerHandler, sendEvent } from './ipc/registry'
 
@@ -32,6 +34,7 @@ export function registerAllHandlers(): void {
   registerDialogHandlers()
   registerWorkspaceFsHandlers()
   registerWorkspaceHandlers()
+  registerWorkspaceTaskHandlers()
   registerSessionHandlers()
   registerPromptHandlers()
   registerSettingsHandlers()
@@ -39,6 +42,7 @@ export function registerAllHandlers(): void {
   registerTerminalHandlers()
   registerUsageHandlers()
   registerGitBranchHandlers()
+  registerGitBoardHandlers()
   registerBackgroundHandlers()
   registerExtensionUiHandlers()
   registerModelRuntimeHandlers()

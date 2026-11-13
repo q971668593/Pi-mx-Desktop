@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import type { RightPanelCatalogItem } from '@shared/right-panels'
 import { GenericAdapterSidePanel } from './generic-adapter-side-panel'
 import { WorkspaceTasksSidePanel } from './workspace-tasks-side-panel'
+import { useUIStore } from '@renderer/stores/ui-store'
 
 const ReviewPanel = lazy(() => import('@renderer/features/review/review-panel').then((m) => ({ default: m.ReviewPanel })))
 const RunPanel = lazy(() => import('@renderer/features/run/run-panel').then((m) => ({ default: m.RunPanel })))
@@ -12,6 +13,8 @@ const WorkspaceFilesPanel = lazy(() =>
   import('@renderer/features/workspace-files/workspace-files-panel').then((m) => ({ default: m.WorkspaceFilesPanel })),
 )
 const BrowserPanel = lazy(() => import('@renderer/features/browser/browser-panel').then((m) => ({ default: m.BrowserPanel })))
+const TerminalPanel = lazy(() => import('@renderer/features/terminal/terminal-panel').then((m) => ({ default: m.TerminalPanel })))
+const GitBoardPanel = lazy(() => import('@renderer/features/git-board/git-board-panel').then((m) => ({ default: m.GitBoardPanel })))
 
 const ADAPTER_PANEL_COMPONENTS: Record<string, React.ComponentType<import('./side-panel-registry').SidePanelComponentProps>> = {
   'workspace-tasks': WorkspaceTasksSidePanel,
@@ -20,6 +23,7 @@ const ADAPTER_PANEL_COMPONENTS: Record<string, React.ComponentType<import('./sid
 
 export function SidePanelHost({ item }: { item: RightPanelCatalogItem | undefined }) {
   const { t } = useTranslation()
+  const workspace = useUIStore((state) => state.currentWorkspace)
   if (!item) return null
   const wrap = (node: React.ReactNode) => <Suspense fallback={null}>{node}</Suspense>
 
@@ -40,7 +44,9 @@ export function SidePanelHost({ item }: { item: RightPanelCatalogItem | undefine
   if (item.id === 'run') return wrap(<RunPanel />)
   if (item.id === 'context') return wrap(<ContextPanel />)
   if (item.id === 'tree') return wrap(<TreePanel />)
-  if (item.id === 'files') return wrap(<WorkspaceFilesPanel />)
+  if (item.id === 'files') return wrap(<WorkspaceFilesPanel key={workspace || ''} />)
+  if (item.id === 'terminal') return wrap(<TerminalPanel />)
+  if (item.id === 'git') return wrap(<GitBoardPanel />)
   if (item.id === 'browser') return wrap(<BrowserPanel />)
 
   return <div className="p-4 text-[12px] text-muted-foreground">{t('common:panel.unregistered', { id: item.id })}</div>

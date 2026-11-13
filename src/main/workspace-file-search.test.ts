@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   buildWorkspaceFileSearchQuery,
   clearWorkspaceFileSearchCaches,
+  invalidateWorkspaceFileSearchIndex,
   rankWorkspaceFileSearchEntries,
   resolveFdExecutable,
   workspaceFsSearch,
@@ -32,7 +33,7 @@ describe('workspace file search query and ranking', () => {
     })
   })
 
-  it('orders exact filename, prefix, filename substring, then path substring with directory bonus', () => {
+  it('orders matching filenames without matching parent directory names', () => {
     const ranked = rankWorkspaceFileSearchEntries(
       [
         { path: 'docs/cmp-guide.md', name: 'cmp-guide.md', isDirectory: false },
@@ -52,7 +53,6 @@ describe('workspace file search query and ranking', () => {
       'docs/cmp-guide.md',
       'src/cmp-helper.ts',
       'src/mycmp.ts',
-      'cmp-folder/other.ts',
     ])
   })
 })
@@ -60,6 +60,17 @@ describe('workspace file search query and ranking', () => {
 const availableFd = await resolveFdExecutable()
 
 describe('workspace fd search adapter', () => {
+  it.skipIf(!availableFd)('reuses the project index, matches names only, and refreshes after invalidation', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'pi-index-search-'))
+    mkdirSync(join(root, 'reference'))
+    writeFileSync(join(root, 'reference', 'unrelated.txt'), 'text')
+    const first = await workspaceFsSearch({ workspaceRoot: root, query: 'reference', includeIgnored: true })
+    expect(first.entries.map((entry) => entry.path)).toEqual(['reference'])
+    writeFileSync(join(root, 'reference-new.txt'), 'text')
+    invalidateWorkspaceFileSearchIndex(root)
+    const next = await workspaceFsSearch({ workspaceRoot: root, query: 'reference-new', includeIgnored: true })
+    expect(next.entries.map((entry) => entry.path)).toEqual(['reference-new.txt'])
+  })
   it('resolves the configured pi-managed fd executable without downloading', async () => {
     const agentDir = mkdtempSync(join(tmpdir(), 'pi-agent-dir-'))
     const binDir = join(agentDir, 'bin')
@@ -71,6 +82,27 @@ describe('workspace fd search adapter', () => {
     clearWorkspaceFileSearchCaches()
     try {
       expect(await resolveFdExecutable()).toBe(managed)
+    } finally {
+      if (previous == null) delete process.env.PI_CODING_AGENT_DIR
+      else process.env.PI_CODING_AGENT_DIR = previous
+      clearWorkspaceFileSearchCaches()
+    }
+  })
+
+  it('falls back to a recursive project search when fd cannot run', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'pi-file-search-fallback-'))
+    const agentDir = mkdtempSync(join(tmpdir(), 'pi-agent-search-fallback-'))
+    mkdirSync(join(agentDir, 'bin'), { recursive: true })
+    writeFileSync(join(agentDir, 'bin', process.platform === 'win32' ? 'fd.exe' : 'fd'), '')
+    mkdirSync(join(root, '.hidden', 'nested'), { recursive: true })
+    writeFileSync(join(root, '.hidden', 'nested', 'needle.txt'), 'text')
+    const previous = process.env.PI_CODING_AGENT_DIR
+    process.env.PI_CODING_AGENT_DIR = agentDir
+    clearWorkspaceFileSearchCaches()
+    try {
+      const result = await workspaceFsSearch({ workspaceRoot: root, query: 'needle', includeIgnored: true })
+      expect(result.ok).toBe(true)
+      expect(result.entries.map((item) => item.path)).toContain('.hidden/nested/needle.txt')
     } finally {
       if (previous == null) delete process.env.PI_CODING_AGENT_DIR
       else process.env.PI_CODING_AGENT_DIR = previous

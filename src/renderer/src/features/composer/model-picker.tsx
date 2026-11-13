@@ -7,20 +7,20 @@ import { useUIStore } from '@renderer/stores/ui-store'
 import { cn } from '@renderer/lib/utils'
 import { Search, Check, ChevronRight, Loader2 } from '@renderer/components/icons'
 import { toast } from 'sonner'
-import { userActionToast } from '@renderer/lib/startup-toast-guard'
 import { readRecentModels, rememberRecentModel } from '@renderer/lib/recent-models'
 import { ComposerPopover } from './composer-popover'
 import {
   isAvailableModelsPending,
   peekAvailableModels,
-  refreshAvailableModels,
+  ensureAvailableModels,
   subscribeAvailableModels,
 } from '@renderer/lib/available-models-cache'
 import { sessionFilesEqual } from '@renderer/lib/session-file-key'
 import { commitSessionDisplayMeta } from '@renderer/lib/session-display-meta'
-import { boundThinkingLevelFor, loadModelThinkingBindings } from '@renderer/lib/model-thinking-bindings'
+import { loadModelThinkingBindings } from '@renderer/lib/model-thinking-bindings'
+import { draftModelThinking } from './thinking-level-actions'
 
-type ModelRow = { id: string; provider: string; name?: string; available?: boolean }
+type ModelRow = { id: string; provider: string; name?: string; available?: boolean; availableThinkingLevels?: string[] }
 
 // 跨卸载的模型切换请求状态：picker 关闭后 App 条件卸载组件，局部 state 会丢失；
 // 旧请求晚结算时可能覆盖用户随后发起的新选择，或污染已切换会话的 runState。
@@ -66,7 +66,7 @@ export function ModelPicker() {
   const [loading, setLoading] = useState(() => isAvailableModelsPending())
 
   const reload = () => {
-    const request = refreshAvailableModels().catch(() => peekAvailableModels())
+    const request = ensureAvailableModels().catch(() => peekAvailableModels())
     setLoading(isAvailableModelsPending())
     return request
   }
@@ -87,6 +87,7 @@ export function ModelPicker() {
     setExpanded({})
     setRecents(readRecentModels())
     setActiveIndex(0)
+    setPendingModel(pendingModelSwitch && sessionFilesEqual(pendingModelSwitch.sessionFile, sessionFile) ? pendingModelSwitch.requestedModel : null)
     void loadModelThinkingBindings()
     void reload()
     const unsub = onAppEvent((event) => {
@@ -97,7 +98,7 @@ export function ModelPicker() {
       void reload()
     })
     return unsub
-  }, [open])
+  }, [open, sessionFile])
 
   const filtered = useMemo(() => {
     if (!query) return models
@@ -118,18 +119,18 @@ export function ModelPicker() {
     const requestedModel = `${m.provider}/${m.id}`
     if (!sessionFile) {
       // Draft session: preview the model's bound thinking level (applied for real on creation).
-      const bound = boundThinkingLevelFor(requestedModel)
-      useUIStore.getState().setRunState({ model: requestedModel, ...(bound ? { thinkingLevel: bound } : {}) })
+      const current = useUIStore.getState().runState.thinkingLevel
+      useUIStore.getState().setRunState(draftModelThinking(requestedModel, m.availableThinkingLevels, current))
       setRecents(rememberRecentModel(requestedModel))
       setOpen(false)
       return
     }
     const targetFile = sessionFile
-    // 切换期间保持打开并禁用其它行，runtime 确认后才关闭/更新（上游语义）。
     // 请求可能跨 picker 关闭/重开、或用户切换会话后结算：用 token + session 守卫忽略过期结果。
     const token = ++modelSwitchToken
     pendingModelSwitch = { token, sessionFile: targetFile, requestedModel }
     setPendingModel(requestedModel)
+    setOpen(false)
     try {
       const response = await ipcClient.invoke('model.set', {
         sessionId: '',
@@ -140,21 +141,22 @@ export function ModelPicker() {
       if (token !== modelSwitchToken) return
       const actualModel = response.modelId || requestedModel
       // The confirmed model belongs to the session it was set on, even if the view moved on.
-      useUIStore.getState().setSessionRunState(targetFile, { model: actualModel })
-      commitSessionDisplayMeta(targetFile, { model: actualModel })
+      const confirmed = { model: actualModel, thinkingLevel: response.thinkingLevel }
+      useUIStore.getState().setSessionRunState(targetFile, {
+        ...confirmed,
+        availableThinkingLevels: response.availableThinkingLevels ?? (actualModel === requestedModel ? m.availableThinkingLevels : undefined),
+      })
+      commitSessionDisplayMeta(targetFile, confirmed)
+      if (pendingModelSwitch?.token === token) pendingModelSwitch = null
       const now = useUIStore.getState()
       if (!sessionFilesEqual(now.historySessionFile, targetFile)) return
       setRecents(rememberRecentModel(actualModel))
-      if (pendingModelSwitch?.token === token) pendingModelSwitch = null
       setOpen(false)
-      // Boot guard silences toast.success for the first 22s after launch; a
-      // user-initiated model switch must still confirm visibly.
-      userActionToast.success(t('composer:switchedModel', { key: actualModel }))
     } catch (e) {
       if (token !== modelSwitchToken) return
+      if (pendingModelSwitch?.token === token) pendingModelSwitch = null
       const now = useUIStore.getState()
       if (!sessionFilesEqual(now.historySessionFile, targetFile)) return
-      if (pendingModelSwitch?.token === token) pendingModelSwitch = null
       console.error('model.set failed:', e)
       toast.error(e instanceof Error ? e.message : t('composer:switchFailed'))
     } finally {

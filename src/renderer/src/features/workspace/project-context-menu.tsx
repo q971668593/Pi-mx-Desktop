@@ -33,10 +33,12 @@ export function ProjectContextMenuPortal({
   menu,
   onClose,
   onListChange,
+  onHide,
 }: {
   menu: ProjectMenuState
   onClose: () => void
   onListChange: () => void
+  onHide: (paths: string[]) => void
 }) {
   const { t } = useTranslation()
   const ref = useRef<HTMLDivElement>(null)
@@ -214,6 +216,14 @@ export function ProjectContextMenuPortal({
               >
                 <Pencil className="h-3 w-3 shrink-0" strokeWidth={2} />
                 {t('common:sidebar.rename')}
+              </button>
+              <button
+                type="button"
+                className={contextMenuDangerItemClass}
+                onClick={() => { onHide(menu.isRepositoryGroup && menu.groupPaths?.length ? menu.groupPaths : [menu.path]); onClose() }}
+              >
+                <ListX className="h-3 w-3 shrink-0" strokeWidth={2} />
+                {t('common:sidebar.hideProject', { defaultValue: '隐藏项目' })}
               </button>
               <button
                 type="button"

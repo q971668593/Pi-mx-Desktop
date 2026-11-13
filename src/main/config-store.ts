@@ -91,6 +91,8 @@ export interface StoreSchema {
   browserDownloadConnections: number
   /** Composer Tools menu: capabilities switched on per session file (absent = all off). */
   sessionCapabilities: Record<string, import('@shared/capabilities').CapabilityId[]>
+  /** Model used by desktop helpers (Git messages, task detection). Null until chosen in Settings. */
+  pluginModel: { provider: string; modelId: string; thinkingLevel?: import('@shared/model-thinking-levels').ModelThinkingLevel } | null
   /** Mobile remote gateway (off unless the user enables it in Settings → 手机连接). */
   remote?: import('./remote/auth-store').RemoteStoredConfig
   /** 每个 WSL 发行版解析出的用户环境（home / PATH / node …），见 wsl/wsl-env.ts */
@@ -163,6 +165,7 @@ const store = new Store<StoreSchema>({
     browserChromeBridge: { enabled: false, port: 19825, token: '' },
     browserDownloadConnections: 16,
     sessionCapabilities: {},
+    pluginModel: null,
   },
 })
 

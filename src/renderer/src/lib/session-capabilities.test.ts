@@ -8,6 +8,7 @@ import {
   toggleCapabilityIn,
   useSessionCapabilitiesStore,
 } from './session-capabilities'
+import { projectBrowserSessionKey } from '@shared/browser-types'
 import { useBrowserStore } from '@renderer/features/browser/browser-store'
 import { useUIStore } from '@renderer/stores/ui-store'
 
@@ -48,9 +49,10 @@ describe('session capabilities', () => {
     useUIStore.setState({ historySessionFile: null })
   })
 
-  it('auto-attaches built-in browser capability when the session already has browser tabs unless explicitly turned off', () => {
+  it('auto-attaches built-in browser capability when the project already has browser tabs unless explicitly turned off', () => {
     useSessionCapabilitiesStore.setState({ byKey: {} })
-    useUIStore.setState({ historySessionFile: '/with-tab.jsonl' })
+    useUIStore.setState({ currentWorkspace: 'F:\\proj\\demo', historySessionFile: '/with-tab.jsonl' })
+    const projectKey = projectBrowserSessionKey('F:\\proj\\demo')
     useBrowserStore.setState({
       tabs: {
         t1: {
@@ -62,7 +64,7 @@ describe('session capabilities', () => {
           loading: false,
           canGoBack: false,
           canGoForward: false,
-          openedBy: { sessionKey: '/with-tab.jsonl' },
+          openedBy: { sessionKey: projectKey },
         },
       },
       order: ['t1'],
@@ -70,16 +72,20 @@ describe('session capabilities', () => {
     })
     expect(currentSessionCapabilities()).toEqual(['browser'])
 
-    // Unrelated session without tabs stays off
-    useUIStore.setState({ historySessionFile: '/no-tab.jsonl' })
+    // Another conversation of the same project shares the tabs, so it keeps the capability
+    useUIStore.setState({ historySessionFile: '/other-conversation.jsonl' })
+    expect(currentSessionCapabilities()).toEqual(['browser'])
+
+    // Explicit off for the current conversation is respected
+    setSessionCapability('/other-conversation.jsonl', 'browser', false)
     expect(currentSessionCapabilities()).toEqual([])
 
-    // Explicit off in /with-tab.jsonl is respected
-    useUIStore.setState({ historySessionFile: '/with-tab.jsonl' })
-    setSessionCapability('/with-tab.jsonl', 'browser', false)
+    // A different workspace without tabs stays off
+    useUIStore.setState({ currentWorkspace: 'F:\\proj\\empty', historySessionFile: '/fresh.jsonl' })
     expect(currentSessionCapabilities()).toEqual([])
 
     useBrowserStore.setState({ tabs: {}, order: [], activeTabId: null })
+    useUIStore.setState({ currentWorkspace: null })
     useUIStore.setState({ historySessionFile: null })
   })
 })
