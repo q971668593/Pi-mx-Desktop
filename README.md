@@ -223,10 +223,16 @@ Under *Advanced* you can use a local [codex-asr](https://github.com/Wangnov/code
 
 ## Support
 
-Questions and feedback: [LinuxDo](https://linux.do/) or [GitHub Issues](https://github.com/justhil/pi-app/issues). If the app is useful to you, a ⭐ helps other pi users find it, and you can sponsor maintenance with the QR code below.
+Questions and feedback: [GitHub Issues](https://github.com/q971668593/Pi-mx-Desktop/issues).
 
-<img src="doc/assets/sponsor-qr.png" alt="Sponsor QR code" width="200" />
+## Attribution
+
+Pi mx Desktop is a derivative work based on [pi Desktop / pi-app](https://github.com/justhil/pi-app) by [justhil](https://github.com/justhil), used under the MIT License. The original copyright notice is kept in [LICENSE](./LICENSE).
+
+The agent runtime is [pi](https://github.com/earendil-works/pi) (`@earendil-works/pi-coding-agent`, MIT).
+
+Upstream project changes are tracked under the `upstream` remote, so upstream fixes can be merged in with `git fetch upstream && git merge upstream/main`.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) — original work Copyright (c) 2026 justhil; modifications Copyright (c) 2026 q971668593.

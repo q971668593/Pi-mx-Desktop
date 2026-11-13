@@ -66,7 +66,7 @@ type ShellSlice = Pick<
 
 export function createShellSlice(set: StoreSet, get: StoreGet): ShellSlice {
   return {
-    activePanel: 'review',
+    activePanel: 'files',
     rightPanelCatalog: [...CORE_RIGHT_PANEL_CATALOG],
     setActivePanel: (panel) =>
       set((state) => {

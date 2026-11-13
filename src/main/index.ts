@@ -32,7 +32,7 @@ process.on('uncaughtException', (err) => {
     const msg = err instanceof Error ? err.message : String(err)
     const opts = {
       type: 'error' as const,
-      title: 'pi Desktop',
+      title: 'Pi mx',
       message: 'A critical error occurred. Please restart the app.',
       detail: msg.slice(0, 500),
     }

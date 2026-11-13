@@ -64,7 +64,7 @@
     "label": "Trellis",
     "description": "任务与阶段（只读）",
     "icon": "ListTree",
-    "defaultEnabled": true
+    "defaultEnabled": false
   },
   "slash": {
     "/trellis": "open-panel"

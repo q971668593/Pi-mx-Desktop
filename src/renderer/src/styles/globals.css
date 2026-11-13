@@ -25,33 +25,33 @@
     --chat-bg: var(--bg-base);
     --code-bg: transparent;
 
-    /* ── 参考桌面客户端 AOU Purple brand palette (light) ── */
-    --aou-1: #eff0f6;
-    --aou-2: #e5e7f0;
-    --aou-3: #d1d5e5;
-    --aou-4: #b5bcd6;
-    --aou-5: #97a0c5;
-    --aou-6: #7583b2;
-    --aou-7: #596590;
-    --aou-8: #3f4868;
-    --aou-9: #262c41;
-    --aou-10: #0d101c;
-    --brand: #7583b2;
-    --brand-light: #eff0f6;
-    --brand-hover: #b5bcd6;
+    /* ── Pi mx warm editorial + surgical amber palette (light) ── */
+    --aou-1: #faf8f4;
+    --aou-2: #f3efe6;
+    --aou-3: #e4dfd3;
+    --aou-4: #cfc8b8;
+    --aou-5: #a89f8d;
+    --aou-6: #d97706;
+    --aou-7: #b45309;
+    --aou-8: #565360;
+    --aou-9: #2a2833;
+    --aou-10: #14131b;
+    --brand: #d97706;
+    --brand-light: #fef3c7;
+    --brand-hover: #b45309;
 
     /* ── 参考桌面客户端 multi-level background (light) ── */
     --bg-base: #ffffff;
-    --bg-1: #f9fafb;
-    --bg-2: #f2f3f5;
-    --bg-3: #e5e6eb;
-    --bg-hover: #e8eaed;
-    --bg-active: #e3e4e8;
-    --message-user-bg: #F6F6F7;
+    --bg-1: #faf8f4;
+    --bg-2: #f2efe7;
+    --bg-3: #eae5da;
+    --bg-hover: #efece4;
+    --bg-active: #e6e1d5;
+    --message-user-bg: #f6f3ec;
 
     /* ── 参考桌面客户端 text colors (light: avoid pure black) ── */
-    --text-primary: #12141a;
-    --text-secondary: #454d5f;
+    --text-primary: #14131b;
+    --text-secondary: #565360;
     --text-disabled: #c9cdd4;
 
     /* Semantic */
@@ -69,12 +69,12 @@
     --diff-removed: #e11d48;
 
     /* Border */
-    --border-base: #dfe0e6;
-    --border-light: #f2f3f5;
+    --border-base: #e4e0d5;
+    --border-light: #f1ede3;
 
     /* Focus ring (参考桌面客户端 useInputFocusRing) */
-    --focus-border: #e1e0ff;
-    --focus-shadow: 0 2px 20px rgba(225, 224, 255, 0.6);
+    --focus-border: #f59e0b;
+    --focus-shadow: 0 2px 16px rgba(217, 119, 6, 0.14);
 
     /* Main paper surface + Composer shell curves */
     --main-chat-surface-radius: 16px;
@@ -129,24 +129,24 @@
 
     /* ── Tailwind HSL-compatible tokens (light) ── */
     --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
+    --foreground: 248 17% 9%;
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
+    --card-foreground: 248 17% 9%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 240 5.9% 10%;
+    --popover-foreground: 248 17% 9%;
+    --primary: 248 17% 9%;
     --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 96.1%;
-    --muted-foreground: 240 4% 40%;
-    --accent: 240 4.8% 94%;
-    --accent-foreground: 240 5.9% 10%;
+    --secondary: 42 29% 94%;
+    --secondary-foreground: 248 17% 9%;
+    --muted: 42 24% 95%;
+    --muted-foreground: 254 7% 35%;
+    --accent: 42 26% 93%;
+    --accent-foreground: 248 17% 9%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 6% 87.5%;
-    --input: 240 5.9% 90%;
-    --ring: 240 5.9% 10%;
+    --border: 42 20% 87%;
+    --input: 42 18% 89%;
+    --ring: 32 95% 44%;
     --radius: 0.625rem;
     --radius-sm: 0.375rem;
     --radius-md: 0.5rem;
@@ -155,17 +155,17 @@
 
     /* Surface elevation tiers (参考跨端客户端-inspired) */
     --surface-0: 0 0% 100%;
-    --surface-1: 240 20% 98%;
-    --surface-2: 240 4.8% 96%;
-    --surface-3: 240 5.9% 92%;
-    --surface-sidebar: #F3F3F3;
+    --surface-1: 42 33% 97%;
+    --surface-2: 42 24% 94%;
+    --surface-3: 42 20% 90%;
+    --surface-sidebar: #F6F3EC;
     /* Sidebar rows: borderless neutral fills (chat-app convention); selected is one clear step
        darker than hover, so the two never read alike. */
-    --sidebar-row-hover: #ececef;
-    --sidebar-row-press: #e4e4e8;
-    --sidebar-row-selected: #dedfe6;
+    --sidebar-row-hover: #ece8de;
+    --sidebar-row-press: #e3dfd3;
+    --sidebar-row-selected: #e6e0d2;
     /* Selection elsewhere (file tree, lists on white panels): tonal fill. */
-    --list-row-selected: #eceef2;
+    --list-row-selected: #efece4;
 
     /* Secondary text — 与 --muted-foreground 同值，次级灰单一来源 */
     /* Secondary text is a solid step, not a faded one: descriptions must stay readable at 11–12px. */
@@ -199,22 +199,22 @@
     --aou-8: #d7d7d7;
     --aou-9: #e8e8e8;
     --aou-10: #f2f2f2;
-    --brand: #8b93b0;
-    --brand-light: #2b2b2b;
-    --brand-hover: #a0a8c4;
+    --brand: #f59e0b;
+    --brand-light: #2b261d;
+    --brand-hover: #fbbf24;
 
     /* Surfaces — Dark Modern workbench */
-    --bg-base: #1f1f1f;       /* editor.background */
-    --bg-1: #252526;         /* slight lift (list / cards) */
-    --bg-2: #2b2b2b;         /* textCodeBlock / borders neighbor */
-    --bg-3: #313131;         /* input.background / dropdown */
-    --bg-hover: #313338;     /* list hover-ish */
-    --bg-active: #3a3a3d;
-    --message-user-bg: #2b2b2b;
+    --bg-base: #1a1920;       /* editor.background */
+    --bg-1: #212028;         /* slight lift (list / cards) */
+    --bg-2: #282730;         /* textCodeBlock / borders neighbor */
+    --bg-3: #302e38;         /* input.background / dropdown */
+    --bg-hover: #2d2b36;     /* list hover-ish */
+    --bg-active: #363442;
+    --message-user-bg: #26252e;
 
     /* Text — Dark Modern: foreground #CCCCCC, description #9D9D9D */
-    --text-primary: #cccccc;
-    --text-secondary: #9d9d9d;
+    --text-primary: #e8e4dc;
+    --text-secondary: #9c98a6;
     --text-disabled: #6e7681; /* editorLineNumber.foreground */
 
     /* Semantic (VS Code-adjacent, slightly softened) */
@@ -230,12 +230,12 @@
     --diff-removed: #fb7185;
 
     /* Border — sideBar.border / panel.border */
-    --border-base: #2b2b2b;
-    --border-light: #252526;
+    --border-base: #2d2b36;
+    --border-light: #24222c;
 
     /* Focus — focusBorder #0078D4, dialed quieter for app chrome */
-    --focus-border: #3794ff;
-    --focus-shadow: 0 0 0 1px #3794ff55, 0 2px 12px rgba(0, 0, 0, 0.35);
+    --focus-border: #f59e0b;
+    --focus-shadow: 0 0 0 1px rgba(245, 158, 11, 0.35), 0 2px 12px rgba(0, 0, 0, 0.35);
 
     --main-chat-surface-shadow-top: 0 -2px 6px -3px rgba(0, 0, 0, 0.2);
     --main-chat-surface-shadow:
@@ -268,36 +268,36 @@
     --composer-popover-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 14px 34px -8px rgba(0, 0, 0, 0.55);
 
     /* Tailwind HSL — neutral gray, low chroma (match VS Code) */
-    --background: 0 0% 12%;           /* #1f1f1f */
-    --foreground: 0 0% 80%;           /* #cccccc */
-    --card: 0 0% 14%;                 /* #242424-ish */
-    --card-foreground: 0 0% 80%;
-    --popover: 0 0% 12%;
-    --popover-foreground: 0 0% 80%;
-    --primary: 0 0% 80%;
-    --primary-foreground: 0 0% 12%;
-    --secondary: 0 0% 17%;            /* #2b2b2b */
-    --secondary-foreground: 0 0% 80%;
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 62%;     /* #9d9d9d */
-    --accent: 0 0% 18%;
-    --accent-foreground: 0 0% 80%;
+    --background: 250 12% 11%;        /* #1a1920 */
+    --foreground: 40 20% 89%;         /* #e8e4dc */
+    --card: 250 11% 14%;              /* #212028 */
+    --card-foreground: 40 20% 89%;
+    --popover: 250 12% 12%;
+    --popover-foreground: 40 20% 89%;
+    --primary: 40 20% 89%;
+    --primary-foreground: 250 12% 11%;
+    --secondary: 250 10% 17%;         /* #282730 */
+    --secondary-foreground: 40 20% 89%;
+    --muted: 250 10% 15%;
+    --muted-foreground: 255 8% 62%;   /* #9c98a6 */
+    --accent: 250 10% 18%;
+    --accent-foreground: 40 20% 89%;
     --destructive: 3 78% 63%;         /* ~#f85149 */
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 17%;               /* #2b2b2b */
-    --input: 0 0% 19%;                /* #313131 */
-    --ring: 212 100% 61%;             /* soft focus blue */
+    --border: 250 11% 19%;            /* #2d2b36 */
+    --input: 250 10% 20%;             /* #302e38 */
+    --ring: 38 92% 50%;               /* warm amber focus */
 
-    --surface-0: 0 0% 12%;
-    --surface-1: 0 0% 14%;
-    --surface-2: 0 0% 17%;
-    --surface-3: 0 0% 19%;
+    --surface-0: 250 12% 11%;
+    --surface-1: 250 11% 14%;
+    --surface-2: 250 10% 17%;
+    --surface-3: 250 10% 20%;
     /* sideBar.background / activityBar.background */
-    --surface-sidebar: #181818;
-    --sidebar-row-hover: #212124;
-    --sidebar-row-press: #29292d;
-    --sidebar-row-selected: #313137;
-    --list-row-selected: #2a2b2f;
+    --surface-sidebar: #141319;
+    --sidebar-row-hover: #1e1c25;
+    --sidebar-row-press: #25232e;
+    --sidebar-row-selected: #2d2b38;
+    --list-row-selected: #272530;
 
     --text-secondary-hsl: 0 0% 67%;
     --text-tertiary-hsl: 0 0% 53%;

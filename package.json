@@ -5,6 +5,11 @@
   "main": "./out/main/index.js",
   "author": "pi-desktop",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/q971668593/Pi-mx-Desktop.git"
+  },
+  "homepage": "https://github.com/q971668593/Pi-mx-Desktop#readme",
   "type": "module",
   "engines": {
     "node": ">=22.19.0"

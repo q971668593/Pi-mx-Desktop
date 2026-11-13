@@ -1,6 +1,14 @@
 import fixPath from 'fix-path'
+import { app } from 'electron'
 import { shellEnvSync } from 'shell-env'
 import { mergeLoginShellEnvironment } from './login-shell-environment'
+import { applyPortableDataDirs } from './portable-data-dir'
+
+try {
+  applyPortableDataDirs(app)
+} catch {
+  /* keep default Electron userData path if portable detection fails */
+}
 
 if (process.platform === 'darwin') {
   try {

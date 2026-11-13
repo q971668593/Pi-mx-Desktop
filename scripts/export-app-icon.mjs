@@ -3,11 +3,13 @@
  * 需要: npm i -D sharp
  * 运行: node scripts/export-app-icon.mjs
  */
+import { existsSync } from 'fs'
 import { mkdir, readFile, writeFile } from 'fs/promises'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
+const customPngPath = join(root, 'resources', 'pi-mx-icon.png')
 const svgPath = join(root, 'resources', 'icon.svg')
 const outDir = join(root, 'build')
 const outPng = join(outDir, 'icon.png')
@@ -41,13 +43,16 @@ async function main() {
     console.error('请先安装: npm i -D sharp')
     process.exit(1)
   }
-  const svg = await readFile(svgPath)
+  const source = existsSync(customPngPath)
+    ? await readFile(customPngPath)
+    : await readFile(svgPath)
   await mkdir(outDir, { recursive: true })
 
-  await sharp(svg, { density: 300 }).resize(1024, 1024).png().toFile(outPng)
+  const pipeline = existsSync(customPngPath) ? sharp(source) : sharp(source, { density: 300 })
+  await pipeline.clone().resize(1024, 1024).png().toFile(outPng)
   console.log('Wrote', outPng)
 
-  const png256 = await sharp(svg, { density: 300 }).resize(256, 256).png().toBuffer()
+  const png256 = await pipeline.clone().resize(256, 256).png().toBuffer()
   await writeFile(outIco, pngToIco(png256))
   console.log('Wrote', outIco)
 }

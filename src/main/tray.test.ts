@@ -93,7 +93,7 @@ describe('Windows app tray lifecycle', () => {
     expect(first).toBe(second)
     expect(electron.trays).toHaveLength(1)
     expect(electron.trays[0].image).toBe(icon)
-    expect(electron.trays[0].tooltip).toBe('pi Desktop')
+    expect(electron.trays[0].tooltip).toBe('Pi mx')
   })
 
   it('restores and focuses the current window when the tray icon is clicked', () => {

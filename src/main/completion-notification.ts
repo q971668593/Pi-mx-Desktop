@@ -18,7 +18,7 @@ let unbindEvents: (() => void) | null = null
 
 function projectLabel(workspaceId: string): string {
   const name = basename(String(workspaceId || '').replace(/\\/g, '/'))
-  return name || 'pi Desktop'
+  return name || 'Pi mx'
 }
 
 function windowState() {

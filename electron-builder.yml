@@ -1,5 +1,5 @@
 appId: com.pi.desktop
-productName: pi Desktop
+productName: Pi mx
 directories:
   buildResources: build
   output: dist
@@ -91,4 +91,6 @@ linux:
 
 publish:
   provider: github
+  owner: q971668593
+  repo: Pi-mx-Desktop
   releaseType: release

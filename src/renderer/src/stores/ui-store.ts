@@ -59,8 +59,8 @@ export const useUIStore = create<UIState>()(
   setWorkspace: (path) =>
     set((s) => {
       const changed = workspacePathKey(path) !== workspacePathKey(s.currentWorkspace)
-      let rememberedPanel = 'review'
-      if (changed && path) try { rememberedPanel = localStorage.getItem(projectPanelKey(path)) || 'review' } catch { void 0 }
+      let rememberedPanel = 'files'
+      if (changed && path) try { rememberedPanel = localStorage.getItem(projectPanelKey(path)) || 'files' } catch { void 0 }
       return {
         currentWorkspace: path,
         ephemeralSandboxDraft: false,

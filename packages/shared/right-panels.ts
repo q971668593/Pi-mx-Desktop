@@ -1,6 +1,6 @@
 /** 右侧栏 Tab：核心栏目 + 适配器声明的 sidePanel（合并后用于 Tab / 设置开关） */
 
-export const CORE_RIGHT_PANEL_IDS = ['review', 'run', 'context', 'tree', 'files', 'terminal', 'git', 'browser'] as const
+export const CORE_RIGHT_PANEL_IDS = ['files', 'git', 'terminal', 'browser', 'run', 'review', 'context', 'tree'] as const
 
 export type CoreRightPanelId = (typeof CORE_RIGHT_PANEL_IDS)[number]
 
@@ -23,14 +23,14 @@ export interface RightPanelCatalogItem {
 }
 
 export const CORE_RIGHT_PANEL_CATALOG: RightPanelCatalogItem[] = [
-  { id: 'review', labelKey: 'panel.review', fallbackLabel: 'Review', description: 'Git changes & diff (read-only)', descriptionKey: 'panel.reviewDesc', icon: 'GitBranch', source: 'core' },
+  { id: 'files', labelKey: 'panel.files', fallbackLabel: 'Files', description: 'Workspace file preview & explorer', descriptionKey: 'panel.filesDesc', icon: 'FolderTree', source: 'core' },
+  { id: 'git', labelKey: 'panel.git', fallbackLabel: 'Git', description: 'Branches, history, commits and sync', descriptionKey: 'panel.gitDesc', icon: 'GitCommitHorizontal', source: 'core' },
+  { id: 'terminal', labelKey: 'panel.terminal', fallbackLabel: 'Terminal', description: 'Project terminals and one-click tasks', descriptionKey: 'panel.terminalDesc', icon: 'Terminal', source: 'core' },
+  { id: 'browser', labelKey: 'panel.browser', fallbackLabel: 'Browser', description: 'Built-in browser (experimental)', descriptionKey: 'panel.browserDesc', icon: 'Globe', source: 'core' },
   { id: 'run', labelKey: 'panel.run', fallbackLabel: 'Run', description: 'Current turn status & usage', descriptionKey: 'panel.runDesc', icon: 'Activity', source: 'core' },
+  { id: 'review', labelKey: 'panel.review', fallbackLabel: 'Review', description: 'Git changes & diff (read-only)', descriptionKey: 'panel.reviewDesc', icon: 'GitBranch', source: 'core' },
   { id: 'context', labelKey: 'panel.context', fallbackLabel: 'Context', description: 'Session context preview', descriptionKey: 'panel.contextDesc', icon: 'FileSearch', source: 'core' },
   { id: 'tree', labelKey: 'panel.tree', fallbackLabel: 'Tree', description: 'Session tree / rewind (like /tree)', descriptionKey: 'panel.treeDesc', icon: 'ListTree', source: 'core' },
-  { id: 'files', labelKey: 'panel.files', fallbackLabel: 'Files', description: 'Workspace file preview & explorer', descriptionKey: 'panel.filesDesc', icon: 'FolderTree', source: 'core' },
-  { id: 'terminal', labelKey: 'panel.terminal', fallbackLabel: 'Terminal', description: 'Project terminals and one-click tasks', descriptionKey: 'panel.terminalDesc', icon: 'Terminal', source: 'core' },
-  { id: 'git', labelKey: 'panel.git', fallbackLabel: 'Git', description: 'Branches, history, commits and sync', descriptionKey: 'panel.gitDesc', icon: 'GitCommitHorizontal', source: 'core' },
-  { id: 'browser', labelKey: 'panel.browser', fallbackLabel: 'Browser', description: 'Built-in browser (experimental)', descriptionKey: 'panel.browserDesc', icon: 'Globe', source: 'core' },
 ]
 
 /** @deprecated */
@@ -38,18 +38,17 @@ export const RIGHT_PANEL_CATALOG = CORE_RIGHT_PANEL_CATALOG
 
 export type RightPanelPrefs = Record<string, boolean>
 
-/** Default: only Files + Run enabled (display-shell right-rail declutter). */
+/** Default layout: Files, Git, Terminal, Browser and Run on; the analysis panels stay hidden. */
 export function defaultCoreRightPanelPrefs(): RightPanelPrefs {
   return {
-    review: false,
+    files: true,
+    git: true,
+    terminal: true,
+    browser: true,
     run: true,
+    review: false,
     context: false,
     tree: false,
-    files: true,
-    terminal: true,
-    git: true,
-    // Experimental: off until the user enables it in Settings → Right panels.
-    browser: false,
   }
 }
 

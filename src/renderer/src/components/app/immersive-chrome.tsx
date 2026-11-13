@@ -44,8 +44,8 @@ export function ImmersiveChrome({
           />
         </button>
         <div className="flex items-center gap-1.5 px-1 text-[12px] text-foreground-secondary select-none">
-          <PiMark size={14} className="rounded-[3px]" />
-          <span className="font-medium text-foreground/90">pi</span>
+          <PiMark size={16} className="rounded-[4px]" />
+          <span className="font-semibold tracking-tight text-foreground">Pi mx</span>
           {projectName && (
             <>
               <span className="opacity-35">/</span>
