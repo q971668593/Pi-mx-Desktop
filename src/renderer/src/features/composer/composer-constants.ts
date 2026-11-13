@@ -14,6 +14,7 @@ export const BUILTIN_COMMANDS: SlashCommand[] = [
   { id: 'fork', name: '/fork', category: 'builtin' },
   { id: 'clone', name: '/clone', category: 'builtin' },
   { id: 'tree', name: '/tree', category: 'builtin' },
+  { id: 'purge', name: '/purge', category: 'builtin' },
 ]
 
 export const BUILTIN_CMD_I18N: Record<string, string> = {
