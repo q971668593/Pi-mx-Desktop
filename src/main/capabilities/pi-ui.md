@@ -1,7 +1,7 @@
 <!-- Source: docs/pi-ui/skill/SKILL.md (opt-in wording adapted to the composer capability switch). -->
 # pi-ui blocks
 
-pi Desktop turns a fenced code block with the language `pi-ui` into an interactive component
+Pi mx Desktop turns a fenced code block with the language `pi-ui` into an interactive component
 (chart, table, cards…). Other clients show the JSON as-is, so the answer still reads fine there.
 
 ````
@@ -12,9 +12,9 @@ pi Desktop turns a fenced code block with the language `pi-ui` into an interacti
 
 ## When to use it
 
-This capability is **switched on by the user** in pi Desktop's composer (Tools → pi-ui) for this
+This capability is **switched on by the user** in Pi mx Desktop's composer (Tools → pi-ui) for this
 conversation. It stays in your instructions only while the switch is on; when it is off you will not
-see this section and must not write pi-ui blocks. Blocks only render in pi Desktop; in a terminal or
+see this section and must not write pi-ui blocks. Blocks only render in Pi mx Desktop; in a terminal or
 any other client they show up as raw JSON.
 
 - **On** → the user is happy to get visual answers. Use a block when the data in the request has a
