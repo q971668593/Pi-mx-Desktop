@@ -273,6 +273,7 @@ const settingsValueSchemas: Record<string, z.ZodTypeAny> = {
   timelineVisibleTurns: z.number().int().min(1).max(200),
   rightPanelPrefs: z.record(z.boolean()),
   rightPanelOrder: z.array(z.string()),
+  sessionTitleFollowsLatest: z.boolean(),
   sessionDisplayNames: z.record(z.string()),
   projectDisplayNames: z.record(z.string()),
   hiddenWorktrees: z.array(z.string()),

@@ -41,13 +41,14 @@ export function FileTreeRow({
       aria-current={selected ? 'true' : undefined}
       aria-label={gitKind ? `${name} · ${t(`tree.git.${gitKind}`)}` : name}
       title={relativePath}
-      draggable={!isDirectory}
+      draggable
       onDragStart={(e) => {
-        if (isDirectory) {
-          e.preventDefault()
-          return
-        }
-        setPiFilePathDrag(e.dataTransfer, joinWorkspacePath(workspaceRoot, relativePath), name)
+        setPiFilePathDrag(
+          e.dataTransfer,
+          joinWorkspacePath(workspaceRoot, relativePath),
+          name,
+          isDirectory,
+        )
       }}
       onClick={(e) => {
         if (isDirectory) onToggle?.()

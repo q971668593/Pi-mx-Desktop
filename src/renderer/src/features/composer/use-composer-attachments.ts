@@ -303,6 +303,11 @@ export function useComposerAttachments(opts: {
         e.preventDefault()
         dragDepth.current = 0
         setIsDragActive(false)
+        if (pi.isDirectory) {
+          // 文件夹作为 @路径 引用进输入框（发送后 agent 可自行 ls/read 里面的内容）
+          insertMetas([{ path: pi.path, name: pi.name, kind: 'dir' }])
+          return
+        }
         const kind = getAttachmentKind(pi.name)
         if (kind === 'image') stageImagePath(pi.path, pi.name)
         insertMetas([{ path: pi.path, name: pi.name, kind }])

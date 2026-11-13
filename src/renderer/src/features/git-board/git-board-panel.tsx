@@ -238,9 +238,63 @@ export function GitBoardPanel() {
 
   const groups = ['conflict', 'staged', 'unstaged', 'untracked'] as const
   const remoteBranches = data.branches.filter((branch) => branch.kind === 'remote')
+  /** 先 pull 再 push：一键把本地和远端对齐，不需要先有提交内容 */
+  const syncBoth = async () => {
+    if (!cwd || busy) return
+    setBusy(true)
+    try {
+      const pull = await git<Record<string, unknown>>('gitBoard.sync', { cwd, action: 'pull' })
+      if (!pull.ok) throw new Error(pull.error || 'git_failed')
+      const push = await git<Record<string, unknown>>('gitBoard.sync', { cwd, action: 'push' })
+      if (!push.ok) throw new Error(push.error || 'git_failed')
+      toast.success(t('common:gitBoard.syncDone'))
+      await load(false)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+  const syncActions: Array<[string, () => void]> = [
+    [t('common:gitBoard.pull'), () => void run('gitBoard.sync', { action: 'pull' })],
+    [t('common:gitBoard.sync'), () => void syncBoth()],
+    [t('common:gitBoard.push'), () => void run('gitBoard.sync', { action: 'push' })],
+  ]
   return (
     <div className="git-board flex h-full min-h-0 flex-col" onClick={() => setMenu(null)}>
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border/50 px-3 text-[12px]"><GitCommitHorizontal className="h-4 w-4 text-foreground-secondary" /><strong className="truncate font-medium">{data.status.branch || 'HEAD'}</strong><span className="text-foreground-tertiary">{data.status.ahead}↑ {data.status.behind}↓</span>{data.operation ? <span className="rounded bg-amber-500/15 px-1.5 text-amber-700">{data.operation}</span> : null}<button type="button" className="ml-auto rounded p-1.5 text-foreground-secondary hover:bg-muted hover:text-foreground" aria-label={t('common:gitBoard.refresh')} onClick={() => void load(false)}><RefreshCw className="h-3.5 w-3.5" /></button></div>
+      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border/50 px-3 text-[12px]">
+        <GitCommitHorizontal className="h-4 w-4 text-foreground-secondary" />
+        <strong className="truncate font-medium">{data.status.branch || 'HEAD'}</strong>
+        <span className="flex items-center gap-1.5 tabular-nums">
+          <span
+            className={cn(data.status.ahead > 0 ? 'font-medium text-red-600 dark:text-red-400' : 'text-foreground-tertiary')}
+            title={t('common:gitBoard.ahead', { n: data.status.ahead })}
+          >
+            {data.status.ahead}↑
+          </span>
+          <span
+            className={cn(data.status.behind > 0 ? 'font-medium text-emerald-600 dark:text-emerald-400' : 'text-foreground-tertiary')}
+            title={t('common:gitBoard.behind', { n: data.status.behind })}
+          >
+            {data.status.behind}↓
+          </span>
+        </span>
+        {data.operation ? <span className="rounded bg-amber-500/15 px-1.5 text-amber-700">{data.operation}</span> : null}
+        <div className="ml-auto flex items-center gap-1">
+          {syncActions.map(([label, action]) => (
+            <button
+              key={label}
+              type="button"
+              disabled={busy}
+              className="rounded border border-border/60 px-2 py-0.5 text-[12px] text-foreground-secondary transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+              onClick={action}
+            >
+              {label}
+            </button>
+          ))}
+          <button type="button" className="rounded p-1.5 text-foreground-secondary hover:bg-muted hover:text-foreground" aria-label={t('common:gitBoard.refresh')} onClick={() => void load(false)}><RefreshCw className="h-3.5 w-3.5" /></button>
+        </div>
+      </div>
       <div role="tablist" className="flex shrink-0 overflow-x-auto border-b border-border/50 bg-[var(--bg-1)]">{TABS.map((item) => <button key={item} type="button" role="tab" aria-selected={tab === item} className={cn('relative h-9 shrink-0 border-b-2 px-3 text-[12px] transition-colors', tab === item ? 'border-primary bg-[var(--bg-base)] font-medium text-foreground' : 'border-transparent text-foreground-secondary hover:bg-muted hover:text-foreground')} onClick={() => { setTab(item); try { localStorage.setItem(`pi-desktop:git-tab:${workspacePathKey(cwd)}`, item) } catch { void 0 } }}>{t(`common:gitBoard.${item}`)}{item === 'changes' && data.files.length ? <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px]">{data.files.length}</span> : null}</button>)}</div>
       {tab === 'repository' && <div role="tablist" aria-label={t('common:gitBoard.repository')} className="flex shrink-0 gap-1 overflow-x-auto border-b border-border/50 px-2 py-1">{REPOSITORY_TABS.map((item) => <button key={item} type="button" role="tab" aria-selected={repositoryTab === item} className={cn('shrink-0 rounded px-2 py-1 text-[12px]', repositoryTab === item ? 'bg-muted font-medium text-foreground' : 'text-foreground-secondary hover:bg-muted')} onClick={() => setRepositoryTab(item)}>{t(`common:gitBoard.${item}`)}</button>)}</div>}
       {data.operation ? <div className="flex gap-1 border-b px-2 py-1"><button type="button" className="rounded border px-2 py-1 text-[12px]" onClick={() => void run('gitBoard.operation', { operation: data.operation, action: 'continue' })}>{t('common:gitBoard.continue')}</button><button type="button" className="rounded border px-2 py-1 text-[12px]" onClick={() => void run('gitBoard.operation', { operation: data.operation, action: 'abort' })}>{t('common:gitBoard.abort')}</button></div> : null}

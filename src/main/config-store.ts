@@ -34,6 +34,8 @@ export interface StoreSchema {
   rightPanelPrefs: Record<string, boolean>
   /** 右侧栏 Tab 顺序（panel id 列表） */
   rightPanelOrder: string[]
+  /** 侧栏对话名跟随最新一条用户消息 */
+  sessionTitleFollowsLatest: boolean
   /** 界面语言（设置保存后写入） */
   language: 'zh' | 'en'
   /** 启动时打开上次项目 */
@@ -130,6 +132,7 @@ const store = new Store<StoreSchema>({
       'adapter:trellis': false,
     },
     rightPanelOrder: [],
+    sessionTitleFollowsLatest: false,
     language: defaultAppLanguage(),
     autoOpenLastProject: true,
     autoCheckRegistryUpdates: true,

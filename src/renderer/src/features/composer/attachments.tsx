@@ -5,6 +5,7 @@ import {
   FileArchive,
   FileSpreadsheet,
   File,
+  FolderOpen,
   Music,
   Video,
   type AppIconComponent,
@@ -24,6 +25,8 @@ export type AttachmentKind =
   | 'audio'
   | 'video'
   | 'file'
+  /** 拖进来的工作区文件夹（发送时序列化为 @路径） */
+  | 'dir'
   /** Code line reference (Cursor-style path:line chip) */
   | 'line-ref'
 
@@ -123,6 +126,7 @@ export function getAttachmentIcon(kind: AttachmentKind): AppIconComponent {
     case 'code': return FileCode2
     case 'audio': return Music
     case 'video': return Video
+    case 'dir': return FolderOpen
     case 'line-ref': return FileCode2
     default: return File
   }
@@ -153,6 +157,7 @@ function buildIconSvgs() {
   const icons: Record<AttachmentKind, AppIconComponent> = {
     image: ImageIcon, pdf: FileText, doc: FileText, sheet: FileSpreadsheet,
     archive: FileArchive, code: FileCode2, audio: Music, video: Video, file: File,
+    dir: FolderOpen,
     'line-ref': FileCode2,
   }
   for (const k of Object.keys(icons) as AttachmentKind[]) {

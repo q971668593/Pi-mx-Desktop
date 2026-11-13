@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useUIStore } from '@renderer/stores/ui-store'
-import { ChevronRight, EyeOff, FolderOpen, ListOrdered, Plus, Search, X } from '@renderer/components/icons'
+import { ChevronRight, EyeOff, FolderOpen, ListOrdered, PencilLine, Plus, Search, X } from '@renderer/components/icons'
 import { ipcClient } from '@renderer/lib/ipc-client'
+import { rememberTitleFollowsLatest, setTitleFollowsLatest } from '@renderer/lib/session-title-follow'
 import { activateWorkspace } from '@renderer/lib/activate-workspace'
 import { SidebarAnimatedCollapse } from '@renderer/components/ui/sidebar-animated-collapse'
 import { SandboxContextMenuPortal } from './sandbox-context-menu'
@@ -37,6 +38,8 @@ import './project-sidebar.css'
 const TEMP_CHATS_OPEN_KEY = 'pi-desktop:sidebar-temp-chats-open'
 const HIDDEN_PROJECTS_KEY = 'pi-desktop:hidden-projects'
 const MANUAL_PROJECT_ORDER_KEY = 'pi-desktop:project-manual-order'
+/** 展开的项目（记住用户手动的展开/折叠，重启后还原，应用自己不会折叠） */
+const EXPANDED_PROJECTS_KEY = 'pi-desktop:expanded-projects'
 
 function readPathList(key: string): string[] {
   try {
@@ -87,8 +90,9 @@ export function ProjectSidebar({
   const [sessionErrors, setSessionErrors] = useState<Record<string, string>>({})
   const [repositoryOpen, setRepositoryOpen] = useState<Record<string, boolean>>({})
   const [sandboxes, setSandboxes] = useState<SandboxEntry[]>([])
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set())
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set(readPathList(EXPANDED_PROJECTS_KEY)))
   const [recentProjectsFixedOrder, setRecentProjectsFixedOrder] = useState(false)
+  const [titleFollowsLatest, setTitleFollowsLatestState] = useState(false)
   const [hiddenProjects, setHiddenProjects] = useState(() => readPathList(HIDDEN_PROJECTS_KEY))
   const [manualOrder, setManualOrder] = useState(() => readPathList(MANUAL_PROJECT_ORDER_KEY))
   const [hiddenOpen, setHiddenOpen] = useState(false)
@@ -96,6 +100,10 @@ export function ProjectSidebar({
   // Temporary chats start collapsed (remembered); they open by themselves when the active
   // conversation lives there (new temp chat / opened sandbox) so it is never hidden.
   const [sectionOpen, setSectionOpenState] = useState(() => readSectionOpen())
+  // 项目展开状态持久化：只有用户点折叠才折叠，重启/刷新同样保留
+  useEffect(() => {
+    savePathList(EXPANDED_PROJECTS_KEY, [...expandedPaths])
+  }, [expandedPaths])
   const autoOpenedRef = useRef(false)
   const setSectionOpen = useCallback((next: boolean) => {
     autoOpenedRef.current = false
@@ -329,6 +337,14 @@ export function ProjectSidebar({
       })
       .catch(() => {})
     ipcClient
+      .invoke('settings.get', { key: 'sessionTitleFollowsLatest' })
+      .then((res) => {
+        const v = res?.settings?.sessionTitleFollowsLatest === true
+        rememberTitleFollowsLatest(v)
+        setTitleFollowsLatestState(v)
+      })
+      .catch(() => {})
+    ipcClient
       .invoke('settings.get', { key: 'projectDisplayNames' })
       .then((res) => {
         const names = res?.settings?.projectDisplayNames as Record<string, string> | undefined
@@ -358,6 +374,7 @@ export function ProjectSidebar({
         !detail?.key ||
         detail.key === 'recentProjects' ||
         detail.key === 'recentProjectsFixedOrder' ||
+        detail.key === 'sessionTitleFollowsLatest' ||
         detail.key === 'projectDisplayNames'
       ) {
         reloadSidebarSettings()
@@ -679,6 +696,7 @@ export function ProjectSidebar({
       <div className="mt-3 px-3" hidden={searchActive && visiblePaths.length === 0}>
         <div className="sidebar-section-head">
           <span className="sidebar-section-title flex-1 px-1">{t('common:sidebar.projects')}</span>
+          <button type="button" className="sidebar-section-action project-tool" aria-pressed={titleFollowsLatest} title={titleFollowsLatest ? '对话名跟随最新消息：开 · 点击关闭' : '对话名跟随最新消息：关 · 点击开启'} aria-label="切换对话名跟随最新消息" onClick={() => { const next = !titleFollowsLatest; setTitleFollowsLatestState(next); rememberTitleFollowsLatest(next); void setTitleFollowsLatest(next).catch(() => setTitleFollowsLatestState(!next)) }}><PencilLine size={15} /></button>
           <button type="button" className="sidebar-section-action project-tool" aria-pressed={recentProjectsFixedOrder} title={recentProjectsFixedOrder ? '手动排序 · 点击切换为最近访问' : '最近访问 · 点击切换为手动排序'} aria-label="切换项目排序" onClick={() => setOrderMode(!recentProjectsFixedOrder)}><ListOrdered size={15} /></button>
           <button type="button" className="sidebar-section-action project-tool" title={`管理隐藏项目（${hiddenProjects.length}）`} aria-label="管理隐藏项目" aria-haspopup="dialog" onClick={() => setHiddenOpen(true)}><EyeOff size={15} />{hiddenProjects.length > 0 && <span className="project-hidden-dot" />}</button>
           {/* Projects come from opening a folder; refreshing lives in the top-right reload button. */}

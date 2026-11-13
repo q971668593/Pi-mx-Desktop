@@ -13,6 +13,7 @@ import type { useComposerInputHistory } from './use-composer-input-history'
 import { currentSessionCapabilities } from '@renderer/lib/session-capabilities'
 import { getSessionNavigationToken, isSessionNavigationCurrent } from '@renderer/lib/session-navigation'
 import { sessionFilesEqual } from '@renderer/lib/session-file-key'
+import { applyTitleFromLatestMessage } from '@renderer/lib/session-title-follow'
 import {
   composerDraftContextKey,
   readTransientComposerDraft,
@@ -106,6 +107,8 @@ export function useComposerSend(opts: {
         const currentWorkspace = store.currentWorkspace
         if (!currentWorkspace && !draft) return
         let sessionFile = store.historySessionFile ?? undefined
+        /** 发送前已有会话文件 = 不是这条消息新建的会话（新建时 SDK 已用首条消息命名） */
+        const hadSessionFile = !!sessionFile
         const { composerTurnActive } = await import('@renderer/lib/session-worker-sync')
         const running = composerTurnActive({
           historySessionFile: store.historySessionFile,
@@ -145,6 +148,14 @@ export function useComposerSend(opts: {
           const updateSentView = async (bind: Parameters<typeof afterPromptSent>[0]) => {
             if (sessionFilesEqual(useUIStore.getState().historySessionFile, sessionFile)) {
               await afterPromptSent(bind)
+            }
+            // 对话名跟随最新消息：只对已有会话生效，不打扰新建会话的首条命名。
+            if (hadSessionFile) {
+              void applyTitleFromLatestMessage({
+                sessionFile,
+                workspaceId: currentWorkspace || undefined,
+                text: promptText,
+              })
             }
           }
           if (!running && draft) {

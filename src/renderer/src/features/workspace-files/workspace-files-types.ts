@@ -8,18 +8,25 @@ export type FsEntry = {
 
 export const PI_FILE_PATH_MIME = 'application/x-pi-file-path'
 
-export function setPiFilePathDrag(dt: DataTransfer, path: string, name: string) {
-  dt.setData(PI_FILE_PATH_MIME, JSON.stringify({ path, name }))
+export function setPiFilePathDrag(dt: DataTransfer, path: string, name: string, isDirectory = false) {
+  dt.setData(PI_FILE_PATH_MIME, JSON.stringify({ path, name, isDirectory }))
   dt.setData('text/plain', path)
   dt.effectAllowed = 'copy'
 }
 
-export function readPiFilePathDrop(dt: DataTransfer): { path: string; name: string } | null {
+export function readPiFilePathDrop(
+  dt: DataTransfer,
+): { path: string; name: string; isDirectory: boolean } | null {
   const raw = dt.getData(PI_FILE_PATH_MIME)
   if (raw) {
     try {
-      const o = JSON.parse(raw) as { path?: string; name?: string }
-      if (o.path) return { path: o.path, name: o.name || o.path.split(/[\\/]/).pop() || o.path }
+      const o = JSON.parse(raw) as { path?: string; name?: string; isDirectory?: boolean }
+      if (o.path)
+        return {
+          path: o.path,
+          name: o.name || o.path.split(/[\\/]/).pop() || o.path,
+          isDirectory: o.isDirectory === true,
+        }
     } catch (e) {
       /* fall through */
     }
@@ -27,7 +34,7 @@ export function readPiFilePathDrop(dt: DataTransfer): { path: string; name: stri
   const plain = dt.getData('text/plain')?.trim()
   if (plain && (plain.includes('/') || plain.includes('\\'))) {
     const name = plain.split(/[\\/]/).pop() || plain
-    return { path: plain, name }
+    return { path: plain, name, isDirectory: false }
   }
   return null
 }

@@ -25,6 +25,19 @@ The same agent and the same `~/.pi/agent` you use in the terminal — with a tim
 
 Pi mx Desktop is not another agent. It runs the pi SDK in a background worker and reads the same files as the CLI — sessions, model logins, `settings.json`, installed extensions. Open a project and the sessions you started in the terminal are already in the sidebar; continue any of them, or start a new one.
 
+## What this fork adds
+
+Same agent, same `~/.pi/agent` — plus a few things upstream does not have yet:
+
+| | | |
+|---|---|---|
+| **Portable mode** | Drop a `data` folder next to the executable and the entire profile (settings, sessions, cache) lives there. Carry it on a USB stick; nothing is written to `%APPDATA%`. |
+| **Warm editorial theme** | Light and dark palettes rebuilt around warm ivory and amber, applied through the same design tokens, so panes, chips and code blocks finally look like one product. |
+| **Right sidebar, your order** | Files → Git → Terminal → Browser → Run are on by default; Review, Context and Tree stay out of the way until you need them. |
+| **Drag folders too** | The Files panel drags folders as well as files into the composer — a folder lands as an `@path` reference the agent can list and read. |
+| **Titles that follow you** | Optional: the conversation name in the sidebar follows your latest message, so a long session stays recognisable without renaming it by hand. |
+| **Git sync in one click** | Pull / Sync / Push sit in the Git header; `↑` is red and `↓` is green, so unpushed or unpulled work is visible at a glance. |
+
 ## At a glance
 
 <img src="doc/assets/readme/en/overview.png" alt="Overview: timeline steps, side-by-side review, parallel sessions, @ file references, context breakdown, built-in adapters, themes and the shared ~/.pi/agent files" width="100%" />

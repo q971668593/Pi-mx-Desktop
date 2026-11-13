@@ -1,4 +1,4 @@
-appId: com.pi.desktop
+appId: com.pimx.desktop
 productName: Pi mx
 directories:
   buildResources: build
