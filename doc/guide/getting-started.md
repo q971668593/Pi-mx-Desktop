@@ -2,14 +2,14 @@
 
 **[简体中文](./getting-started.zh-CN.md)**
 
-Hands-on guide for first-time **pi Desktop** users. Screenshots: [../images/](../images/) (replace placeholder with `overview.png` when publishing).
+Hands-on guide for first-time **Pi mx Desktop** users. Screenshots: [../images/](../images/) (replace placeholder with `overview.png` when publishing).
 
 ---
 
 ## 1. Install & run
 
 ```bash
-git clone https://github.com/justhil/pi-app.git
+git clone https://github.com/q971668593/Pi-mx-Desktop.git
 cd pi-app
 npm install
 npm run dev
@@ -19,7 +19,7 @@ npm run dev
 
 **Windows installer (build locally)**: `npm run icon:export && npm run package:win` → `dist/`
 
-**Prebuilt**: [GitHub Releases](https://github.com/justhil/pi-app/releases/latest) — Setup and Portable `.exe`.
+**Prebuilt**: [GitHub Releases](https://github.com/q971668593/Pi-mx-Desktop/releases/latest) — Setup and Portable `.exe`.
 
 ---
 

@@ -1,27 +1,29 @@
 <div align="center">
 
-<img src="resources/icon.svg" alt="pi Desktop" width="72" height="72" />
+<img src="resources/pi-mx-icon.png" alt="Pi mx Desktop" width="72" height="72" />
 
-# pi Desktop
+# Pi mx Desktop
 
-**[pi](https://github.com/earendil-works/pi) 编程 Agent 的桌面客户端。**<br/>
-还是终端里那个 Agent、那份 `~/.pi/agent`，多了时间线、Git Review、内置终端，还有一个能在手机上接着干活的 Android 应用。
+**[pi](https://github.com/earendil-works/pi) 编程 Agent 的桌面工作台。**<br/>
+还是终端里那个 Agent、那份 `~/.pi/agent`，多了时间线、Git Review、内置终端，还有一个能在手机上接着干活的手机应用。
 
-[![Release](https://img.shields.io/github/v/release/justhil/pi-app?style=flat-square&color=7583b2&label=release)](https://github.com/justhil/pi-app/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/justhil/pi-app/total?style=flat-square&color=7583b2)](https://github.com/justhil/pi-app/releases)
-![Platforms](https://img.shields.io/badge/platform-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux%20%C2%B7%20Android-7583b2?style=flat-square)
-[![License](https://img.shields.io/github/license/justhil/pi-app?style=flat-square&color=7583b2)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/q971668593/Pi-mx-Desktop?style=flat-square&color=d97706&label=release)](https://github.com/q971668593/Pi-mx-Desktop/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/q971668593/Pi-mx-Desktop/total?style=flat-square&color=d97706)](https://github.com/q971668593/Pi-mx-Desktop/releases)
+![Platforms](https://img.shields.io/badge/platform-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-d97706?style=flat-square)
+[![License](https://img.shields.io/github/license/q971668593/Pi-mx-Desktop?style=flat-square&color=d97706)](LICENSE)
 
-[English](./README.md) · **简体中文** · [下载](https://github.com/justhil/pi-app/releases/latest) · [上手指南](./doc/guide/getting-started.md) · [适配器列表](./doc/guide/adapters.zh-CN.md)
+[English](./README.md) · **简体中文** · [下载](https://github.com/q971668593/Pi-mx-Desktop/releases/latest) · [上手指南](./doc/guide/getting-started.md) · [适配器列表](./doc/guide/adapters.zh-CN.md)
+
+<sub>基于 [pi Desktop](https://github.com/justhil/pi-app)（作者 [justhil](https://github.com/justhil)）开发，MIT 许可。</sub>
 
 </div>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/assets/readme/zh/hero-dark.png" />
-  <img src="doc/assets/readme/zh/hero-light.png" alt="pi Desktop：时间线里一轮已完成的对话，右侧 Review 面板展开了 Git diff" />
+  <img src="doc/assets/readme/zh/hero-light.png" alt="Pi mx Desktop：时间线里一轮已完成的对话，右侧 Review 面板展开了 Git diff" />
 </picture>
 
-pi Desktop 不是另一个 Agent。它在后台 Worker 里运行 pi SDK，读写的就是 CLI 用的那些文件：会话、模型登录、`settings.json`、已安装的扩展。打开项目，终端里聊过的会话已经在侧栏里，接着聊或者新开都行。
+Pi mx Desktop 不是另一个 Agent。它在后台 Worker 里运行 pi SDK，读写的就是 CLI 用的那些文件：会话、模型登录、`settings.json`、已安装的扩展。打开项目，终端里聊过的会话已经在侧栏里，接着聊或者新开都行。
 
 ## 一图看全
 
@@ -112,7 +114,7 @@ Markdown、代码块、KaTeX 和长输出都在原位渲染。悬停消息可以
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/assets/readme/zh/architecture-dark.png" />
-  <img src="doc/assets/readme/zh/architecture-light.png" alt="终端 pi 与 pi Desktop 都读写 ~/.pi/agent；pi Desktop 由 Renderer、Main 进程和每个会话一个的 Worker 组成" width="100%" />
+  <img src="doc/assets/readme/zh/architecture-light.png" alt="终端 pi 与 Pi mx Desktop 都读写 ~/.pi/agent；Pi mx Desktop 由 Renderer、Main 进程和每个会话一个的 Worker 组成" width="100%" />
 </picture>
 
 界面层不直接调用 SDK：Main 进程把每个请求转给负责该会话的 Worker，由它在本机或 WSL 发行版里运行 pi SDK。会话、登录和设置都留在 `~/.pi/agent`，CLI 和桌面端可以轮流接着同一个会话聊。
@@ -131,12 +133,12 @@ Markdown、代码块、KaTeX 和长输出都在原位渲染。悬停消息可以
 
 | 平台 | 安装包 |
 |---|---|
-| Windows x64 | `pi.Desktop-Setup-<版本>-x64.exe`（安装版）或 `pi.Desktop-Portable-<版本>-x64.exe`（便携版） |
+| Windows x64 | `Pi mx-Setup-<版本>-x64.exe`（安装版）或 `Pi mx-Portable-<版本>-x64.exe`（便携版） |
 | macOS | Apple Silicon（`arm64`）与 Intel（`x64`）的 `.dmg` / `.zip` |
 | Linux x64 | `.AppImage` 或 `.deb` |
-| Android 9+（arm64） | `pi-remote-<version>-android-arm64.apk`，即手机应用 |
+| Android 9+（arm64） | 用你自己的签名密钥从 [`apps/mobile`](./apps/mobile) 构建，见「pi 在手机上」 |
 
-到 [Releases](https://github.com/justhil/pi-app/releases/latest) 下载，每个版本附带 `SHA256SUMS.txt` 校验和。应用自带 pi SDK，只需像使用终端 pi 一样登录一次模型服务商（凭据保存在 `~/.pi/agent`）。在「设置 → 运行时」可以切换到全局安装的 pi 版本。
+到 [Releases](https://github.com/q971668593/Pi-mx-Desktop/releases/latest) 下载，每个版本附带 `SHA256SUMS.txt` 校验和。应用自带 pi SDK，只需像使用终端 pi 一样登录一次模型服务商（凭据保存在 `~/.pi/agent`）。在「设置 → 运行时」可以切换到全局安装的 pi 版本。
 
 <details>
 <summary>从源码构建</summary>
@@ -144,8 +146,8 @@ Markdown、代码块、KaTeX 和长输出都在原位渲染。悬停消息可以
 需要 Node.js ≥ 22.19。
 
 ```bash
-git clone https://github.com/justhil/pi-app.git
-cd pi-app
+git clone https://github.com/q971668593/Pi-mx-Desktop.git
+cd Pi-mx-Desktop
 npm install
 npm run dev          # 开发模式
 npm run build        # 生产构建，输出到 out/
@@ -223,10 +225,14 @@ pi install npm:<包名>      # 或：pi install git:github.com/<owner>/<repo>
 
 ## 支持
 
-问题与反馈：[LinuxDo](https://linux.do/) 或 [GitHub Issues](https://github.com/justhil/pi-app/issues)。觉得好用的话，点个 ⭐ 能让更多 pi 用户找到它；也可以扫下方二维码赞助后续维护。
+问题与反馈：[GitHub Issues](https://github.com/q971668593/Pi-mx-Desktop/issues)。
 
-<img src="doc/assets/sponsor-qr.png" alt="赞助二维码" width="200" />
+## 致谢与来源
+
+本项目基于 [pi Desktop / pi-app](https://github.com/justhil/pi-app)（作者 [justhil](https://github.com/justhil)）开发，沿用 MIT 许可，原始版权声明保留在 [LICENSE](./LICENSE) 中。
+
+Agent 运行时来自 [pi](https://github.com/earendil-works/pi)（`@earendil-works/pi-coding-agent`，MIT）。上游更新通过 `upstream` remote 跟踪：`git fetch upstream && git merge upstream/main`。
 
 ## 许可证
 
-[MIT](LICENSE)
+[MIT](LICENSE) — 原始作品版权 (c) 2026 justhil；修改部分版权 (c) 2026 q971668593。

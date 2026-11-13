@@ -1,8 +1,8 @@
-# pi Desktop extension adapter docs (for AI / extension authors)
+# Pi mx Desktop extension adapter docs (for AI / extension authors)
 
 **[简体中文](./README.zh-CN.md)**
 
-Standalone docs for **pi Desktop compatibility layer v2**. Copy to any AI to author **`adapter.json`** for **pi npm extensions** without reading the whole pi-app tree.
+Standalone docs for **Pi mx Desktop compatibility layer v2**. Copy to any AI to author **`adapter.json`** for **pi npm extensions** without reading the whole pi-app tree.
 
 ## User guide (install, shortcuts, adapter list)
 
@@ -24,7 +24,7 @@ Internal design, audits, and architecture-skill playbook: local `docs/` (see `do
 ## Prompt for AI (paste as-is)
 
 ```text
-You are a pi Desktop extension adapter author. Use only doc/adapter-authoring-guide.md (and doc/adapter-layer-plan.md if needed).
+You are a Pi mx Desktop extension adapter author. Use only doc/adapter-authoring-guide.md (and doc/adapter-layer-plan.md if needed).
 
 Task: write or update adapter.json for npm extension "<package>".
 Known: <registerTool names, registerCommand, config paths, ctx.ui flows>.
@@ -48,9 +48,9 @@ If info is missing, list what to confirm from extension README/source first.
 
 ## Where to get it
 
-- Same repo as [pi-app](https://github.com/justhil/pi-app), path **`doc/`**.
+- Same repo as [Pi mx Desktop](https://github.com/q971668593/Pi-mx-Desktop), path **`doc/`**.
 - Browse on GitHub: `doc/adapter-authoring-guide.md`.
 
 ---
 
-*pi Desktop — pi core, desktop shell, declarative adapters.*
+*Pi mx Desktop — pi core, desktop shell, declarative adapters.*

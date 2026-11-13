@@ -1,27 +1,29 @@
 <div align="center">
 
-<img src="resources/icon.svg" alt="pi Desktop" width="72" height="72" />
+<img src="resources/pi-mx-icon.png" alt="Pi mx Desktop" width="72" height="72" />
 
-# pi Desktop
+# Pi mx Desktop
 
-**A desktop app for the [pi](https://github.com/earendil-works/pi) coding agent.**<br/>
-The same agent and the same `~/.pi/agent` you use in the terminal — with a timeline, Git review, a built-in terminal, and an Android app to keep going from your phone.
+**A desktop workbench for the [pi](https://github.com/earendil-works/pi) coding agent.**<br/>
+The same agent and the same `~/.pi/agent` you use in the terminal — with a timeline, Git review, a built-in terminal, and a phone app to keep going from your phone.
 
-[![Release](https://img.shields.io/github/v/release/justhil/pi-app?style=flat-square&color=7583b2&label=release)](https://github.com/justhil/pi-app/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/justhil/pi-app/total?style=flat-square&color=7583b2)](https://github.com/justhil/pi-app/releases)
-![Platforms](https://img.shields.io/badge/platform-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux%20%C2%B7%20Android-7583b2?style=flat-square)
-[![License](https://img.shields.io/github/license/justhil/pi-app?style=flat-square&color=7583b2)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/q971668593/Pi-mx-Desktop?style=flat-square&color=d97706&label=release)](https://github.com/q971668593/Pi-mx-Desktop/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/q971668593/Pi-mx-Desktop/total?style=flat-square&color=d97706)](https://github.com/q971668593/Pi-mx-Desktop/releases)
+![Platforms](https://img.shields.io/badge/platform-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-d97706?style=flat-square)
+[![License](https://img.shields.io/github/license/q971668593/Pi-mx-Desktop?style=flat-square&color=d97706)](LICENSE)
 
-**English** · [简体中文](./README.zh-CN.md) · [Download](https://github.com/justhil/pi-app/releases/latest) · [Getting started](./doc/guide/getting-started.md) · [Adapters](./doc/guide/adapters.en.md)
+**English** · [简体中文](./README.zh-CN.md) · [Download](https://github.com/q971668593/Pi-mx-Desktop/releases/latest) · [Getting started](./doc/guide/getting-started.md) · [Adapters](./doc/guide/adapters.en.md)
+
+<sub>Based on [pi Desktop](https://github.com/justhil/pi-app) by [justhil](https://github.com/justhil), MIT licensed.</sub>
 
 </div>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/assets/readme/en/hero-dark.png" />
-  <img src="doc/assets/readme/en/hero-light.png" alt="pi Desktop: a finished turn in the timeline, with the Git diff open in the Review panel" />
+  <img src="doc/assets/readme/en/hero-light.png" alt="Pi mx Desktop: a finished turn in the timeline, with the Git diff open in the Review panel" />
 </picture>
 
-pi Desktop is not another agent. It runs the pi SDK in a background worker and reads the same files as the CLI — sessions, model logins, `settings.json`, installed extensions. Open a project and the sessions you started in the terminal are already in the sidebar; continue any of them, or start a new one.
+Pi mx Desktop is not another agent. It runs the pi SDK in a background worker and reads the same files as the CLI — sessions, model logins, `settings.json`, installed extensions. Open a project and the sessions you started in the terminal are already in the sidebar; continue any of them, or start a new one.
 
 ## At a glance
 
@@ -112,7 +114,7 @@ Light and dark each take a preset — **Claude**, VS Code Light+, Codex Dark —
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/assets/readme/en/architecture-dark.png" />
-  <img src="doc/assets/readme/en/architecture-light.png" alt="Terminal pi and pi Desktop both read and write ~/.pi/agent; pi Desktop has a renderer, a main process, and one worker per session" width="100%" />
+  <img src="doc/assets/readme/en/architecture-light.png" alt="Terminal pi and Pi mx Desktop both read and write ~/.pi/agent; Pi mx Desktop has a renderer, a main process, and one worker per session" width="100%" />
 </picture>
 
 The renderer never talks to the SDK directly: the main process routes each request to the worker that owns the session, and that worker runs the pi SDK on your machine or inside a WSL distribution. Sessions, logins and settings stay in `~/.pi/agent`, so the CLI and the app can take turns on the same session.
@@ -131,12 +133,12 @@ The renderer never talks to the SDK directly: the main process routes each reque
 
 | Platform | Package |
 |---|---|
-| Windows x64 | `pi.Desktop-Setup-<version>-x64.exe` (installer) or `pi.Desktop-Portable-<version>-x64.exe` |
+| Windows x64 | `Pi mx-Setup-<version>-x64.exe` (installer) or `Pi mx-Portable-<version>-x64.exe` |
 | macOS | `.dmg` / `.zip` for Apple Silicon (`arm64`) and Intel (`x64`) |
 | Linux x64 | `.AppImage` or `.deb` |
-| Android 9+ (arm64) | `pi-remote-<version>-android-arm64.apk` — the phone app |
+| Android 9+ (arm64) | Built from [`apps/mobile`](./apps/mobile) with your own signing key — see [pi on your phone](#pi-on-your-phone) |
 
-Get them from [Releases](https://github.com/justhil/pi-app/releases/latest); each release lists SHA-256 checksums in `SHA256SUMS.txt`. The app bundles its own pi SDK; you only need to sign in to a model provider once, the same way you do for terminal pi (the credentials live in `~/.pi/agent`). Settings → Runtime can switch to a globally installed pi version.
+Get them from [Releases](https://github.com/q971668593/Pi-mx-Desktop/releases/latest); each release lists SHA-256 checksums in `SHA256SUMS.txt`. The app bundles its own pi SDK; you only need to sign in to a model provider once, the same way you do for terminal pi (the credentials live in `~/.pi/agent`). Settings → Runtime can switch to a globally installed pi version.
 
 <details>
 <summary>Build from source</summary>
@@ -144,8 +146,8 @@ Get them from [Releases](https://github.com/justhil/pi-app/releases/latest); eac
 Requires Node.js ≥ 22.19.
 
 ```bash
-git clone https://github.com/justhil/pi-app.git
-cd pi-app
+git clone https://github.com/q971668593/Pi-mx-Desktop.git
+cd Pi-mx-Desktop
 npm install
 npm run dev          # development
 npm run build        # production bundle in out/

@@ -1,7 +1,7 @@
 {
   "name": "pi-desktop",
   "version": "0.7.8",
-  "description": "pi Desktop - 桌面端 AI Agent GUI",
+  "description": "Pi mx Desktop — a desktop workbench for the pi coding agent",
   "main": "./out/main/index.js",
   "author": "pi-desktop",
   "license": "MIT",

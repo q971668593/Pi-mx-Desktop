@@ -2,14 +2,14 @@
 
 **[English](./getting-started.md)**
 
-面向第一次使用 **pi Desktop** 的开发者。截图：[../images/](../images/)（发布前将占位图换为 `overview.png`）。
+面向第一次使用 **Pi mx Desktop** 的开发者。截图：[../images/](../images/)（发布前将占位图换为 `overview.png`）。
 
 ---
 
 ## 1. 安装与启动
 
 ```bash
-git clone https://github.com/justhil/pi-app.git
+git clone https://github.com/q971668593/Pi-mx-Desktop.git
 cd pi-app
 npm install
 npm run dev
@@ -19,7 +19,7 @@ npm run dev
 
 **本地打 Windows 包**：`npm run icon:export && npm run package:win` → `dist/`
 
-**安装包下载**：[GitHub Releases](https://github.com/justhil/pi-app/releases/latest)（安装版 + 便携版）。
+**安装包下载**：[GitHub Releases](https://github.com/q971668593/Pi-mx-Desktop/releases/latest)（安装版 + 便携版）。
 
 ---
 
