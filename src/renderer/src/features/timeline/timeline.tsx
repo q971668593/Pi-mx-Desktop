@@ -56,7 +56,7 @@ import { TurnActivityBlock } from './turn-activity-block'
 import { shouldShowTimelineHonestyBanner } from '@renderer/lib/timeline-honesty'
 import { reloadCurrentSessionData } from '@renderer/lib/reload-current-session-data'
 import { EmptyState } from '@renderer/components/ui/empty-state'
-import { enrichPlainTextWithPaths } from './markdown-inline-paths'
+import { UserMessageText } from './user-message-text'
 import { AttachmentChip } from '@renderer/features/composer/attachment-chip'
 import { ClipboardImageChip } from './clipboard-image-chip'
 import { type AttachmentMeta, type Segment } from '@renderer/features/composer/attachments'
@@ -110,7 +110,7 @@ const TimelineItemBase = memo(function TimelineItem({
         >
           <div className="timeline-user-bubble">
             {segments.map((s: Segment, i: number) => {
-              if (s.type === 'text') return <span key={i}>{enrichPlainTextWithPaths(s.text)}</span>
+              if (s.type === 'text') return <span key={i}><UserMessageText text={s.text} /></span>
               if (s.type === 'clipboard-image') {
                 return <ClipboardImageChip key={i} path={s.path} name={s.name} className="mx-0.5" />
               }
