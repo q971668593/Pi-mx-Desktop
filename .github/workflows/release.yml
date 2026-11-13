@@ -260,15 +260,17 @@ jobs:
             ks="$RUNNER_TEMP/pi-remote-release.jks"
             printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$ks"
             echo "ANDROID_KEYSTORE_PATH=$ks" >> "$GITHUB_ENV"
+            echo "PI_REQUIRE_RELEASE_SIGNING=1" >> "$GITHUB_ENV"
           elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            echo "::error::ANDROID_KEYSTORE_BASE64 secret is missing; refusing to publish a debug-signed APK"
-            exit 1
+            # 没有签名密钥时跳过 Android，其余平台照常发布，避免首个 tag 整条流水线失败
+            echo "::warning::ANDROID_KEYSTORE_BASE64 secret is missing; skipping the Android APK for this release"
+            echo "ANDROID_APK=skip" >> "$GITHUB_ENV"
           else
             echo "::warning::Android signing secrets missing; building a debug-signed APK"
           fi
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then echo "PI_REQUIRE_RELEASE_SIGNING=1" >> "$GITHUB_ENV"; fi
 
       - name: Build APK
+        if: env.ANDROID_APK != 'skip'
         working-directory: apps/mobile
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -277,6 +279,7 @@ jobs:
         run: ./gradlew --no-daemon :androidApp:assembleRelease
 
       - name: Name and verify APK
+        if: env.ANDROID_APK != 'skip'
         run: |
           set -euo pipefail
           ver="$(node -p "require('./package.json').version")"
@@ -292,6 +295,7 @@ jobs:
         run: rm -f "$RUNNER_TEMP/pi-remote-release.jks"
 
       - name: Upload build artifacts
+        if: env.ANDROID_APK != 'skip'
         uses: actions/upload-artifact@v4
         with:
           name: pi-desktop-android-${{ github.ref_name }}
