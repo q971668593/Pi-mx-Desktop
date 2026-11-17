@@ -37,6 +37,7 @@ export function FileTreeRow({
     <div
       role="button"
       tabIndex={0}
+      data-file-tree-row="true"
       aria-expanded={isDirectory ? open : undefined}
       aria-current={selected ? 'true' : undefined}
       aria-label={gitKind ? `${name} · ${t(`tree.git.${gitKind}`)}` : name}
@@ -51,6 +52,7 @@ export function FileTreeRow({
         )
       }}
       onClick={(e) => {
+        e.currentTarget.focus()
         if (isDirectory) onToggle?.()
         onSelect(e)
       }}
@@ -81,7 +83,9 @@ export function FileTreeRow({
           className="chrome-icon-btn flex h-6 w-6 shrink-0 items-center justify-center rounded-md"
           onClick={(e) => {
             e.stopPropagation()
+            e.currentTarget.parentElement?.focus()
             onToggle?.()
+            onSelect(e)
           }}
         >
           <ChevronRight

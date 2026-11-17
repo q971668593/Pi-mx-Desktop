@@ -2,11 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { ChevronRight, CloudDownload, Eye, EyeOff, Trash2 } from '@renderer/components/icons'
 import { cn } from '@renderer/lib/utils'
 import type { PiModelsConfigPayload, PiModelsProviderConfig } from '@shared/ipc-contract'
-import {
-  PROVIDER_PRESETS,
-  guessPresetForProvider,
-  type ProviderPreset,
-} from '@renderer/features/settings/model-provider-presets'
+import { guessPresetForProvider } from '@renderer/features/settings/model-provider-presets'
 import { ModelCatalogPicker } from '@renderer/features/settings/model-catalog-picker'
 import { ModelEntryEditor, type LocalModelEntry } from '@renderer/features/settings/model-entry-editor'
 import {
@@ -34,7 +30,6 @@ export function ModelsProviderCard({
   onToggleApiKeyVisible,
   expandedLocalModel,
   onToggleLocalModel,
-  onApplyPreset,
   onUpdateProvider,
   onFetchRemote,
   onManualAdd,
@@ -56,7 +51,6 @@ export function ModelsProviderCard({
   onToggleApiKeyVisible: () => void
   expandedLocalModel: Record<string, boolean>
   onToggleLocalModel: (rowKey: string) => void
-  onApplyPreset: (preset: ProviderPreset) => void
   onUpdateProvider: (patch: Partial<PiModelsProviderConfig>) => void
   onFetchRemote: () => void
   onManualAdd: () => void
@@ -110,25 +104,7 @@ export function ModelsProviderCard({
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <label className="mb-1 flex items-center justify-between text-[11.5px] text-foreground-secondary">
-                  {t('models.labelName')}
-                  <select
-                    aria-label={t('models.changeTemplate')}
-                    className="max-w-[10rem] bg-transparent text-right text-[11.5px] text-foreground-secondary outline-none hover:text-foreground"
-                    value=""
-                    onChange={(e) => {
-                      const pr = PROVIDER_PRESETS.find((x) => x.id === e.target.value)
-                      if (pr) onApplyPreset(pr)
-                    }}
-                  >
-                    <option value="">{t('models.fillFromTemplate')}</option>
-                    {PROVIDER_PRESETS.map((pr) => (
-                      <option key={pr.id} value={pr.id}>
-                        {pr.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <label className="mb-1 block text-[11.5px] text-foreground-secondary">{t('models.labelName')}</label>
                 <input
                   className={cn(inputCls, fieldCls)}
                   value={p.name || ''}

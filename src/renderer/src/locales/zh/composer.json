@@ -221,12 +221,26 @@
         "name": "我的 Chrome",
         "desc": "在你自己的 Chrome（沿用登录状态）的独立窗口里操作网页",
         "short": "Chrome"
+      },
+      "web-search": {
+        "name": "网络搜索",
+        "desc": "联网搜索并读取网页；请在设置 → 适配器 → Pi Search 配置搜索服务和密钥",
+        "short": "搜索"
+      },
+      "computer": {
+        "name": "电脑控制",
+        "desc": "允许 AI 查看并操作 Windows 桌面。仅在可信对话中启用",
+        "short": "电脑"
       }
     },
     "reasons": {
       "browser-panel-off": "先在「设置 → 右侧面板」打开浏览器",
-      "chrome-off": "先在「设置 → 浏览器」打开「我的 Chrome」并配对扩展"
+      "chrome-off": "先在「设置 → 浏览器」打开「我的 Chrome」并配对扩展",
+      "web-search-not-installed": "请先在设置 → 插件中安装网络搜索；随后在设置 → 适配器配置 Pi Search",
+      "computer-use-not-installed": "请先在设置 → 插件中安装电脑控制扩展",
+      "computer-use-platform": "电脑控制需要 Windows 11 x64"
     },
+    "computerConfirm": "电脑控制可以查看和操作真实的 Windows 桌面。只对可信任务启用，并在发送消息、删除文件、付款或修改账户设置前要求你确认。现在为本对话启用吗？",
     "enabledTitle": "已启用：{{names}}",
     "cacheWarming": {
       "group": "全部会话",
@@ -239,11 +253,11 @@
     "browserMode": {
       "label": "浏览器",
       "off": "关",
-      "builtin": "内置",
+      "builtin": "本应用内置",
       "chrome": "我的 Chrome",
       "desc": {
         "off": "AI 不使用浏览器",
-        "builtin": "在右侧内置浏览器面板里读取和操作网页",
+        "builtin": "操作本应用右侧的浏览器；你能实时看见，并可随时停止 AI 接管网页。",
         "chrome": "在你自己的 Chrome（沿用登录状态）的独立窗口里操作网页"
       }
     }

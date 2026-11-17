@@ -49,7 +49,7 @@ export async function discardGitChanges(cwd: string, tracked: string[], untracke
     }
   }
   if (!tracked.length) return { ok: true, stdout: '' }
-  const restored = await git(cwd, ['restore', '--worktree', '--source=HEAD', '--', ...tracked])
+  const restored = await git(cwd, ['restore', '--staged', '--worktree', '--source=HEAD', '--', ...tracked])
   const operation = await currentOperation(cwd)
   if (!operation) return restored
   const removed = await git(cwd, ['rm', '-f', '--', ...tracked])

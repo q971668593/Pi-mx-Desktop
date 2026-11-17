@@ -7,6 +7,7 @@ import { SessionTreeGraphColumn } from './session-tree-graph-column'
 
 export type SessionTreeNode = {
   id: string
+  parentId?: string | null
   depth: number
   label?: string
   entryType: string
@@ -36,8 +37,7 @@ export type TreeFilterMode = 'default' | 'no-tools' | 'user-only' | 'labeled-onl
 
 /** Filter tabs; `labelKey` is an i18n key. */
 export const TREE_FILTER_OPTS: { key: TreeFilterMode; labelKey: string }[] = [
-  { key: 'default', labelKey: 'timeline:treeFilterDefault' },
-  { key: 'user-only', labelKey: 'timeline:treeFilterUser' },
+  { key: 'user-only', labelKey: 'timeline:treeFilterTurns' },
   { key: 'all', labelKey: 'timeline:treeFilterAll' },
 ]
 

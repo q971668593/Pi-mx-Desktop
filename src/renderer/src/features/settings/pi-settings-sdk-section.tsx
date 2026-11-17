@@ -3,11 +3,10 @@ import { cn } from '@renderer/lib/utils'
 import { btnOutline, btnPrimary, selectCls } from './settings-controls'
 import { type PiInfo, type SdkStatus } from './pi-settings-shared'
 
-type EnvKind = 'builtin' | 'global' | 'user'
+type EnvKind = 'builtin' | 'global'
 
 /**
- * pi runtime versions: one tile per environment (built-in / global npm / standalone), the active
- * one highlighted. Pick a tile, then switch; upgrading installs into the standalone environment.
+ * Pi runs either from the app bundle or from npm's global installation.
  */
 export function PiSettingsSdkSection({
   info,
@@ -53,17 +52,10 @@ export function PiSettingsSdkSection({
       label: t('settings:pi.kindGlobal'),
       version: sdkStatus?.globalVersion,
       missing: t('settings:pi.notDetected'),
-      disabled: !sdkStatus?.globalVersion,
-    },
-    {
-      kind: 'user',
-      label: t('settings:pi.kindUser'),
-      version: sdkStatus?.userVersion,
-      missing: t('settings:pi.notInstalled'),
-      disabled: !sdkStatus?.userVersion,
+      disabled: false,
     },
   ]
-  const canSwitch = !switching && !installing && envTarget !== active && !tiles.find((tile) => tile.kind === envTarget)?.disabled
+  const canSwitch = !switching && !installing && envTarget !== active && (envTarget === 'builtin' || !!sdkStatus?.globalVersion)
 
   return (
     <div className="pi-runtime">
@@ -107,7 +99,7 @@ export function PiSettingsSdkSection({
 
       {sdkStatus?.active?.fallbackReason && (
         <div className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-          {sdkStatus.active.kind === 'user' ? t('settings:pi.fallbackUser') : t('settings:pi.fallbackGlobal')}
+          {t('settings:pi.fallbackGlobal')}
         </div>
       )}
       {sdkStatus?.workerFallback && (
@@ -122,12 +114,12 @@ export function PiSettingsSdkSection({
         <button type="button" className={btnOutline} disabled={!canSwitch} onClick={() => onSwitchEnv(envTarget)}>
           {switching ? t('settings:pi.switching') : t('settings:pi.switchTo')}
         </button>
-        {!isWslRuntime && (
+        {!isWslRuntime && envTarget === 'global' && (
           <>
             <span className="mx-1 h-4 w-px bg-border/70" aria-hidden />
             <select
               className={cn(selectCls, 'min-w-[9rem]')}
-              aria-label={t('settings:pi.upgradeEnv')}
+              aria-label={t('settings:pi.globalVersion')}
               value={selectedVersion}
               disabled={installing || !sdkStatus?.npmAvailable}
               onChange={(e) => setSelectedVersion(e.target.value)}
@@ -146,10 +138,10 @@ export function PiSettingsSdkSection({
             <button
               type="button"
               className={btnPrimary}
-              disabled={installing || !selectedVersion || !sdkStatus?.npmAvailable}
+              disabled={installing || !selectedVersion || !sdkStatus?.npmAvailable || (sdkStatus?.globalVersion === selectedVersion && active === 'global')}
               onClick={onInstall}
             >
-              {installing ? t('settings:pi.installing') : t('settings:pi.upgradeSwitch')}
+              {installing ? t('settings:pi.installing') : sdkStatus?.globalVersion ? t('settings:pi.installGlobalSwitch') : t('settings:pi.installGlobal')}
             </button>
             {!sdkStatus?.npmAvailable && sdkStatus ? (
               <span className="text-[11.5px] text-amber-600 dark:text-amber-400">{t('settings:pi.npmNotDetected')}</span>

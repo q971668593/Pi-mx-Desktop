@@ -49,6 +49,23 @@ export const workspaceFsCreateSchema = z.object({
   isDirectory: z.boolean().optional(),
 })
 
+export const workspaceFsCopyFileSchema = z.object({
+  workspaceRoot: z.string().min(1),
+  sourcePath: z.string().min(1),
+  targetDirectory: z.string(),
+  sourceIsWorkspaceRelative: z.boolean().optional(),
+})
+
+export const workspaceFsClipboardDebugSchema = z.object({
+  stage: z.enum([
+    'tree-focus', 'tree-select', 'shortcut-keydown', 'copy-keydown', 'copy-captured', 'paste-keydown', 'paste-event',
+    'paste-files', 'copy-start', 'copy-complete', 'copy-failed', 'app-blur',
+  ]),
+  source: z.string().max(500).optional(),
+  target: z.string().max(500).optional(),
+  detail: z.string().max(1000).optional(),
+}).strict()
+
 export const sessionCompactSchema = z.object({
   sessionId: z.string().optional(),
   sessionFile: z.string().trim().min(1),

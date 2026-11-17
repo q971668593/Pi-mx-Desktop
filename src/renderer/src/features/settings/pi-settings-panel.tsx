@@ -55,7 +55,7 @@ export function PiSettingsPanel() {
   const [installing, setInstalling] = useState(false)
   const [installOutput, setInstallOutput] = useState<string[]>([])
   const [switching, setSwitching] = useState(false)
-  const [envTarget, setEnvTarget] = useState<'builtin' | 'global' | 'user'>('builtin')
+  const [envTarget, setEnvTarget] = useState<'builtin' | 'global'>('builtin')
   const currentWorkspace = useUIStore((s) => s.currentWorkspace)
   const { draft: settingsDraft } = useSettingsDraft()
   const isWslRuntime = settingsDraft?.agentRuntime?.mode === 'wsl' && !!settingsDraft?.agentRuntime?.distro
@@ -105,7 +105,7 @@ export function PiSettingsPanel() {
     const refreshArg = opts?.refresh ? { refresh: true } : {}
     const status = await ipcClient.invoke('sdk.status', refreshArg)
     setSdkStatus(status)
-    setEnvTarget(status?.active?.kind || 'builtin')
+    setEnvTarget(status?.active?.kind === 'global' ? 'global' : 'builtin')
     const avail = await ipcClient.invoke('sdk.listAvailable', refreshArg)
     setRegistry(avail)
     setSelectedVersion((cur) => cur || (avail?.latest ?? ''))
@@ -131,7 +131,7 @@ export function PiSettingsPanel() {
     setInstalling(true)
     setInstallOutput([])
     try {
-      const res = await ipcClient.invoke('sdk.install', { version: selectedVersion })
+      const res = await ipcClient.invoke('sdk.installGlobalCli', { version: selectedVersion })
       if (res?.ok === false) {
         toast.error(res.error || t('settings:pi.upgradeFailed'))
         return
@@ -146,7 +146,7 @@ export function PiSettingsPanel() {
       } catch (error) {
         console.error('sdk refresh after install failed', error)
       }
-      toast.success(t('settings:pi.upgradeSuccess'))
+      toast.success(t('settings:pi.installGlobalSuccess'))
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : t('settings:pi.upgradeFailed'))
     } finally {
@@ -155,7 +155,7 @@ export function PiSettingsPanel() {
   }, [loadModelsForDropdown, reloadSdk, selectedVersion, t])
 
   const onSwitchEnv = useCallback(
-    async (target: 'builtin' | 'global' | 'user') => {
+    async (target: 'builtin' | 'global') => {
       setSwitching(true)
       try {
         const res = await ipcClient.invoke('sdk.switch', { target })
@@ -164,7 +164,7 @@ export function PiSettingsPanel() {
           return
         }
         setSdkStatus((current) => current ? { ...current, active: res.active } : current)
-        setEnvTarget(res.active.kind)
+        setEnvTarget(res.active.kind === 'global' ? 'global' : 'builtin')
         try {
           await Promise.all([
             reloadSdk({ refresh: true }),
@@ -174,12 +174,7 @@ export function PiSettingsPanel() {
           console.error('sdk refresh after switch failed', error)
         }
         const activeKind = res.active.kind
-        const label =
-          activeKind === 'builtin'
-            ? t('settings:pi.switchSuccessBuiltin')
-            : activeKind === 'global'
-              ? t('settings:pi.switchSuccessGlobal')
-              : t('settings:pi.switchSuccessUser')
+        const label = activeKind === 'builtin' ? t('settings:pi.switchSuccessBuiltin') : t('settings:pi.switchSuccessGlobal')
         toast.success(label)
       } catch (e: unknown) {
         toast.error(e instanceof Error ? e.message : t('settings:pi.switchFailed'))

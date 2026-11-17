@@ -127,6 +127,9 @@
   },
   "agent": {
     "acting": "AI · {{action}}",
+    "takeover": "停止并接管",
+    "takeoverPending": "正在停止…",
+    "takeoverDone": "AI 已停止操作，你现在可以直接使用浏览器。",
     "helpTitle": "AI 需要你操作一下",
     "helpTarget": "位置：{{target}}",
     "helpUntil": "满足条件后自动继续：{{until}}",

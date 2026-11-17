@@ -127,6 +127,9 @@
   },
   "agent": {
     "acting": "AI · {{action}}",
+    "takeover": "Stop and take over",
+    "takeoverPending": "Stopping…",
+    "takeoverDone": "The AI has stopped. You can use the browser now.",
     "helpTitle": "AI needs you",
     "helpTarget": "At: {{target}}",
     "helpUntil": "Continues by itself when {{until}}",

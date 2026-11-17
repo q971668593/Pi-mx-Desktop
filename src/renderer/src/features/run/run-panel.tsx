@@ -21,6 +21,10 @@ function formatDuration(ms: number): string {
   return `${m}m ${rs}s`
 }
 
+function formatWaitDuration(ms: number): string {
+  return ms < 10_000 ? `${(ms / 1000).toFixed(1)}s` : formatDuration(ms)
+}
+
 type RunVisualStatus = 'idle' | 'running' | 'failed' | 'tool' | 'thinking'
 
 function resolveVisualStatus(params: {
@@ -131,6 +135,9 @@ export function RunPanel() {
             <span className="panel-tag">{t('run:thinking', { level: formatThinkingChip(thinkingLevel) })}</span>
           ) : null}
         </div>
+        <dl className="mt-2">
+          <div className="panel-kv"><dt>{t('run:firstOutputWait')}</dt><dd>{runState.firstOutputDelayMs != null ? formatWaitDuration(runState.firstOutputDelayMs) : isRunning ? t('run:waitingOutput') : '—'}</dd></div>
+        </dl>
         {isRunning && runState.activeTool && (
           <div className="mt-2 flex items-start gap-1.5 rounded-md px-2 py-1.5" style={{ background: 'color-mix(in srgb, var(--bg-2) 55%, transparent)' }}>
             <Wrench className="mt-0.5 h-3 w-3 shrink-0 text-foreground-secondary/70" />
@@ -176,8 +183,8 @@ export function RunPanel() {
           <dl className="mt-2">
             {tokPerSec != null || isRunning ? (
               <div className="panel-kv">
-                <dt>{t('run:genSpeed')}</dt>
-                <dd>{tokPerSec != null ? `${tokPerSec} tok/s` : t('run:waitingOutput')}</dd>
+                <dt title={t('run:genSpeedHint')}>{t('run:genSpeed')}</dt>
+                <dd title={t('run:genSpeedHint')}>{tokPerSec != null ? `~${tokPerSec} tok/s` : t('run:waitingOutput')}</dd>
               </div>
             ) : null}
             {runState.toolCount > 0 ? (

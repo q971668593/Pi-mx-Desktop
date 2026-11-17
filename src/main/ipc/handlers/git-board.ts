@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, relative, resolve, sep } from 'node:path'
 import { authorizeProjectCwd } from '../../trusted-workspace'
 import { gitExec, isGitRepository, runGit } from '../../git-workspace'
@@ -12,7 +12,7 @@ import { registerHandlerWithSchema } from '../registry'
 const cwdSchema = z.object({ cwd: z.string().min(1) }).strict()
 const refSchema = z.object({ cwd: z.string().min(1), ref: z.string().trim().min(1).max(300) }).strict()
 const commitSchema = z.object({ cwd: z.string().min(1), message: z.string().trim().min(1).max(20_000), paths: z.array(z.string().min(1)).max(5000).optional() }).strict()
-const commitActionSchema = commitSchema.extend({ action: z.enum(['commit', 'stage-and-commit', 'commit-and-push']).optional() }).strict()
+const commitActionSchema = commitSchema.extend({ action: z.enum(['commit', 'stage-and-commit', 'commit-and-push']).optional(), remote: z.string().trim().min(1).max(250).optional() }).strict()
 const partialSchema = z.object({ cwd: z.string().min(1), path: z.string().min(1), hunks: z.array(z.string().min(1)).min(1).max(200) }).strict()
 const mergeSchema = z.object({ cwd: z.string().min(1), ref: z.string().trim().min(1).max(300), noFf: z.boolean().optional() }).strict()
 const pathsSchema = z.object({ cwd: z.string().min(1), paths: z.array(z.string().min(1)).min(1).max(5000) }).strict()
@@ -28,6 +28,11 @@ function safeRef(value: string): string | null {
 function safePaths(paths: string[] | undefined): string[] | null {
   if (!paths) return []
   return paths.every((path) => SAFE_PATH.test(path)) ? paths : null
+}
+
+function isInside(root: string, target: string): boolean {
+  const path = relative(root, target)
+  return path === '' || (!path.startsWith('..') && !path.split(sep).includes('..'))
 }
 
 async function authorized(cwd: string) {
@@ -58,12 +63,10 @@ function parseGraph(stdout: string) {
 const COMMIT_PROMPT = `根据 git diff 写一条简短提交说明。只输出说明正文，不要代码块或解释。第一行不超过 72 个字符，需要时再用短正文说明原因。不要编造未出现的改动。`
 
 export function registerGitBoardHandlers(): void {
-  registerHandlerWithSchema('ipc:gitBoard.overview', z.object({ cwd: z.string().min(1), skip: z.number().int().min(0).max(100_000).optional(), ref: z.string().trim().max(300).optional(), author: z.string().trim().max(200).optional() }).strict(), async ({ cwd, skip, ref, author }) => {
+  registerHandlerWithSchema('ipc:gitBoard.overview', z.object({ cwd: z.string().min(1), skip: z.number().int().min(0).max(100_000).optional(), query: z.string().trim().max(300).optional(), author: z.string().trim().max(200).optional() }).strict(), async ({ cwd, skip, query, author }) => {
     const repo = await authorized(cwd)
     if (!repo.ok) return { ok: false, error: repo.error }
-    const reference = ref?.trim() ? safeRef(ref) : null
-    if (ref?.trim() && !reference) return { ok: false, error: 'invalid_ref' }
-    const graphArgs = ['log', '--topo-order', '--decorate=full', ...(reference ? [reference] : ['--all']), ...(author?.trim() ? [`--author=${author.trim()}`] : []), '--max-count=301', `--skip=${skip || 0}`, '--format=%H%x1f%h%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%s%x1f%D', '-z']
+    const graphArgs = ['log', '--topo-order', '--decorate=full', '--all', ...(query?.trim() ? ['--fixed-strings', `--grep=${query.trim()}`] : []), ...(author?.trim() ? [`--author=${author.trim()}`] : []), '--max-count=301', `--skip=${skip || 0}`, '--format=%H%x1f%h%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%s%x1f%D', '-z']
     const [status, branches, graph, stashes, tags, remotes, worktrees, operation] = await Promise.all([
       git(repo.cwd, ['status', '--porcelain=v2', '-b', '--untracked-files=all', '-z']),
       git(repo.cwd, ['for-each-ref', '--sort=-committerdate', '--format=%(refname)%00%(refname:short)%00%(objectname)%00%(objectname:short)%00%(upstream:short)%00%(upstream:track)%00%(subject)', 'refs/heads', 'refs/remotes']),
@@ -115,11 +118,28 @@ export function registerGitBoardHandlers(): void {
     return staged.ok ? { ok: true, stdout: staged.stdout } : staged
   })
 
-  registerHandlerWithSchema('ipc:gitBoard.commit', commitActionSchema, async ({ cwd, message, paths, action }) => {
+  registerHandlerWithSchema('ipc:gitBoard.commit', commitActionSchema, async ({ cwd, message, paths, action, remote }) => {
     const repo = await authorized(cwd)
     const safe = safePaths(paths)
     if (!repo.ok || !safe) return { ok: false, error: repo.ok ? 'invalid_path' : repo.error }
+    let pushArgs: string[] | null = null
     if (action === 'commit-and-push') {
+      const status = await git(repo.cwd, ['status', '--porcelain=v2', '-b'])
+      if (!status.ok) return status
+      const branchState = parseStatus(status.stdout)
+      if (!branchState.branch) return { ok: false, error: 'detached_head' }
+      if (branchState.upstream) {
+        pushArgs = ['push']
+      } else {
+        const remotesResult = await git(repo.cwd, ['remote'])
+        if (!remotesResult.ok) return remotesResult
+        const remotes = remotesResult.stdout.split(/\r?\n/).map((item) => item.trim()).filter(Boolean)
+        if (!remotes.length) return { ok: false, error: 'no_remote' }
+        const targetRemote = remote ? safeRef(remote) : remotes.length === 1 ? remotes[0] : null
+        if (!targetRemote) return { ok: false, error: 'remote_required' }
+        if (!remotes.includes(targetRemote)) return { ok: false, error: 'invalid_remote' }
+        pushArgs = ['push', '-u', targetRemote, branchState.branch]
+      }
       const staged = await git(repo.cwd, ['add', '-A'])
       if (!staged.ok) return staged
     } else if (action === 'stage-and-commit') {
@@ -134,26 +154,48 @@ export function registerGitBoardHandlers(): void {
       if (!staged.ok) return staged
     }
     const committed = await git(repo.cwd, ['commit', '-m', message])
-    if (!committed.ok || action !== 'commit-and-push') return committed
-    const status = await git(repo.cwd, ['status', '--porcelain=v2', '-b'])
-    if (!status.ok) return status
-    const upstream = status.stdout.match(/^# branch\.upstream (.+)$/m)?.[1]
-    if (upstream) return git(repo.cwd, ['push'])
-    const branch = status.stdout.match(/^# branch\.head (.+)$/m)?.[1]
-    const remote = branch ? safeRef(branch) : null
-    if (!remote) return { ok: false, error: 'detached_head' }
-    const remotes = await git(repo.cwd, ['remote'])
-    const remoteName = remotes.ok ? safeRef(remotes.stdout.split(/\r?\n/).find(Boolean) || '') : null
-    return remoteName ? git(repo.cwd, ['push', '-u', remoteName, remote]) : { ok: false, error: 'no_remote' }
+    if (!committed.ok || !pushArgs) return committed
+    const pushed = await git(repo.cwd, pushArgs)
+    return pushed.ok
+      ? { ...pushed, committed: true, pushed: true }
+      : { ...pushed, committed: true, pushed: false }
   })
 
   registerHandlerWithSchema('ipc:gitBoard.suggestCommit', cwdSchema.extend({ prompt: z.string().trim().max(8000).optional() }), async ({ cwd, prompt }) => {
     const repo = await authorized(cwd)
     if (!repo.ok) return repo
-    const diff = runGit(repo.cwd, ['diff', '--cached', '--stat', '--patch', '--', '.'], { maxBuffer: 300_000 })
-    const source = diff.ok && diff.stdout.trim() ? diff : runGit(repo.cwd, ['diff', '--stat', '--patch'], { maxBuffer: 300_000 })
-    if (!source.ok || !source.stdout.trim()) return { ok: false, error: 'no_changes' }
-    return completeWithPluginModel({ system: prompt || COMMIT_PROMPT, user: source.stdout.slice(0, 80_000), maxTokens: 1500, temperature: 0.2 })
+    const staged = runGit(repo.cwd, ['diff', '--cached', '--stat', '--patch', '--', '.'], { maxBuffer: 300_000 })
+    const unstaged = runGit(repo.cwd, ['diff', '--stat', '--patch', '--', '.'], { maxBuffer: 300_000 })
+    if (!staged.ok) return staged
+    if (!unstaged.ok) return unstaged
+    const untracked = runGit(repo.cwd, ['ls-files', '--others', '--exclude-standard', '-z'], { maxBuffer: 300_000 })
+    if (!untracked.ok) return untracked
+    const sections = [staged.stdout.trim(), unstaged.stdout.trim()].filter(Boolean)
+    const root = await realpath(repo.cwd).catch(() => null)
+    let remaining = 60_000
+    for (const path of untracked.stdout.split('\0').filter((item) => item && SAFE_PATH.test(item))) {
+      if (remaining <= 0) break
+      const absolute = resolve(repo.cwd, path)
+      const target = await realpath(absolute).catch(() => null)
+      if (!root || !target || !isInside(root, target)) continue
+      const info = await lstat(absolute).catch(() => null)
+      if (!info?.isFile() || info.size > 100_000) {
+        sections.push(`Untracked file: ${path} (${info?.isFile() ? 'content omitted: file too large' : 'content omitted: not a regular file'})`)
+        continue
+      }
+      const content = await readFile(absolute).catch(() => null)
+      if (!content) continue
+      if (content.includes(0)) {
+        sections.push(`Untracked file: ${path} (binary file; content omitted)`)
+        continue
+      }
+      const text = content.toString('utf8').slice(0, Math.min(remaining, 12_000))
+      sections.push(`Untracked file: ${path}\n${text}`)
+      remaining -= text.length
+    }
+    const source = sections.filter(Boolean).join('\n\n')
+    if (!source) return { ok: false, error: 'no_changes' }
+    return completeWithPluginModel({ system: prompt || COMMIT_PROMPT, user: source.slice(0, 80_000), maxTokens: 1500, temperature: 0.2 })
   })
 
   registerHandlerWithSchema('ipc:gitBoard.sync', z.object({ cwd: z.string().min(1), action: z.enum(['fetch', 'pull', 'push']) }).strict(), async ({ cwd, action }) => {
@@ -384,12 +426,24 @@ export function registerGitBoardHandlers(): void {
       }),
     }
   })
+
+  registerHandlerWithSchema('ipc:gitBoard.checkoutCommit', refSchema, async ({ cwd, ref }) => {
+    const repo = await authorized(cwd)
+    if (!repo.ok || !/^[0-9a-f]{7,64}$/i.test(ref)) return { ok: false, error: 'invalid_ref' }
+    const exists = await git(repo.cwd, ['cat-file', '-e', `${ref}^{commit}`])
+    if (!exists.ok) return { ok: false, error: 'invalid_ref' }
+    const status = await git(repo.cwd, ['status', '--porcelain', '--untracked-files=all'])
+    if (!status.ok) return status
+    if (status.stdout.trim()) return { ok: false, error: 'working_tree_dirty' }
+    return git(repo.cwd, ['switch', '--detach', ref])
+  })
 }
 
 function parseBranchRefs(stdout: string, currentBranch: string) {
   return stdout.split(/\r?\n/).filter(Boolean).flatMap((line) => {
     const [refname, name, hash, short, upstream, track, subject] = line.split('\0')
-    if (!name || name.endsWith('/HEAD') || (!refname.startsWith('refs/heads/') && !refname.startsWith('refs/remotes/'))) return []
+    // `origin/HEAD` is a symbolic alias for the remote's default branch, not a branch itself.
+    if (!name || refname.endsWith('/HEAD') || (!refname.startsWith('refs/heads/') && !refname.startsWith('refs/remotes/'))) return []
     return [{
       name,
       kind: refname.startsWith('refs/heads/') ? 'local' as const : 'remote' as const,

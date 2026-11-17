@@ -58,19 +58,28 @@ export function WorkspaceFilesPanel() {
   const [collapseEpoch, setCollapseEpoch] = useState(0)
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0)
   const [sourceLocation, setSourceLocation] = useState<{ rel: string; line: number } | null>(null)
+  const [gitDiffPreview, setGitDiffPreview] = useState<{ rel: string; patch: string; staged: boolean; status: string } | null>(null)
   const [menu, setMenu] = useState<FilesCtxTarget | null>(null)
   const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null)
   const [renameOpen, setRenameOpen] = useState(false)
   const [renameValue, setRenameValue] = useState('')
   const [createTarget, setCreateTarget] = useState<{ rel: string; isDirectory: boolean } | null>(null)
+  const [treeSelection, setTreeSelection] = useState<{ rel: string; isDirectory: boolean } | null>(null)
+  const [copiedTreeFile, setCopiedTreeFile] = useState<string | null>(null)
 
-  const selectedPath = activeTab?.rel ?? null
+  const selectedPath = (treeSelection?.isDirectory ? treeSelection.rel : null) ?? activeTab?.rel ?? null
   const previewPath = activeTab?.rel ?? null
   const explorerHidden = explorerCollapsed && !!activeTab
 
   useEffect(() => {
     try { localStorage.setItem(preferenceKey, JSON.stringify({ showDotfiles, explorerCollapsed, searchQuery })) } catch { void 0 }
   }, [preferenceKey, showDotfiles, explorerCollapsed, searchQuery])
+
+  useEffect(() => {
+    setTreeSelection(null)
+    setCopiedTreeFile(null)
+    setGitDiffPreview(null)
+  }, [workspaceRoot])
 
   useEffect(() => {
     if (!workspaceRoot || !searchQuery.trim()) {
@@ -151,7 +160,12 @@ export function WorkspaceFilesPanel() {
 
   const onSelectPath = useCallback(
     (rel: string, isDirectory: boolean, opts?: { openInNewTab?: boolean }) => {
+      void ipcClient.invoke('workspace.fs.clipboardDebug', {
+        stage: 'tree-select', target: rel, detail: isDirectory ? 'directory' : 'file',
+      }).catch(() => undefined)
+      setTreeSelection(isDirectory ? { rel, isDirectory: true } : null)
       if (isDirectory) return
+      setGitDiffPreview(null)
       setSourceLocation(null)
       const name = rel.split('/').pop() || rel
       openFile(rel, name, opts?.openInNewTab ? 'new-tab' : 'replace')
@@ -162,12 +176,155 @@ export function WorkspaceFilesPanel() {
     [openFile, filesPreviewChatExpand],
   )
 
+  const recordClipboardDebug = useCallback((
+    stage: string,
+    details: { source?: string; target?: string; detail?: string } = {},
+  ) => {
+    const entry = { stage, ...details }
+    console.info('[workspace-file-paste]', entry)
+    void ipcClient.invoke('workspace.fs.clipboardDebug', entry).catch((error) => {
+      console.warn('[workspace-file-paste] log IPC failed', error)
+    })
+  }, [])
+
+  const pasteFilesIntoSelection = useCallback(async (sourcePaths: string[], sourceIsWorkspaceRelative: boolean) => {
+    if (!workspaceRoot || sourcePaths.length === 0) {
+      recordClipboardDebug('paste-files', { detail: `ignored: root=${!!workspaceRoot}, count=${sourcePaths.length}` })
+      return
+    }
+    const selected = treeSelection
+    const targetDirectory = selected?.isDirectory
+      ? selected.rel
+      : selected?.rel.includes('/')
+        ? selected.rel.slice(0, selected.rel.lastIndexOf('/'))
+        : '.'
+    let copied = 0
+    let collision = 0
+    let failed = 0
+    for (const sourcePath of sourcePaths) {
+      const sourceLabel = sourceIsWorkspaceRelative
+        ? sourcePath
+        : sourcePath.split(/[\\/]/).pop() || 'unknown'
+      recordClipboardDebug('copy-start', { source: sourceLabel, target: targetDirectory })
+      const result = await ipcClient.invoke('workspace.fs.copyFile', {
+        workspaceRoot,
+        sourcePath,
+        targetDirectory,
+        sourceIsWorkspaceRelative,
+      })
+      if (result?.ok) {
+        copied += 1
+        recordClipboardDebug('copy-complete', { source: sourceLabel, target: targetDirectory })
+      } else {
+        if (result?.error === 'target_exists') collision += 1
+        else failed += 1
+        recordClipboardDebug('copy-failed', { source: sourceLabel, target: targetDirectory, detail: String(result?.error || 'no result') })
+      }
+    }
+    if (copied) {
+      setTreeEpoch((n) => n + 1)
+      toast.success(t(copied === 1 ? 'toast.pastedOne' : 'toast.pastedMany', { count: copied }))
+    }
+    if (collision) toast.warning(t(collision === 1 ? 'toast.pasteConflictOne' : 'toast.pasteConflictMany', { count: collision }))
+    if (failed) toast.error(t(failed === 1 ? 'toast.pasteFailedOne' : 'toast.pasteFailedMany', { count: failed }))
+  }, [workspaceRoot, treeSelection, t, recordClipboardDebug])
+
+  useEffect(() => {
+    if (activePanel !== 'files') return
+    const hasTreeFocus = (target: EventTarget | null) => {
+      if (!(target instanceof Element)) return false
+      return !!target.closest('[data-file-tree-row="true"]')
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) return
+      const key = event.key.toLowerCase()
+      if (key !== 'c' && key !== 'v') return
+      const treeFocus = hasTreeFocus(event.target)
+      const targetElement = event.target instanceof Element ? event.target : null
+      const row = targetElement?.closest<HTMLElement>('[data-file-tree-row="true"]')
+      recordClipboardDebug('shortcut-keydown', {
+        target: treeSelection?.rel || activeTab?.rel || '.',
+        detail: `key=${key}, ctrl=${event.ctrlKey}, meta=${event.metaKey}, treeFocus=${treeFocus}, tag=${targetElement?.tagName || 'none'}, row=${row?.getAttribute('title') || ''}, copied=${copiedTreeFile || ''}`,
+      })
+      if (!treeFocus) return
+      if (key === 'c') {
+        const rel = row?.getAttribute('title')
+        const directory = row?.getAttribute('aria-expanded') !== null
+        if (!rel || directory) return
+        event.preventDefault()
+        event.stopPropagation()
+        recordClipboardDebug('copy-keydown', { source: rel, detail: `target=${(event.target as Element).tagName}` })
+        setCopiedTreeFile(rel)
+        recordClipboardDebug('copy-captured', { source: rel })
+        toast.message(t('toast.fileCopied'))
+      } else if (key === 'v' && copiedTreeFile) {
+        // Non-editable tree rows do not reliably receive Chromium's native paste event.
+        event.preventDefault()
+        event.stopPropagation()
+        void pasteFilesIntoSelection([copiedTreeFile], true)
+        setCopiedTreeFile(null)
+      }
+    }
+    const onPaste = (event: ClipboardEvent) => {
+      const target = event.target instanceof Element ? event.target : null
+      if (target?.closest('input, textarea, [contenteditable="true"]')) return
+      const activeElement = document.activeElement
+      const treeHasFocus = !!target?.closest('[data-file-tree-row="true"]')
+        || (activeElement instanceof Element && !!activeElement.closest('[data-file-tree-row="true"]'))
+      recordClipboardDebug('paste-event', {
+        target: treeSelection?.rel || activeTab?.rel || '.',
+        detail: `treeFocus=${treeHasFocus}, targetTag=${target?.tagName || 'none'}, files=${event.clipboardData?.files.length || 0}`,
+      })
+      if (!treeHasFocus) return
+      const files = [...(event.clipboardData?.files ?? [])]
+      recordClipboardDebug('paste-files', {
+        target: treeSelection?.rel || activeTab?.rel || '.',
+        detail: `clipboard files=${files.map((file) => file.name).join(',') || '(none)'}`,
+      })
+      const externalPaths = files.flatMap((file) => {
+        try {
+          const path = window.piDesktop?.getPathForFile(file)
+          return path ? [path] : []
+        } catch { return [] }
+      })
+      if (externalPaths.length) {
+        event.preventDefault()
+        void pasteFilesIntoSelection(externalPaths, false)
+        return
+      }
+      if (copiedTreeFile) {
+        event.preventDefault()
+        void pasteFilesIntoSelection([copiedTreeFile], true)
+        setCopiedTreeFile(null)
+      }
+    }
+    const clearInternalClipboardWhenLeavingApp = () => {
+      recordClipboardDebug('app-blur', { source: copiedTreeFile || '' })
+      setCopiedTreeFile(null)
+    }
+    const onTreeFocus = (event: FocusEvent) => {
+      const row = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-file-tree-row="true"]') : null
+      if (row) recordClipboardDebug('tree-focus', { target: row.getAttribute('title') || '.', detail: `tag=${(event.target as Element).tagName}` })
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    window.addEventListener('paste', onPaste, true)
+    window.addEventListener('blur', clearInternalClipboardWhenLeavingApp)
+    window.addEventListener('focusin', onTreeFocus, true)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true)
+      window.removeEventListener('paste', onPaste, true)
+      window.removeEventListener('blur', clearInternalClipboardWhenLeavingApp)
+      window.removeEventListener('focusin', onTreeFocus, true)
+    }
+  }, [activePanel, activeTab?.rel, copiedTreeFile, pasteFilesIntoSelection, recordClipboardDebug, t, treeSelection?.rel])
+
   useEffect(() => {
     if (!workspaceFileToOpen) return
     useUIStore.setState({ workspaceFileToOpen: null })
     if (workspaceFileToOpen.workspaceRoot === workspaceRoot) {
       onSelectPath(workspaceFileToOpen.rel, false)
       if (workspaceFileToOpen.line) setSourceLocation({ rel: workspaceFileToOpen.rel, line: workspaceFileToOpen.line })
+      if (workspaceFileToOpen.gitDiff) setGitDiffPreview({ rel: workspaceFileToOpen.rel, ...workspaceFileToOpen.gitDiff })
     }
   }, [workspaceFileToOpen, workspaceRoot, onSelectPath])
 
@@ -294,6 +451,7 @@ export function WorkspaceFilesPanel() {
               fill
               refreshKey={previewRefreshKey}
               sourceLocation={sourceLocation?.rel === activeTab.rel ? sourceLocation : null}
+              gitDiff={gitDiffPreview?.rel === activeTab.rel ? gitDiffPreview : null}
               onExitExpandedPreview={exitExpandedPreview}
             />
           ) : (

@@ -7,7 +7,7 @@ import { configStore } from '../../config-store'
 import { readPiInfo, readResourceList } from '../../pi-info'
 import { readModelsConfig, writeModelsConfig, fetchRemoteModelIds } from '../../pi-models-json'
 import { remoteTap } from '../../remote/tap'
-import { clearGlobalSdkPathCache, readSdkSelection } from '../../sdk-loader'
+import { clearGlobalSdkPathCache, readSdkSelection, readBuiltinSdkVersion } from '../../sdk-loader'
 import {
   readSdkStatusCached,
   readWslSdkStatusCached,
@@ -18,6 +18,7 @@ import {
   switchTo,
   isAllowedSdkVersion,
   invalidateSdkManagerCaches,
+  installGlobalPiCli,
 } from '../../sdk-manager'
 import { errorMessage } from '@shared/error-message'
 import { confirmSdkSelection } from '../../sdk-selection-transaction'
@@ -60,6 +61,33 @@ async function verifySelectedSdk(target: 'builtin' | 'global' | 'user') {
 }
 
 export function registerPiSdkHandlers(): void {
+  registerHandler('ipc:sdk.installGlobalCli', async (req) => {
+    const activeTurnError = rejectActiveTurns()
+    if (activeTurnError) return { ok: false, error: activeTurnError }
+    if (getAgentRuntimeConfig().mode === 'wsl') return { ok: false, error: '当前使用 WSL 运行环境，请在 WSL 终端中安装全局 pi' }
+    try {
+      const version = String(req?.version || readBuiltinSdkVersion()).trim()
+      const registry = await listRegistryVersions()
+      if (!isAllowedSdkVersion(version, registry)) return { ok: false, error: '所选 Pi 版本不在 npm 版本列表中' }
+      const previousSelection = readSdkSelection(app.getPath('userData'))
+      sessionPreviewProcess.stop()
+      await installGlobalPiCli(version)
+      invalidateSdkManagerCaches()
+      clearGlobalSdkPathCache()
+      const active = await confirmSdkSelection({
+        target: 'global',
+        rollbackTarget: previousSelection,
+        restartWorker: restartWorkers,
+        verifySelection: verifySelectedSdk,
+        rollbackSelection: switchTo,
+      })
+      sendSdkRuntimeChanged()
+      return { ok: true, active }
+    } catch (error) {
+      return { ok: false, error: errorMessage(error) }
+    }
+  })
+
   registerHandler('ipc:pi.getInfo', async () => readPiInfo())
 
   registerHandler('ipc:pi.models.get', async () => {

@@ -1,7 +1,8 @@
 import { open, stat } from 'node:fs/promises'
 import { extname } from 'path'
 import { shell } from 'electron'
-import { workspaceFsCreate, workspaceFsListDir, workspaceFsReadText, workspaceFsRename, workspaceFsWriteText } from '../../workspace-fs'
+import log from 'electron-log'
+import { workspaceFsCopyFile, workspaceFsCreate, workspaceFsListDir, workspaceFsReadText, workspaceFsRename, workspaceFsWriteText } from '../../workspace-fs'
 import { resolveActionableImage } from '../../image-file-access'
 import { invalidateWorkspaceFileSearchIndex, primeWorkspaceFileSearchIndex, workspaceFsSearch } from '../../workspace-file-search'
 import { registerHandler, registerHandlerWithSchema } from '../registry'
@@ -17,6 +18,8 @@ import {
   workspaceFsWriteTextSchema,
   workspaceFsRenameSchema,
   workspaceFsCreateSchema,
+  workspaceFsCopyFileSchema,
+  workspaceFsClipboardDebugSchema,
 } from '../schemas'
 
 const IMAGE_PREVIEW_MAX_BYTES = 8 * 1024 * 1024
@@ -116,6 +119,17 @@ export function registerWorkspaceFsHandlers(): void {
     })
     if (result.ok) invalidateWorkspaceFileSearchIndex(req.workspaceRoot)
     return result
+  })
+
+  registerHandlerWithSchema('ipc:workspace.fs.copyFile', workspaceFsCopyFileSchema, async (req) => {
+    const result = await workspaceFsCopyFile(req)
+    if (result.ok) invalidateWorkspaceFileSearchIndex(req.workspaceRoot)
+    return result
+  })
+
+  registerHandlerWithSchema('ipc:workspace.fs.clipboardDebug', workspaceFsClipboardDebugSchema, async (event) => {
+    log.info('[workspace-file-paste]', JSON.stringify(event))
+    return { ok: true }
   })
 
   registerHandlerWithSchema('ipc:shell.readImagePreview', shellReadImagePreviewSchema, async (req) => {

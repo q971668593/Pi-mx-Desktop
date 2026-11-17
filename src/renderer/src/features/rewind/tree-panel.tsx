@@ -1,19 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { GitFork, Loader2, RefreshCw } from '@renderer/components/icons'
+import { Loader2, RefreshCw } from '@renderer/components/icons'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { navigateSessionToEntry } from '@renderer/lib/session-rewind'
-import { requestTimelineViewEntry } from '@renderer/features/timeline/timeline-view-jump'
 import { forkSessionFromEntry } from '@renderer/lib/session-fork'
 import { refreshSessionTree } from '@renderer/lib/rewind-metadata'
 import { capSessionTreeForDisplay } from '@renderer/features/rewind/session-tree-display-cap'
 import {
-  SessionTreeList,
   TREE_FILTER_OPTS,
   filterSessionTreeNodes,
   type SessionTreeNode,
   type TreeFilterMode,
 } from '@renderer/features/rewind/session-tree-list'
+import { SessionTreeMindMap } from './session-tree-mind-map'
 import { cn } from '@renderer/lib/utils'
 
 export function TreePanel() {
@@ -23,8 +22,7 @@ export function TreePanel() {
   const rawTree = useUIStore((s) => s.rewindTreeNodes) as SessionTreeNode[]
   const loading = useUIStore((s) => s.rewindLoadingTree)
   const treeError = useUIStore((s) => s.rewindTreeError)
-  const [filter, setFilter] = useState<TreeFilterMode>('default')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [filter, setFilter] = useState<TreeFilterMode>('user-only')
 
   const refresh = useCallback(() => {
     if (!sessionFile) return
@@ -44,18 +42,6 @@ export function TreePanel() {
     () => capSessionTreeForDisplay(filtered),
     [filtered],
   )
-  // Same heuristic as double-Esc overlay: guides off only for very large trees
-  const showGuides = filter !== 'user-only' && display.length > 0 && display.length <= 400
-
-  useEffect(() => {
-    if (selectedId && display.some((node) => node.id === selectedId)) return
-    const prefer =
-      [...display].reverse().find((node) => !node.isLeaf) ??
-      display.find((node) => node.isLeaf) ??
-      display[0]
-    setSelectedId(prefer?.id ?? null)
-  }, [display, selectedId])
-
   if (!workspace) {
     return (
       <div className="p-4 text-[12px] leading-relaxed text-muted-foreground">{t('timeline:treeOpenWorkspace')}</div>
@@ -97,7 +83,7 @@ export function TreePanel() {
         </button>
       </div>
 
-      <div className="scrollbar-overlay min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-1">
+      <div className="scrollbar-overlay min-h-0 flex-1 overflow-hidden py-1">
         {!sessionFile ? (
           <p className="px-3 py-6 text-[11px] text-muted-foreground/70">{t('timeline:treeNoSession')}</p>
         ) : loading && rawTree.length === 0 ? (
@@ -114,39 +100,16 @@ export function TreePanel() {
             {rawTree.length === 0 ? t('timeline:treeEmpty') : t('timeline:treeNoMatch')}
           </p>
         ) : (
-          <>
-            {truncated && (
-              <p className="px-3 pb-1.5 text-[10px] text-muted-foreground/80">
-                {t('timeline:treePanelTruncated', { shown: display.length, hidden: hiddenCount })}
-              </p>
-            )}
-            <SessionTreeList
-              className="px-0.5"
+          <div className="flex h-full min-h-0 flex-col gap-1 px-1.5 pb-1">
+            {truncated && <p className="shrink-0 px-1 text-[10px] text-muted-foreground/80">{t('timeline:treePanelTruncated', { shown: display.length, hidden: hiddenCount })}</p>}
+            <SessionTreeMindMap
               nodes={display}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
-              onActivate={(id) => void navigateSessionToEntry(id)}
-              onView={(id) => requestTimelineViewEntry(id)}
-              viewOnSingleClick
-              showGuides={showGuides}
-              rowClassName="text-[11px]"
-              renderTrailing={(node) =>
-                node.entryType === 'message' && node.role === 'user' ? (
-                  <button
-                    type="button"
-                    className="rounded p-1 text-muted-foreground opacity-0 hover:bg-muted hover:text-primary group-hover/tree-row:opacity-100"
-                    title={t('timeline:treeForkNode')}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      void forkSessionFromEntry(node.id)
-                    }}
-                  >
-                    <GitFork className="h-3.5 w-3.5" />
-                  </button>
-                ) : null
-              }
+              sourceNodes={rawTree}
+              sessionFile={sessionFile}
+              onContinue={(id) => void navigateSessionToEntry(id)}
+              onFork={(id) => void forkSessionFromEntry(id)}
             />
-          </>
+          </div>
         )}
       </div>
     </div>

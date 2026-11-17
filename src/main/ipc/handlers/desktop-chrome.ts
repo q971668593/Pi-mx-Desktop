@@ -11,6 +11,8 @@ import {
   markCompletionInboxUnread,
 } from '../../completion-notification'
 import { execFileSync } from 'child_process'
+import { existsSync } from 'fs'
+import { delimiter, join } from 'path'
 import { summarizeAppMemory } from '../../app-memory'
 import { peekBrowserHost } from '../../browser/browser-host'
 let sleepBlocker: number | null = null
@@ -152,10 +154,16 @@ export function registerDesktopChromeHandlers(): void {
   registerHandler('ipc:desktop.whichPi', async () => {
     try {
       const cmd = process.platform === 'win32' ? 'where' : 'which'
-      const out = execFileSync(cmd, ['pi'], { encoding: 'utf8' }).trim().split(/\r?\n/)[0]
-      return { ok: !!out, path: out || '' }
+      const paths = execFileSync(cmd, ['pi'], { encoding: 'utf8' }).trim().split(/\r?\n/).filter(Boolean)
+      let prefix = ''
+      try { prefix = execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['prefix', '-g'], { encoding: 'utf8', windowsHide: true }).trim() } catch {}
+      const globalPath = prefix ? (process.platform === 'win32' ? join(prefix, 'pi.cmd') : join(prefix, 'bin', 'pi')) : ''
+      const prefixOnPath = prefix ? process.env.PATH?.split(delimiter).some((entry) => entry.replace(/[\\/]+$/, '').toLowerCase() === prefix.replace(/[\\/]+$/, '').toLowerCase()) : false
+      const detectedGlobal = paths.find((item) => prefix && item.toLowerCase().startsWith(prefix.toLowerCase()))
+      const globalPathFound = detectedGlobal || (existsSync(globalPath) && prefixOnPath ? globalPath : '')
+      return { ok: paths.length > 0, path: globalPathFound || paths[0] || '', globalAvailable: !!globalPathFound, globalPath: globalPathFound || globalPath }
     } catch {
-      return { ok: false, path: '' }
+      return { ok: false, path: '', globalAvailable: false, globalPath: '' }
     }
   })
 }

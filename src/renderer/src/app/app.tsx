@@ -43,6 +43,7 @@ import {
 import { CommandPalette, ShortcutsHelpSheet } from '@renderer/features/shell/command-palette'
 import { EmptyState } from '@renderer/components/ui/empty-state'
 import { AppUpdateHost } from '@renderer/lib/app-update-notify'
+import { PythonRuntimeSetupHost } from '@renderer/lib/python-runtime-notify'
 import { CloseDecisionDialog } from '@renderer/components/ui/close-decision-dialog'
 import { StatusBar } from '@renderer/features/shell/status-bar'
 import { clearExitedSessionRuntime } from '@renderer/lib/worker-exit-runtime'
@@ -355,6 +356,7 @@ export default function App() {
         onOpenShortcuts={() => setShortcutsOpen(true)}
       />
       <ShortcutsHelpSheet open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      <PythonRuntimeSetupHost />
     </>
   )
 
@@ -381,6 +383,7 @@ export default function App() {
             </ErrorBoundary>
           </div>
         </div>
+        <AppToaster />
         {paletteAndShortcuts}
         <AppUpdateHost />
         <CloseDecisionDialog />

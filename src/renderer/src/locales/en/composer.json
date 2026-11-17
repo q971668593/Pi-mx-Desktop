@@ -221,12 +221,26 @@
         "name": "My Chrome",
         "desc": "Operates pages in your own Chrome (your sign-ins), in a separate window",
         "short": "Chrome"
+      },
+      "web-search": {
+        "name": "Web search",
+        "desc": "Search the web and read pages. Configure a search provider and key under Settings → Adapters → Pi Search.",
+        "short": "Search"
+      },
+      "computer": {
+        "name": "Computer control",
+        "desc": "Let the AI inspect and operate the Windows desktop. Enable only for trusted chats.",
+        "short": "Computer"
       }
     },
     "reasons": {
       "browser-panel-off": "Turn on the Browser panel in Settings → Right panels first",
-      "chrome-off": "Turn on My Chrome in Settings → Browser and pair the extension first"
+      "chrome-off": "Turn on My Chrome in Settings → Browser and pair the extension first",
+      "web-search-not-installed": "Install Web search in Settings → Extensions, then configure Pi Search under Settings → Adapters.",
+      "computer-use-not-installed": "Install the Computer control extension in Settings → Extensions first.",
+      "computer-use-platform": "Computer control requires Windows 11 x64."
     },
+    "computerConfirm": "Computer control can inspect and operate the real Windows desktop. Enable it only for trusted tasks, and require your confirmation before sending messages, deleting files, purchasing, or changing account settings. Enable it for this chat?",
     "enabledTitle": "On: {{names}}",
     "cacheWarming": {
       "group": "All chats",
@@ -239,11 +253,11 @@
     "browserMode": {
       "label": "Browser",
       "off": "Off",
-      "builtin": "Built-in",
+      "builtin": "This app",
       "chrome": "My Chrome",
       "desc": {
         "off": "The AI does not use a browser",
-        "builtin": "Reads and operates pages in the built-in browser panel",
+        "builtin": "Operates the browser beside this chat. Watch live and stop the AI to take over at any time.",
         "chrome": "Operates pages in your own Chrome (your sign-ins), in a separate window"
       }
     }

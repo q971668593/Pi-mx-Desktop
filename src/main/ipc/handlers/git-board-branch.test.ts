@@ -29,6 +29,44 @@ registerGitBoardHandlers()
 describe('git branch safety', () => {
   afterEach(() => { for (const repo of repos.splice(0)) rmSync(repo, { recursive: true, force: true }) })
 
+  it('does not list the remote default-branch alias as a separate branch', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'pi-git-branch-'))
+    repos.push(cwd)
+    git(cwd, ['init', '-b', 'main'])
+    git(cwd, ['config', 'user.email', 'tester@example.com'])
+    git(cwd, ['config', 'user.name', 'tester'])
+    writeFileSync(join(cwd, 'base.txt'), 'base')
+    git(cwd, ['add', 'base.txt'])
+    git(cwd, ['commit', '-m', 'base 1'])
+    const head = git(cwd, ['rev-parse', 'HEAD']).trim()
+    git(cwd, ['update-ref', 'refs/remotes/origin/main', head])
+    git(cwd, ['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main'])
+
+    const overview = await handlers.get('ipc:gitBoard.overview')!({ cwd, query: '1' })
+    expect(overview.ok).toBe(true)
+    expect((overview.branches as Array<{ name: string }>).map((branch) => branch.name).sort()).toEqual(['main', 'origin/main'])
+    expect((overview.commits as Array<{ subject: string }>).map((commit) => commit.subject)).toEqual(['base 1'])
+  })
+
+  it('checks out a commit detached only when the working tree is clean', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'pi-git-checkout-'))
+    repos.push(cwd)
+    git(cwd, ['init', '-b', 'main'])
+    git(cwd, ['config', 'user.email', 'tester@example.com'])
+    git(cwd, ['config', 'user.name', 'tester'])
+    writeFileSync(join(cwd, 'base.txt'), 'base')
+    git(cwd, ['add', 'base.txt'])
+    git(cwd, ['commit', '-m', 'base'])
+    const firstCommit = git(cwd, ['rev-parse', 'HEAD']).trim()
+    writeFileSync(join(cwd, 'base.txt'), 'next')
+    git(cwd, ['commit', '-am', 'next'])
+    const checkout = handlers.get('ipc:gitBoard.checkoutCommit')!
+    await expect(checkout({ cwd, ref: firstCommit })).resolves.toMatchObject({ ok: true })
+    expect(git(cwd, ['status', '--short', '--branch'])).toContain('## HEAD (no branch)')
+    writeFileSync(join(cwd, 'base.txt'), 'local edit')
+    await expect(checkout({ cwd, ref: git(cwd, ['rev-parse', 'main']).trim() })).resolves.toMatchObject({ ok: false, error: 'working_tree_dirty' })
+  })
+
   it('refuses the current branch and reports an unmerged branch before force delete', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'pi-git-branch-'))
     repos.push(cwd)

@@ -252,6 +252,7 @@ export interface ExtensionInfo {
   enabled: boolean
   compatibility: CompatibilityLevel
   source: 'global' | 'project' | 'package'
+  packageSource?: string
   registeredTools: string[]
   registeredCommands: string[]
   loadError?: string
@@ -264,6 +265,19 @@ export interface ExtensionInfo {
 }
 export interface ExtensionsListRequest { workspaceId?: string }
 export interface ExtensionsListResponse { extensions: ExtensionInfo[] }
+export interface ExtensionMarketplacePackage { name: string; description: string; author?: string; type?: string; source: string; url: string }
+export interface ExtensionsMarketplaceSearchRequest { query?: string; type?: string; sort?: string }
+export interface ExtensionsMarketplaceSearchResponse { packages: ExtensionMarketplacePackage[]; error?: string }
+export interface ExtensionsPackageDetailsRequest { name: string }
+export interface ExtensionsPackageDetailsResponse { details?: { version?: string; published?: string; downloads?: string; license?: string; dependencies?: string; installCommand?: string; npmUrl?: string; repositoryUrl?: string; securityNote?: string; readmeExcerpt?: string }; error?: string }
+export interface ExtensionsTranslateRequest { text: string; targetLanguage: 'Chinese' | 'English' }
+export interface ExtensionsTranslateResponse { ok: boolean; text?: string; error?: 'plugin_model_missing' | 'plugin_model_unavailable' | 'plugin_model_failed' | 'invalid_text' }
+export interface ExtensionsPackagesResponse { packages: Array<{ source: string; name: string }>; settingsPath: string; error?: string }
+export interface ExtensionsPackageMutationRequest { source: string }
+export interface ExtensionsPackageMutationResponse { ok: boolean; source?: string; error?: string; warning?: string }
+export interface ExtensionsInstallCapabilityPackageRequest { capability: 'web-search' | 'computer' }
+export interface ExtensionsInstallCapabilityPackageResponse { ok: boolean; added?: boolean; updated?: boolean; entry?: string; error?: string; warning?: string }
+export interface PythonRuntimeStatusResponse { supported: boolean; installed: boolean; version?: string; path?: string; prompt: boolean; error?: string }
 export interface ExtensionsSetEnabledRequest { extensionId: string; enabled: boolean }
 export interface ExtensionsSetEnabledResponse { ok: boolean; extensionId: string; enabled: boolean; error?: string; needsWorkerReload?: boolean }
 
@@ -343,6 +357,19 @@ export interface IpcMethodMap {
   'review.stageHunks': { request: ReviewStageHunksRequest; response: ReviewStageHunksResponse }
   'review.unstageHunks': { request: ReviewStageHunksRequest; response: ReviewStageHunksResponse }
   'extensions.list': { request: ExtensionsListRequest; response: ExtensionsListResponse }
+  'extensions.marketplaceSearch': { request: ExtensionsMarketplaceSearchRequest; response: ExtensionsMarketplaceSearchResponse }
+  'extensions.packageDetails': { request: ExtensionsPackageDetailsRequest; response: ExtensionsPackageDetailsResponse }
+  'extensions.translate': { request: ExtensionsTranslateRequest; response: ExtensionsTranslateResponse }
+  'extensions.packages': { request: {}; response: ExtensionsPackagesResponse }
+  'extensions.installPackage': { request: ExtensionsPackageMutationRequest; response: ExtensionsPackageMutationResponse }
+  'extensions.removePackage': { request: ExtensionsPackageMutationRequest; response: ExtensionsPackageMutationResponse }
+  'extensions.installCapabilityPackage': { request: ExtensionsInstallCapabilityPackageRequest; response: ExtensionsInstallCapabilityPackageResponse }
+  'python.status': { request: {}; response: PythonRuntimeStatusResponse }
+  'python.dismissSetupPrompt': { request: {}; response: { ok: boolean } }
+  'python.installLatest': { request: {}; response: PythonRuntimeStatusResponse }
+  'python.openDownloads': { request: {}; response: { ok: boolean } }
+  'sdk.installGlobalCli': { request: { version: string }; response: { ok: boolean; active?: { kind: 'global'; version: string }; error?: string } }
+  'desktop.whichPi': { request: {}; response: { ok: boolean; path: string; globalAvailable: boolean; globalPath: string } }
   'extensions.setEnabled': { request: ExtensionsSetEnabledRequest; response: ExtensionsSetEnabledResponse }
   'registry.refresh': { request: RegistryRefreshRequest; response: RegistryRefreshResponse }
   'settings.get': { request: SettingsGetRequest; response: SettingsGetResponse }

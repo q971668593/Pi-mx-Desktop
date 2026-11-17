@@ -59,10 +59,12 @@ export function handleRun(event: RunEvent, api: StoreApi): boolean {
       return false
     }
 
+    const isNewRun = state.runState.status !== 'running' || state.runState.activeRunId !== event.runId
     const runPatch: Record<string, unknown> = {
       status: 'running',
       activeRunId: event.runId,
-      startTime: event.timestamp,
+      startTime: isNewRun || state.runState.startTime == null ? event.timestamp : state.runState.startTime,
+      ...(isNewRun ? { firstOutputDelayMs: undefined, usage: undefined, toolCount: 0, errorCount: 0 } : {}),
     }
     if (event.model != null && String(event.model).trim()) runPatch.model = event.model
     if (event.thinkingLevel != null && String(event.thinkingLevel).trim()) {

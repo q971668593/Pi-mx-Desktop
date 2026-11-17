@@ -42,6 +42,8 @@ export interface StoreSchema {
   autoOpenLastProject: boolean
   /** 启动时检查 GitHub Releases 是否有新版本 */
   autoCheckRegistryUpdates: boolean
+  /** Python setup prompt is shown once; Python remains optional for the desktop app. */
+  pythonSetupPromptHandled: boolean
   /** 检查更新时包含预发布 */
   includePrereleaseUpdates: boolean
   /** 上次自动更新检查时间戳（毫秒）；0 = 从未检查。用于避免每次启动都打 GitHub */
@@ -136,6 +138,7 @@ const store = new Store<StoreSchema>({
     language: defaultAppLanguage(),
     autoOpenLastProject: true,
     autoCheckRegistryUpdates: true,
+    pythonSetupPromptHandled: false,
     includePrereleaseUpdates: false,
     lastUpdateCheckAt: 0,
     ignoredUpdateVersion: '',

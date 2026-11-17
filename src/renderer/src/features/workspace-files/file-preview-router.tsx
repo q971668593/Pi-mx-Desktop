@@ -55,6 +55,7 @@ export function FilePreviewRouter({
   fill = false,
   refreshKey = 0,
   sourceLocation,
+  gitDiff,
   onExitExpandedPreview,
 }: {
   workspaceRoot: string
@@ -63,6 +64,7 @@ export function FilePreviewRouter({
   fill?: boolean
   refreshKey?: number
   sourceLocation?: { line: number } | null
+  gitDiff?: { patch: string; staged: boolean; status: string } | null
   onExitExpandedPreview?: () => void
 }) {
   const { t } = useTranslation('files')
@@ -78,6 +80,7 @@ export function FilePreviewRouter({
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
   const [finding, setFinding] = useState(false)
+  const [gitPreviewView, setGitPreviewView] = useState<'file' | 'diff'>('file')
   const frameRef = useRef<HTMLIFrameElement>(null)
   const previewRef = useRef<HTMLDivElement>(null)
   const loadedPath = useRef('')
@@ -92,6 +95,10 @@ export function FilePreviewRouter({
   dirtyRef.current = dirty
   editingRef.current = editing
   const editable = !!relativePath && content !== null && !truncated && (mode === 'code' || mode === 'markdown' || mode === 'html' || mode === 'text')
+
+  useEffect(() => {
+    setGitPreviewView(gitDiff ? 'diff' : 'file')
+  }, [relativePath, gitDiff?.patch])
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -208,6 +215,13 @@ export function FilePreviewRouter({
   }).catch(() => toast.error(t('common:sidebar.revealFailed')))
   const wrap = (node: ReactNode) => (
     <div ref={previewRef} className={cn('flex min-h-0 min-w-0 flex-col', fill && 'flex-1')}>
+      {gitDiff ? (
+        <div className="flex shrink-0 items-center gap-1 border-b border-border/40 px-2 py-1.5" role="group" aria-label={t('preview.gitDiff.view')}>
+          <button type="button" aria-pressed={gitPreviewView === 'file'} className={cn('rounded-md px-2 py-1 text-[11px] text-foreground-secondary hover:bg-muted', gitPreviewView === 'file' && 'bg-muted font-medium text-foreground')} onClick={() => setGitPreviewView('file')}>{t('preview.gitDiff.file')}</button>
+          <button type="button" aria-pressed={gitPreviewView === 'diff'} className={cn('rounded-md px-2 py-1 text-[11px] text-foreground-secondary hover:bg-muted', gitPreviewView === 'diff' && 'bg-muted font-medium text-foreground')} onClick={() => setGitPreviewView('diff')}>{t('preview.gitDiff.diff')}</button>
+          <span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-[10px] text-foreground-secondary">{t(gitDiff.staged ? 'preview.gitDiff.staged' : 'preview.gitDiff.unstaged')}</span>
+        </div>
+      ) : null}
       {finding && !editing ? <FilePreviewFind container={previewRef} frame={frameRef} revision={`${loading}:${content ?? ''}`} onClose={() => setFinding(false)} /> : null}
       {truncated && !loading && (
         <div role="status" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border/40 px-3 py-2 text-[11px] text-foreground-secondary">
@@ -234,6 +248,7 @@ export function FilePreviewRouter({
   ) : null
 
   if (!relativePath) return wrap(<p className="px-3 py-8 text-center text-[12px] text-foreground-secondary/80">{t('preview.pickFile')}</p>)
+  if (gitDiff && gitPreviewView === 'diff') return wrap(<GitDiffPreview patch={gitDiff.patch} emptyLabel={t('preview.gitDiff.empty')} />)
   if (loading) return wrap(<p className="px-3 py-6 text-[12px] text-foreground-secondary/80">{t('preview.loading')}</p>)
   if (loadError) {
     const key = loadError === 'too_large' ? 'tooLarge' : loadError === 'binary' ? 'binary' : loadError === 'not_found' ? 'deleted' : 'error'
@@ -248,4 +263,17 @@ export function FilePreviewRouter({
   if (mode === 'markdown' && !truncated && content.length <= PREVIEW_MD_MAX_CHARS && content.split('\n').length <= PREVIEW_MD_MAX_LINES) return wrap(<><div>{editorBar}</div><FilePreviewScroll scrollClassName="px-4 py-3"><MarkdownView baseDirectory={joinWorkspacePath(workspaceRoot, relativePath.split('/').slice(0, -1).join('/'))}>{content}</MarkdownView></FilePreviewScroll></>)
   if (mode === 'code') return wrap(<><div>{editorBar}</div><FileSourcePreview code={content} lang={guessLangFromPath(relativePath)} path={relativePath} fill={fill} /></>)
   return wrap(<><div>{editorBar}</div><PlainTextFill content={content} /></>)
+}
+
+function GitDiffPreview({ patch, emptyLabel }: { patch: string; emptyLabel: string }) {
+  if (!patch.trim()) return <p className="px-4 py-5 text-[12px] text-foreground-tertiary">{emptyLabel}</p>
+  return (
+    <div className="min-h-0 flex-1 overflow-auto px-3 py-2">
+      <pre className="m-0 whitespace-pre-wrap break-words rounded-lg border border-border/50 bg-[var(--bg-1)] p-3 font-mono text-[11px] leading-5">
+        {patch.split('\n').map((line, index) => (
+          <span key={index} className={cn('block', line.startsWith('@@') ? 'text-sky-600' : line.startsWith('+') && !line.startsWith('+++') ? 'text-[var(--diff-added)]' : line.startsWith('-') && !line.startsWith('---') ? 'text-destructive' : 'text-foreground-secondary')}>{line || ' '}</span>
+        ))}
+      </pre>
+    </div>
+  )
 }

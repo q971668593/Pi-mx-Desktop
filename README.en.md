@@ -1,0 +1,253 @@
+<div align="center">
+
+<img src="resources/pi-mx-icon.png" alt="Pi mx Desktop" width="72" height="72" />
+
+# Pi mx Desktop
+
+**A desktop workbench for the [pi](https://github.com/earendil-works/pi) coding agent.**<br/>
+The same agent and the same `~/.pi/agent` you use in the terminal — with a timeline, Git review, a built-in terminal, and a phone app to keep going from your phone.
+
+[![Release](https://img.shields.io/github/v/release/q971668593/Pi-mx-Desktop?style=flat-square&color=d97706&label=release)](https://github.com/q971668593/Pi-mx-Desktop/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/q971668593/Pi-mx-Desktop/total?style=flat-square&color=d97706)](https://github.com/q971668593/Pi-mx-Desktop/releases)
+![Platforms](https://img.shields.io/badge/platform-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-d97706?style=flat-square)
+[![License](https://img.shields.io/github/license/q971668593/Pi-mx-Desktop?style=flat-square&color=d97706)](LICENSE)
+
+**English** · [简体中文](./README.md) · [Download](https://github.com/q971668593/Pi-mx-Desktop/releases/latest) · [Getting started](./doc/guide/getting-started.md) · [Adapters](./doc/guide/adapters.en.md)
+
+<sub>Based on [pi Desktop](https://github.com/justhil/pi-app) by [justhil](https://github.com/justhil), MIT licensed.</sub>
+
+</div>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="doc/assets/readme/en/hero-dark.png" />
+  <img src="doc/assets/readme/en/hero-light.png" alt="Pi mx Desktop: a finished turn in the timeline, with the Git diff open in the Review panel" />
+</picture>
+
+Pi mx Desktop is not another agent. It runs the pi SDK in a background worker and reads the same files as the CLI — sessions, model logins, `settings.json`, installed extensions. Open a project and the sessions you started in the terminal are already in the sidebar; continue any of them, or start a new one.
+
+## What this fork adds
+
+Same agent, same `~/.pi/agent` — plus a few things upstream does not have yet:
+
+| | | |
+|---|---|---|
+| **Portable mode** | Drop a `data` folder next to the executable and the entire profile (settings, sessions, cache) lives there. Carry it on a USB stick; nothing is written to `%APPDATA%`. |
+| **Warm editorial theme** | Light and dark palettes rebuilt around warm ivory and amber, applied through the same design tokens, so panes, chips and code blocks finally look like one product. |
+| **Right sidebar, your order** | Files → Git → Terminal → Browser → Run are on by default; Review, Context and Tree stay out of the way until you need them. |
+| **Drag folders too** | The Files panel drags folders as well as files into the composer — a folder lands as an `@path` reference the agent can list and read. |
+| **Titles that follow you** | Optional: the conversation name in the sidebar follows your latest message, so a long session stays recognisable without renaming it by hand. |
+| **Git sync in one click** | Pull / Sync / Push sit in the Git header; `↑` is red and `↓` is green, so unpushed or unpulled work is visible at a glance. |
+
+## At a glance
+
+<img src="doc/assets/readme/en/overview.png" alt="Overview: timeline steps, side-by-side review, parallel sessions, @ file references, context breakdown, built-in adapters, themes and the shared ~/.pi/agent files" width="100%" />
+
+## One turn, start to finish
+
+<img src="doc/assets/readme/en/agent-turn.gif" alt="A prompt is sent; the agent runs tests, reads a file, edits it, reruns tests, and the changes appear in Review" width="100%" />
+
+<sub>Recorded from the app itself. The model replies come from a scripted local endpoint so the demo is reproducible; the <code>bash</code>, <code>read</code> and <code>edit</code> tools ran for real on the sample repo.</sub>
+
+## Timeline
+
+Tool calls stream in as flat steps — thinking, commands, reads, edits — and fold into one summary line once the answer starts. Each edit shows `+N −M`; the turn ends with a **Files changed** card that opens the file in Files or Review.
+
+<img src="doc/assets/readme/en/timeline.png" alt="Expanded tool steps: thinking, ran node --test, read src/links.mjs, edited src/links.mjs and README.md" width="100%" />
+
+Markdown, code blocks, KaTeX and long outputs render in place. Hover a message to copy it, rewind to it, or fork a new session from it.
+
+## Review
+
+<img src="doc/assets/readme/en/review-stage.gif" alt="The right sidebar is dragged wider, the Git diff of links.mjs switches to side by side, and one hunk is staged" width="100%" />
+
+Pick a scope — this turn, this session, or the whole Git working tree — and expand a file for its diff; drag the sidebar wider for a side-by-side view. Hunks can be staged or unstaged one at a time, and a line comment goes straight back into the conversation.
+
+## Files
+
+- Open multiple files in tabs; up to five unpinned tabs are retained. Pin tabs from the context menu, drag to reorder, or close them manually.
+- Markdown opens in preview; other text files open in a syntax-highlighted editor. Use `Ctrl`/`⌘`+`F` to find and `Ctrl`/`⌘`+`S` to save. Unsaved edits remain in memory while switching tabs.
+- Hidden files are shown by default. Search across the project, create files or folders from the tree background, and zoom or drag image previews.
+- The gutter button quotes `path:line` into the composer as a reference.
+- **Expand preview** gives the file the whole chat column; click again to go back. Drag a file onto the composer to attach it.
+
+## Composer
+
+<img src="doc/assets/readme/en/composer-mention.gif" alt="Typing @li suggests src/links.mjs; Enter inserts it as a file chip" width="66%" />
+
+- `@` searches project files (respects `.gitignore`, uses `fd`) and inserts them as references.
+- `/` lists pi's built-in commands and the ones your extensions register.
+- Paste or drop images and files; model and thinking level sit at the right of the input.
+- While the agent is working, `Enter` steers the current turn and `Alt+Enter` queues a follow-up for when it finishes.
+
+## Parallel sessions
+
+<img src="doc/assets/readme/en/parallel-sessions.gif" alt="A fix turn starts, a second session starts a read-only turn, both run at once while the view switches between them" width="100%" />
+
+Each session runs in its own worker. Start a turn, open another session and start a second one: both keep going, the sidebar marks the ones that are working and the status bar counts them. **Settings → General** sets how many workers stay alive and when idle ones are reclaimed; running sessions are never reclaimed.
+
+## Built-in terminal
+
+`` Ctrl+` `` opens the right-side terminal page. Terminals are grouped by project and stacked vertically. Use **+** to create one, the adjacent menu to choose a shell, and the context menu to copy, paste or add selected output to chat. A task terminal can rerun its recorded command; for an ordinary shell, enter a command the first time you use its restart button.
+
+The terminal page reads `.vscode/tasks.json` for one-click run and publish actions. The AI button drafts task configuration and lets you choose what to run. Conversations can use `desktop_terminal` to inspect, start and restart project terminals. Pi's ordinary short-command `bash` tool still runs separately, so not every short command appears in the sidebar.
+
+## Branches
+
+The right-side **Git** panel manages changes, the commit graph, branches, stashes, tags, remotes and worktrees. The bottom status bar no longer contains a branch picker. The selected panel and file tabs are remembered separately for each project.
+
+## Usage
+
+<img src="doc/assets/readme/en/usage.png" alt="Settings → Usage for 90 days: cost, tokens, requests and cache hit rate, a stacked daily chart with one day hovered, and an activity heatmap" width="100%" />
+
+**Settings → Usage** adds up tokens and cost from every pi session on the machine — the desktop's and terminal pi's, including a custom `sessionDir` — by day, hour, model, project and session. Hover a layer of a day for its share; replies copied into a fork count once.
+
+## More panels
+
+<img src="doc/assets/readme/en/panels.png" alt="Tree panel with the session as a tree, Run panel with the context breakdown ring, and the Context panel listing context entries with token estimates" width="100%" />
+
+| Panel | What it does |
+|---|---|
+| **Tree** | The session as a tree, like `pi /tree`: filter to user messages, jump back to any node and continue from there as a new branch. |
+| **Run** | Run state, model and thinking level, and how the context window splits between user, assistant and tool messages. |
+| **Context** | The messages that make up the current context, with token estimates per entry. |
+
+## Themes and background
+
+<img src="doc/assets/readme/en/themes.png" alt="The Claude theme: warm ivory with serif replies in light mode, and warm charcoal over a soft background image in dark mode" width="100%" />
+
+Light and dark each take a preset — **Claude**, VS Code Light+, Codex Dark — or your own: colours for the sidebar, chat, your messages, code blocks and borders, a heading / reply font (serif included), chat text size and line height, corner radius and shadow. Everything is a CSS variable, listed next to the custom CSS editor. A background image can sit behind the window — per mode or shared, with its strength, blur and the panes' opacity adjustable; text always stays on a frosted surface. Themes import from `pi-theme-v1` / `codex-theme-v1` strings; five icon sets and 90–110% density are in **Settings → Appearance** too.
+
+## pi on your phone
+
+<img src="doc/assets/readme/en/phone.png" alt="pi Remote on Android: the inbox of sessions, a session with its tool steps and changed files, a diff with a line comment, and the session panel with context, changes, branches and cost" width="100%" />
+
+**pi Remote** (Android) connects to the desktop app: turn on **Settings → Mobile**, scan the QR code, and every session is on the phone — read along while a turn runs, answer its questions, send prompts with images, pick the model and thinking level. Review a turn's changes or the working tree file by file, long-press lines to leave comments that go into your next message, switch the session's branch or fork from any message. The connection is end-to-end encrypted and stays on your network; away from home, put both devices in the same Tailscale / ZeroTier / WireGuard network (the app finds the overlay address, or add one by hand). English and Chinese follow the phone's language, with an in-app override.
+
+## How it fits together
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="doc/assets/readme/en/architecture-dark.png" />
+  <img src="doc/assets/readme/en/architecture-light.png" alt="Terminal pi and Pi mx Desktop both read and write ~/.pi/agent; Pi mx Desktop has a renderer, a main process, and one worker per session" width="100%" />
+</picture>
+
+The renderer never talks to the SDK directly: the main process routes each request to the worker that owns the session, and that worker runs the pi SDK on your machine or inside a WSL distribution. Sessions, logins and settings stay in `~/.pi/agent`, so the CLI and the app can take turns on the same session.
+
+## Also included
+
+| | |
+|---|---|
+| **Extensions, unchanged** | Extensions you installed for terminal pi load here. Their dialogs, tool cards, panels and `/commands` are mapped to native UI by declarative adapters — 36 ship built in. [List](./doc/guide/adapters.en.md) |
+| **Notifications** | A system notification and an in-app inbox when a turn finishes or needs input; the status bar shows what is running. |
+| **WSL runtime** (Windows) | Run the worker inside a chosen WSL distribution, with sessions, Git and previews resolved on the Linux side. |
+| **Chinese / English UI** | Switch in Settings; the phone app follows the system language. |
+| **Updates** | Checks GitHub Releases in the background and can download and launch the installer. |
+
+## Install
+
+| Platform | Package |
+|---|---|
+| Windows x64 | `Pi mx-Setup-<version>-x64.exe` (installer) or `Pi mx-Portable-<version>-x64.exe` |
+| macOS | `.dmg` / `.zip` for Apple Silicon (`arm64`) and Intel (`x64`) |
+| Linux x64 | `.AppImage` or `.deb` |
+| Android 9+ (arm64) | Built from [`apps/mobile`](./apps/mobile) with your own signing key — see [pi on your phone](#pi-on-your-phone) |
+
+Get them from [Releases](https://github.com/q971668593/Pi-mx-Desktop/releases/latest); each release lists SHA-256 checksums in `SHA256SUMS.txt`. The app bundles its own pi SDK; you only need to sign in to a model provider once, the same way you do for terminal pi (the credentials live in `~/.pi/agent`). Settings → Runtime can switch to a globally installed pi version.
+
+<details>
+<summary>Build from source</summary>
+
+Requires Node.js ≥ 22.19.
+
+```bash
+git clone https://github.com/q971668593/Pi-mx-Desktop.git
+cd Pi-mx-Desktop
+npm install
+npm run dev          # development
+npm run build        # production bundle in out/
+npm run package      # installers via electron-builder
+```
+
+</details>
+
+## First five minutes
+
+1. **Open folder** — the folder becomes the agent's working directory. For a throwaway chat, use **+** next to *Conversations* instead.
+2. **Pick a session** — sessions from terminal pi for that folder are listed; **+** next to the project starts a new one.
+3. **Send** — `Enter` sends, `Shift+Enter` adds a line.
+4. **Look right** — Review, Run, Context, Tree and Files share the right sidebar; drag its edge to make it wider.
+5. **Go back** — hover a message to rewind or fork, or press `Esc` twice in an empty composer to open the session tree.
+
+## Shortcuts
+
+| Action | Keys |
+|---|---|
+| Send / new line | `Enter` / `Shift+Enter` |
+| Steer the running turn / queue a follow-up | `Enter` / `Alt+Enter` while running |
+| Pull the last queued message back | `Alt+↑` |
+| Stop | `Esc` |
+| Session tree | `Esc` `Esc` in an empty composer |
+| Previous / next sent message | `↑` / `↓` with an empty composer or the caret at the start / end |
+| File reference / command | `@` / `/` |
+| Open a file in a new tab | `Ctrl`/`⌘`+click in Files |
+| Show / hide the terminal | `` Ctrl+` `` |
+| Close the focused terminal pane / find in it | `Ctrl+Shift+W` / `Ctrl+Shift+F` (`⌘W` / `⌘F` on macOS) |
+
+## Extensions
+
+Install and enable extensions exactly as for terminal pi:
+
+```bash
+pi install npm:<package>      # or: pi install git:github.com/<owner>/<repo>
+```
+
+then make sure the package is enabled in `~/.pi/agent/settings.json` → `packages` and start a new session. **Settings → Extensions** shows what the current worker loaded; **Settings → Adapters** holds each adapter's desktop options. To override or add an adapter, put a `.json` adapter file in `~/.pi/desktop/adapters/` (or `<project>/.pi/desktop/adapters/`, which takes precedence) — see the [authoring guide](./doc/adapter-authoring-guide.md).
+
+<details>
+<summary>Voice input</summary>
+
+The mic button in the composer transcribes speech into the input. By default it uses the built-in service, which calls ChatGPT's transcription endpoint with your Codex / ChatGPT sign-in — no OpenAI API key and no local process. In **Settings → Voice**, paste an `access_token` or import it from `~/.codex/auth.json` (written by `codex login`), then **Verify login**.
+
+Under *Advanced* you can use a local [codex-asr](https://github.com/Wangnov/codex-asr) CLI or your own `codex-asr serve` URL instead. Typing always works without voice.
+
+</details>
+
+<details>
+<summary>FAQ</summary>
+
+| Problem | Try |
+|---|---|
+| An extension is listed in Settings but missing in chat | Enable it in `packages`, then start a new session. |
+| The first switch to a long session is slow | Only the latest messages load first; the rest loads on scroll or when you send. |
+| Closed an extension dialog by accident | Use **Continue** on its timeline card. |
+| Voice says the login is invalid | The token expired — run `codex login` again and re-import. |
+| Blank window after changing source | Delete `node_modules/.vite` and rerun `npm run dev`. |
+
+</details>
+
+<details>
+<summary>For developers</summary>
+
+- Stack: Electron 43 · React 18 · TypeScript · Tailwind · Zustand · i18next · xterm.js · `@earendil-works/pi-coding-agent`
+- Processes: Electron main (IPC, worker pool, Git, previews) → one utility-process worker per session running the pi SDK → renderer.
+- Checks: `npm run test:unit`, `npm run test:scripts`, `npm run typecheck`, `npm run lint`
+- Docs: [`doc/`](./doc/README.md) · [adapter authoring](./doc/adapter-authoring-guide.md) · [changelog](./CHANGELOG.md)
+- Phone app: Kotlin / Compose in [`apps/mobile`](./apps/mobile); `node scripts/remote-dev-host.mjs` runs a fake desktop to develop against.
+- Releases: pushing a `v*` tag runs `.github/workflows/release.yml` and builds Windows, macOS, Linux and Android packages.
+
+</details>
+
+## Support
+
+Questions and feedback: [GitHub Issues](https://github.com/q971668593/Pi-mx-Desktop/issues).
+
+## Attribution
+
+Pi mx Desktop is a derivative work based on [pi Desktop / pi-app](https://github.com/justhil/pi-app) by [justhil](https://github.com/justhil), used under the MIT License. The original copyright notice is kept in [LICENSE](./LICENSE).
+
+The agent runtime is [pi](https://github.com/earendil-works/pi) (`@earendil-works/pi-coding-agent`, MIT).
+
+Upstream project changes are tracked under the `upstream` remote, so upstream fixes can be merged in with `git fetch upstream && git merge upstream/main`.
+
+## License
+
+[MIT](LICENSE) — original work Copyright (c) 2026 justhil; modifications Copyright (c) 2026 q971668593.

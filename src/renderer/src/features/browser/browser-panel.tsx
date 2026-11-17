@@ -14,6 +14,7 @@ import {
 } from '@shared/browser-types'
 import { ArrowLeft, ArrowRight, ChevronDown, ChevronRight, Globe, History, Maximize2, MessageSquarePlus, MoreHorizontal, PencilLine, Plus, RefreshCw, Search, X } from '@renderer/components/icons'
 import { ipcClient } from '@renderer/lib/ipc-client'
+import { abortAgentTurn } from '@renderer/lib/composer-abort'
 import { wheelToHorizontal } from '@renderer/lib/horizontal-wheel'
 import { useRightPanelHidden } from '@renderer/lib/use-right-panel-hidden'
 import { cn } from '@renderer/lib/utils'
@@ -92,6 +93,7 @@ export function BrowserPanel() {
   const [annotating, setAnnotating] = useState<{ snapshot: string; tabId: string } | null>(null)
   const [sendMenuOpen, setSendMenuOpen] = useState(false)
   const [agentAction, setAgentAction] = useState<{ tabId: string; action: string } | null>(null)
+  const [takingOver, setTakingOver] = useState(false)
   const covered = useOverlayCovering(viewportRef)
 
   useEffect(() => {
@@ -497,6 +499,31 @@ export function BrowserPanel() {
       </div>
       ) : null}
 
+      {agentAction && agentAction.tabId === activeTabId ? (
+        <div className="flex min-h-8 shrink-0 items-center justify-between gap-2 border-b border-primary/15 bg-primary/5 px-2">
+          <div className="flex min-w-0 items-center gap-2 text-[11px] text-foreground-secondary" role="status">
+            <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-primary" aria-hidden />
+            <span className="truncate">{t('agent.acting', { action: agentAction.action })}</span>
+          </div>
+          <button
+            type="button"
+            disabled={takingOver}
+            className="shrink-0 rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] font-medium text-foreground transition hover:border-primary/40 hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            onClick={async () => {
+              setTakingOver(true)
+              try {
+                await abortAgentTurn()
+                toast.info(t('agent.takeoverDone'))
+              } finally {
+                setTakingOver(false)
+              }
+            }}
+          >
+            {takingOver ? t('agent.takeoverPending') : t('agent.takeover')}
+          </button>
+        </div>
+      ) : null}
+
       {/* Toolbar: navigation, the address with suggestions, page actions; the rest under "more". */}
       <div className="flex h-10 shrink-0 items-center gap-0.5 border-b border-border/40 px-1.5">
         <button type="button" className={navButton} title={t('nav.back')} aria-label={t('nav.back')}
@@ -773,12 +800,6 @@ export function BrowserPanel() {
       <div ref={areaRef} className={cn('relative min-h-0 flex-1 overflow-hidden', viewportMode.kind === 'fixed' && 'bg-[var(--bg-hover)]')}>
       <div ref={viewportRef} className="absolute overflow-hidden" data-browser-viewport=""
         style={{ left: fitted.left, top: fitted.top, width: fitted.width, height: fitted.height }}>
-        {agentAction && agentAction.tabId === activeTabId ? (
-          <div className="pointer-events-none absolute right-2 top-2 z-30 flex items-center gap-1.5 rounded-full bg-primary px-2.5 py-1 text-[11px] font-medium text-primary-foreground shadow-md" role="status">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" aria-hidden />
-            {t('agent.acting', { action: agentAction.action })}
-          </div>
-        ) : null}
         {activeTab?.loading ? (
           <div className="absolute inset-x-0 top-0 z-10 h-0.5 animate-pulse bg-primary" aria-hidden />
         ) : null}

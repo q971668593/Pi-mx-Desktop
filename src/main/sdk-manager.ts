@@ -179,6 +179,56 @@ export async function listRegistryVersions(): Promise<{ versions: string[]; late
 }
 
 let installing = false
+let installingGlobalCli = false
+
+/** Install the same Pi package used by the desktop as an npm global CLI for other apps (e.g. Magpie). */
+export function installGlobalPiCli(version: string, onProgress: (line: string) => void = () => {}): Promise<void> {
+  if (installingGlobalCli) return Promise.reject(new Error('Pi 全局命令正在安装，请稍候'))
+  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) return Promise.reject(new Error('无效的 Pi 版本号'))
+  if (!checkNpmAvailable()) return Promise.reject(new Error('未检测到 npm，无法安装全局 Pi 命令'))
+  installingGlobalCli = true
+  return new Promise<void>((resolve, reject) => {
+    let child: ReturnType<typeof spawn>
+    try {
+      child = spawn(
+        process.platform === 'win32' ? 'npm.cmd' : 'npm',
+        ['install', '--global', `${PKG}@${version}`, '--no-audit', '--no-fund'],
+        { shell: process.platform === 'win32', windowsHide: true, env: { ...process.env } },
+      )
+    } catch (error) {
+      installingGlobalCli = false
+      reject(new Error(`npm 启动失败: ${errorMessage(error)}`))
+      return
+    }
+    let settled = false
+    const onLine = (buffer: Buffer) => {
+      for (const line of buffer.toString().split('\n')) {
+        const trimmed = line.replace(/\r$/, '').trim()
+        if (trimmed) onProgress(trimmed)
+      }
+    }
+    const fail = (error: Error) => {
+      if (settled) return
+      settled = true
+      installingGlobalCli = false
+      reject(error)
+    }
+    child.stdout?.on('data', onLine)
+    child.stderr?.on('data', onLine)
+    child.on('error', (error) => fail(new Error(`npm 启动失败: ${error.message}`)))
+    child.on('close', (code) => {
+      if (settled) return
+      settled = true
+      installingGlobalCli = false
+      if (code === 0) {
+        invalidateSdkManagerCaches()
+        resolve()
+      } else {
+        reject(new Error(`npm 安装 Pi CLI 失败，退出码 ${code}`))
+      }
+    })
+  })
+}
 
 function sdkDir(): string {
   return join(app.getPath('userData'), 'sdk')

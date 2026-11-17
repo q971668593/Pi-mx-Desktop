@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
-import { Boxes, Plus, RefreshCw } from '@renderer/components/icons'
+import { Plus, RefreshCw } from '@renderer/components/icons'
 import { ConfirmDialog } from '@renderer/features/settings/confirm-dialog'
 import { ipcClient, onAppEvent } from '@renderer/lib/ipc-client'
 import { SettingsPageHeader } from '@renderer/features/settings/settings-shell'
@@ -17,13 +17,14 @@ import {
 } from '@renderer/features/settings/model-provider-presets'
 import { ManualModelAddDialog } from '@renderer/features/settings/manual-model-add-dialog'
 import type { LocalModelEntry } from '@renderer/features/settings/model-entry-editor'
-import { btnOutline, btnPrimary, cloneConfig, configEqual, defaultModelEntry, ProviderAvatar } from './models-settings-shared'
+import { btnOutline, btnPrimary, cloneConfig, configEqual, defaultModelEntry } from './models-settings-shared'
 import { ModelsProviderCard } from './models-provider-card'
 import { ModelsSdkProviderSection } from './models-sdk-provider-section'
 import { saveModelsConfigDraft } from './save-models-config'
 import { ModelDefaultsSection } from './model-defaults-section'
 import { PluginModelSettings } from './plugin-model-settings'
 import { invalidateAvailableModels, prefetchAvailableModels } from '@renderer/lib/available-models-cache'
+import { ProviderTemplateDialog } from './provider-template-dialog'
 
 export function ModelsSettingsPanel() {
   const { t } = useTranslation('settings')
@@ -148,12 +149,20 @@ export function ModelsSettingsPanel() {
 
   const addFromPreset = (preset: ProviderPreset) => {
     const key = allocateProviderKey(draft?.providers || {}, preset.defaultKey)
+    const config = clonePresetConfig(preset)
+    const label = preset.id === 'custom-openai' ? t('models.customProvider') : t(`models.providerLabels.${preset.id}`, { defaultValue: preset.label })
+    if (preset.id === 'custom-openai') {
+      config.name = label
+      config.baseUrl = undefined
+      config.apiKey = undefined
+      config.models = []
+    }
     patchDraft((c) => {
-      c.providers[key] = clonePresetConfig(preset)
+      c.providers[key] = config
     })
     setExpanded((e) => ({ ...e, [key]: true }))
     setAddMenuOpen(false)
-    toast.success(t('models.addedProviderToast', { label: preset.label, key }))
+    toast.success(t('models.addedProviderToast', { label, key }))
   }
 
   const removeProvider = (id: string) => {
@@ -166,21 +175,6 @@ export function ModelsSettingsPanel() {
     patchDraft((c) => {
       c.providers[id] = { ...c.providers[id], ...patch }
     })
-  }
-
-  const applyPresetToExisting = (providerId: string, preset: ProviderPreset) => {
-    patchDraft((c) => {
-      const prev = c.providers[providerId]
-      const templ = clonePresetConfig(preset)
-      const models = prev.models?.length ? prev.models : templ.models?.length ? templ.models : []
-      c.providers[providerId] = {
-        ...templ,
-        apiKey: prev.apiKey || templ.apiKey,
-        models,
-        name: templ.name || prev.name,
-      }
-    })
-    toast.success(t('models.applyTemplateToast', { label: preset.label }))
   }
 
   const fetchRemoteCatalog = async (providerId: string) => {
@@ -315,47 +309,10 @@ export function ModelsSettingsPanel() {
             <p className="mt-0.5 text-[12.5px] leading-[1.6] text-foreground-secondary">{t('models.userProvidersDescription', { count: providerIds.length })}</p>
           </div>
           <div className="relative">
-            <button type="button" className={btnPrimary} onClick={() => setAddMenuOpen((o) => !o)}>
+            <button type="button" className={btnPrimary} onClick={() => setAddMenuOpen(true)}>
               <Plus className="mr-1 inline h-3 w-3" strokeWidth={2} />
               {t('models.addProviderBtn')}
             </button>
-            {addMenuOpen && (
-              <>
-                <button
-                  type="button"
-                  className="backdrop-motion fixed inset-0 z-40 cursor-default bg-black/20"
-                  aria-label={t('models.close')}
-                  onClick={() => setAddMenuOpen(false)}
-                />
-                <div className="popover-motion absolute right-0 z-50 mt-2 w-[min(360px,calc(100vw-2rem))] rounded-xl border border-border/80 bg-popover p-2 shadow-lg">
-                  <div className="px-2 py-1.5 text-2xs font-semibold uppercase tracking-widest text-muted-foreground/50">
-                    {t('models.selectTemplate')}
-                  </div>
-                  <div className="max-h-[min(420px,60vh)] overflow-y-auto">
-                    {PROVIDER_PRESETS.map((preset) => (
-                      <button
-                        key={preset.id}
-                        type="button"
-                        className="settings-preset-menu-item flex w-full items-start gap-3 rounded-lg px-2 py-2.5 text-left"
-                        onClick={() => addFromPreset(preset)}
-                      >
-                        <ProviderAvatar preset={preset} label={preset.label} />
-                        <div className="min-w-0 flex-1">
-                          <div className="text-base font-medium">{preset.label}</div>
-                          <div className="text-xs text-muted-foreground">{preset.tagline}</div>
-                          <div className="mt-0.5 font-mono text-2xs text-muted-foreground/50">
-                            {t('models.keyName')} {preset.defaultKey}
-                            {preset.starterModels?.length
-                              ? ` · ${t('models.containsModels', { count: preset.starterModels.length })}`
-                              : ` · ${t('models.needsFetch')}`}
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
           </div>
         </div>
 
@@ -388,16 +345,6 @@ export function ModelsSettingsPanel() {
                   onToggleLocalModel={(rowKey) =>
                     setExpandedLocalModel((e) => ({ ...e, [rowKey]: !e[rowKey] }))
                   }
-                  onApplyPreset={(pr) =>
-                    setConfirmState({
-                      title: t('models.applyTemplateTitle'),
-                      message: t('models.applyTemplateConfirm', { label: pr.label }),
-                      onConfirm: () => {
-                        setConfirmState(null)
-                        applyPresetToExisting(pid, pr)
-                      },
-                    })
-                  }
                   onUpdateProvider={(patch) => updateProvider(pid, patch)}
                   onFetchRemote={() => void fetchRemoteCatalog(pid)}
                   onManualAdd={() => setManualAddProviderId(pid)}
@@ -427,6 +374,8 @@ export function ModelsSettingsPanel() {
       </section>
 
       <ModelsSdkProviderSection providerIds={sdkProviderIds} modelsByProvider={sdkModelsByProvider} />
+
+      {addMenuOpen ? <ProviderTemplateDialog onClose={() => setAddMenuOpen(false)} onSelect={addFromPreset} /> : null}
 
       {manualAddProviderId && draft?.providers[manualAddProviderId] && (
         <ManualModelAddDialog

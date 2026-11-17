@@ -4,7 +4,7 @@ import { normalizeSessionKey } from '../../worker-session-key'
 import { registerHandler, registerHandlerWithSchema } from '../registry'
 import { readRemoteAttachment, writeClipboardTempImage } from '../../clipboard-temp-images'
 import { readActionableImage, resolveActionableImage } from '../../image-file-access'
-import { capabilityCatalog, capabilitySectionMap, capabilityToolFamilies } from '../../capabilities/catalog'
+import { capabilityCatalog, capabilitySectionMap, capabilityToolFamilies, setInstalledCapabilityTools } from '../../capabilities/catalog'
 import { clipboard, nativeImage } from 'electron'
 import { clipboardReadTempImageSchema, clipboardWriteTempImageSchema, dialogSaveImageSchema, promptTextSchema } from '../schemas'
 import { peekBrowserHost } from '../../browser/browser-host'
@@ -71,7 +71,16 @@ export function registerPromptHandlers(): void {
     await workerManager.setCapabilities(capabilitySectionMap(caps), capabilityToolFamilies(caps), req.sessionFile)
   }
 
-  registerHandler('ipc:capabilities.catalog', async () => ({ capabilities: capabilityCatalog() }))
+  registerHandler('ipc:capabilities.catalog', async () => {
+    const cwd = workerManager.cwd || configStore.get('currentProject') || process.cwd()
+    const runtime = await workerManager.getExtensionCapabilities(cwd).catch(() => null)
+    const names = runtime?.extensions.flatMap((extension) => extension.tools) ?? []
+    setInstalledCapabilityTools({
+      computer: names.filter((name) => /^computer[_-]/i.test(name)).length,
+      'web-search': names.filter((name) => /^(search|docs_search|web_fetch|web_map|search_|context7_|plan_)/i.test(name)).length,
+    })
+    return { capabilities: capabilityCatalog() }
+  })
 
   registerHandlerWithSchema('ipc:prompt.send', promptTextSchema, async (req) => {
     const bind = await bindBeforePrompt(req.sessionFile)

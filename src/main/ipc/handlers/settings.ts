@@ -10,8 +10,23 @@ import { sessionPreviewProcess } from '../../session-preview-process'
 import { registerHandler, registerHandlerWithSchema, sendEvent } from '../registry'
 import { settingsSetSchema } from '../schemas'
 import { remoteTap } from '../../remote/tap'
+import { getPythonRuntimeStatus, installLatestPython, openPythonDownloads } from '../../python-runtime'
 
 export function registerSettingsHandlers(): void {
+  registerHandler('ipc:python.status', async () => getPythonRuntimeStatus(configStore.get('pythonSetupPromptHandled')))
+  registerHandler('ipc:python.dismissSetupPrompt', async () => {
+    configStore.set('pythonSetupPromptHandled', true)
+    return { ok: true }
+  })
+  registerHandler('ipc:python.installLatest', async () => {
+    configStore.set('pythonSetupPromptHandled', true)
+    return installLatestPython()
+  })
+  registerHandler('ipc:python.openDownloads', async () => {
+    await openPythonDownloads()
+    return { ok: true }
+  })
+
   registerHandler('ipc:settings.get', async (req) => {
     if (req.key) {
       const key = req.key as keyof StoreSchema

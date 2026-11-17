@@ -113,6 +113,8 @@ export interface RunState {
   availableThinkingLevels?: string[]
   startTime?: number
   lastRunDurationMs?: number
+  /** Time from the turn start to the first assistant content delta. */
+  firstOutputDelayMs?: number
   usage?: {
     input: number
     output: number
@@ -144,7 +146,12 @@ export interface AppEventStoreSlice {
 
 export interface UIState {
   currentWorkspace: string | null
-  workspaceFileToOpen: { workspaceRoot: string; rel: string; line?: number } | null
+  workspaceFileToOpen: {
+    workspaceRoot: string
+    rel: string
+    line?: number
+    gitDiff?: { patch: string; staged: boolean; status: string }
+  } | null
   recentProjects: string[]
   projectDisplayNames: Record<string, string>
   setWorkspace: (path: string | null) => void

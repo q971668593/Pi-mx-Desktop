@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, readdirSync, statSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync, readdirSync, statSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { errorMessage } from '@shared/error-message'
 import { resolveActiveAgentDir } from './agent-dir'
@@ -115,4 +115,59 @@ export function appendMissingGitPackagesToSettings(): { added: string[]; error?:
     return { added: [], error: errorMessage(e) }
   }
   return { added }
+}
+
+export const CAPABILITY_PACKAGES = {
+  'web-search': 'git:github.com/justhil/pi-search@v2.0.0',
+  computer: 'npm:pi-agent-computer-use@0.1.5',
+} as const
+
+/** Add an explicitly requested capability package without disturbing other Pi settings. */
+export function addCapabilityPackage(capability: keyof typeof CAPABILITY_PACKAGES): { added: boolean; updated?: boolean; entry: string; error?: string } {
+  const entry = CAPABILITY_PACKAGES[capability]
+  const settingsPath = join(AGENT_DIR(), 'settings.json')
+  let settings: Record<string, unknown> = {}
+  try {
+    if (existsSync(settingsPath)) {
+      const parsed: unknown = JSON.parse(readFileSync(settingsPath, 'utf-8'))
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { added: false, entry, error: 'settings.json 格式不是对象，未修改文件' }
+      settings = parsed as Record<string, unknown>
+    }
+  } catch (e: unknown) {
+    return { added: false, entry, error: errorMessage(e) }
+  }
+  const packages = Array.isArray(settings.packages) ? settings.packages : []
+  const isExistingCapability = (item: unknown) =>
+    capability === 'web-search'
+      ? entryKey(item).startsWith('git:github.com/justhil/pi-search')
+      : entryKey(item).startsWith('npm:pi-agent-computer-use@')
+  const existingIndex = packages.findIndex(isExistingCapability)
+  if (existingIndex >= 0) {
+    if (entryKey(packages[existingIndex]) === entry) return { added: false, entry }
+    const current = packages[existingIndex]
+    packages[existingIndex] = current && typeof current === 'object' && 'source' in current
+      ? { ...(current as Record<string, unknown>), source: entry }
+      : entry
+    // Collapse duplicate entries for this capability so Pi loads only the selected version.
+    for (let i = packages.length - 1; i > existingIndex; i--) if (isExistingCapability(packages[i])) packages.splice(i, 1)
+    settings.packages = packages
+    try {
+      writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8')
+      return { added: false, updated: true, entry }
+    } catch (e: unknown) {
+      return { added: false, entry, error: errorMessage(e) }
+    }
+  }
+  if (packages.some((item) => entryKey(item) === entry)) {
+    return { added: false, entry }
+  }
+  packages.push(entry)
+  settings.packages = packages
+  try {
+    mkdirSync(AGENT_DIR(), { recursive: true })
+    writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8')
+    return { added: true, entry }
+  } catch (e: unknown) {
+    return { added: false, entry, error: errorMessage(e) }
+  }
 }

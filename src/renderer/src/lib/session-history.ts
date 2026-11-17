@@ -121,12 +121,13 @@ export function clearSessionHistoryCache(sessionFile?: string): void {
 export async function getSessionMessagesFromDiskViaIpc(
   sessionFile: string,
   leafId?: string | null,
+  limit = 80,
 ): Promise<GetMessagesResult> {
   const res = await ipcClient.invoke('session.getMessages', {
     sessionFile,
     workspaceId: activeWorkspace(),
     offset: 0,
-    limit: 80,
+    limit: Math.max(1, Math.min(500, limit)),
     ...(leafId !== undefined ? { leafId } : {}),
   })
   const items = res?.items || []

@@ -66,7 +66,15 @@
     "previous": "上一个",
     "next": "下一个",
     "closeFind": "关闭查找",
-    "resetZoom": "重置"
+    "resetZoom": "重置",
+    "gitDiff": {
+      "view": "Git 文件视图",
+      "file": "文件预览",
+      "diff": "Git 差异",
+      "staged": "已暂存差异",
+      "unstaged": "未暂存差异",
+      "empty": "Git 没有返回差异内容"
+    }
   },
   "menu": {
     "preview": "预览",
@@ -90,6 +98,13 @@
     "attached": "已附加到输入框",
     "copied": "已复制路径",
     "renamed": "已重命名",
-    "renameFailed": "重命名失败"
+    "renameFailed": "重命名失败",
+    "fileCopied": "已复制文件，可选择文件夹后按 Ctrl+V 粘贴",
+    "pastedOne": "已粘贴文件",
+    "pastedMany": "已粘贴 {{count}} 个文件",
+    "pasteConflictOne": "目标文件夹中已有同名文件，未覆盖",
+    "pasteConflictMany": "{{count}} 个同名文件未覆盖",
+    "pasteFailedOne": "文件粘贴失败",
+    "pasteFailedMany": "{{count}} 个文件粘贴失败"
   }
 }

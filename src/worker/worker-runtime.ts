@@ -15,6 +15,7 @@ import { createDesktopUIBridge, type DesktopUIBridge } from './desktop-ui-bridge
 import { createDesktopWidgetHost } from './desktop-widget-host.js'
 import { applySkillsOverride } from './skill-override.js'
 import { decorateQuestionnaireTools } from './questionnaire-tool-decorator.js'
+import { guardExtensionCapabilityTools } from './extension-capability-guard.js'
 import {
   handleSessionEvent as dispatchSessionEvent,
   resetCompletionTurnTracking,
@@ -226,7 +227,7 @@ function buildRuntimeFactory(): CreateAgentSessionRuntimeFactory {
       resourceLoaderOptions: {
         eventBus: st.sharedEventBus!,
         extensionFactories: [...piBuiltinExtensions(sdk), capabilitiesExtension, browserToolsExtension, terminalToolsExtension, modelRoutersExtension(agentDir)],
-        extensionsOverride: (result) => decorateQuestionnaireTools(result, cwd),
+        extensionsOverride: (result) => guardExtensionCapabilityTools(decorateQuestionnaireTools(result, cwd)),
         skillsOverride: applySkillsOverride as never,
       },
     })

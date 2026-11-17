@@ -131,11 +131,12 @@ export function ModelCatalogPicker({
                   ) : (
                     <button
                       type="button"
-                      className="settings-add-fab flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border/70 bg-background text-muted-foreground hover:border-primary hover:bg-primary hover:text-primary-foreground"
+                      className="settings-add-fab flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-border/70 bg-background text-muted-foreground transition hover:border-primary hover:bg-primary hover:text-primary-foreground"
                       aria-label={t('models.addBtn') + ' ' + id}
+                      title={t('models.addBtn') + ' ' + id}
                       onClick={() => onAdd(id)}
                     >
-                      <Plus className="h-4 w-4 transition-transform duration-motion-fast group-hover:rotate-90" strokeWidth={1.5} />
+                      <Plus className="h-3.5 w-3.5 transition-transform duration-motion-fast group-hover:rotate-90" strokeWidth={1.75} />
                     </button>
                   )}
                 </div>

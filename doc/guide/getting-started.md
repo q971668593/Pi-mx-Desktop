@@ -51,7 +51,7 @@ npm run dev
 | Wide preview | **Files** toolbar **Expand preview** (fills chat column; inner file tree collapse unchanged) |
 | Attach (other) | Drag from Explorer into composer, `+` picker, `Ctrl+V` for images |
 
-Full shortcut table: [README.md](../../README.md#keyboard-shortcuts).
+Full shortcut table: [README.md](../../README.en.md#keyboard-shortcuts).
 
 ---
 

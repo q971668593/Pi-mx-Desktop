@@ -1,4 +1,4 @@
-import { mkdir, open, readdir, realpath, rename, stat, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, open, readdir, realpath, rename, stat, writeFile } from 'node:fs/promises'
 import { StringDecoder } from 'node:string_decoder'
 import { WORKSPACE_TEXT_MAX_BYTES } from '../../packages/shared/workspace-preview'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'path'
@@ -221,5 +221,36 @@ export async function workspaceFsRename(req: { workspaceRoot: string; relativePa
     return { ok: true as const, newRelativePath: newRel }
   } catch (e) {
     return { ok: false as const, error: 'rename_failed' as const }
+  }
+}
+
+/** Copy one user-selected file into a workspace directory without ever replacing an existing entry. */
+export async function workspaceFsCopyFile(req: {
+  workspaceRoot: string
+  sourcePath: string
+  targetDirectory: string
+  sourceIsWorkspaceRelative?: boolean
+}) {
+  const source = req.sourceIsWorkspaceRelative
+    ? await resolvePathUnderWorkspace(req.workspaceRoot, req.sourcePath)
+    : { ok: true as const, abs: resolve(req.sourcePath) }
+  if (!source.ok) return { ok: false as const, error: source.error }
+  const target = await resolvePathUnderWorkspace(req.workspaceRoot, req.targetDirectory || '.')
+  if (!target.ok) return { ok: false as const, error: target.error }
+  const [sourceInfo, targetInfo] = await Promise.all([
+    stat(source.abs).catch(() => null),
+    stat(target.abs).catch(() => null),
+  ])
+  if (!sourceInfo?.isFile()) return { ok: false as const, error: 'not_a_file' as const }
+  if (!targetInfo?.isDirectory()) return { ok: false as const, error: 'not_a_directory' as const }
+  const name = source.abs.split(/[\\/]/).pop() || ''
+  if (!name || name === '.' || name === '..') return { ok: false as const, error: 'invalid_name' as const }
+  const targetPath = join(target.abs, name)
+  try {
+    await copyFile(source.abs, targetPath, 1) // COPYFILE_EXCL
+    return { ok: true as const, name }
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException | null)?.code
+    return { ok: false as const, error: code === 'EEXIST' ? 'target_exists' as const : 'copy_failed' as const }
   }
 }

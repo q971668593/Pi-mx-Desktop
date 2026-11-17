@@ -66,7 +66,15 @@
     "previous": "Previous",
     "next": "Next",
     "closeFind": "Close search",
-    "resetZoom": "Reset"
+    "resetZoom": "Reset",
+    "gitDiff": {
+      "view": "Git file view",
+      "file": "File preview",
+      "diff": "Git diff",
+      "staged": "Staged diff",
+      "unstaged": "Unstaged diff",
+      "empty": "Git returned no diff content"
+    }
   },
   "menu": {
     "preview": "Preview",
@@ -90,6 +98,13 @@
     "attached": "Attached to composer",
     "copied": "Path copied",
     "renamed": "Renamed",
-    "renameFailed": "Rename failed"
+    "renameFailed": "Rename failed",
+    "fileCopied": "File copied. Select a folder and press Ctrl+V to paste",
+    "pastedOne": "File pasted",
+    "pastedMany": "Pasted {{count}} files",
+    "pasteConflictOne": "A file with this name already exists; it was not overwritten",
+    "pasteConflictMany": "{{count}} duplicate files were not overwritten",
+    "pasteFailedOne": "Could not paste the file",
+    "pasteFailedMany": "Could not paste {{count}} files"
   }
 }

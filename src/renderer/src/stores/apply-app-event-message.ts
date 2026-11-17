@@ -55,7 +55,7 @@ export function handleMessage(event: MessageEvent, api: StoreApi): void {
   if (event.phase === 'start' && event.role === 'user') {
     // A queued message delivered just as the user hit Stop must not re-light the run.
     if (state.runState.status !== 'running' && !isAbortUiHoldActive(event.sessionFile)) {
-      state.setRunState({ status: 'running', startTime: event.timestamp })
+      state.setRunState({ status: 'running', startTime: event.timestamp, firstOutputDelayMs: undefined, usage: undefined, toolCount: 0, errorCount: 0 })
     }
     const opt = state.optimisticPendingUserText
     if (opt || event.text) {
@@ -144,6 +144,10 @@ export function handleMessage(event: MessageEvent, api: StoreApi): void {
     api.set({ streamingAssistantId: id })
   } else if (event.phase === 'delta' && event.text) {
     clearAgentTurnBootstrappingIfNeeded()
+    const run = api.get().runState
+    if (event.contentKind !== 'thinking' && run.status === 'running' && run.startTime != null && run.firstOutputDelayMs == null) {
+      state.setRunState({ firstOutputDelayMs: Math.max(0, event.timestamp - run.startTime) })
+    }
     ensureStreamingAssistant(event, api)
     // Route thinking vs prose by contentKind only — never put body into thinking.
     if (event.contentKind === 'thinking') state.appendThinkingDelta(event.text)

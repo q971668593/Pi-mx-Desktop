@@ -81,3 +81,39 @@
 .git-manager-form { margin: 10px 10px 2px; padding: 9px; }
 .git-manager-card { margin: 2px 2px 7px; padding: 8px 10px; }
 .git-manager-card:hover, .git-manager-card:focus-within { background: var(--bg-hover); }
+
+.git-board button,
+.git-commit-dialog button {
+  transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease, transform 150ms cubic-bezier(.2, .8, .2, 1);
+}
+
+.git-board button:not(:disabled):hover,
+.git-commit-dialog button:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.git-board button:not(:disabled):active,
+.git-commit-dialog button:not(:disabled):active {
+  transform: translateY(0) scale(.98);
+}
+
+.git-board [role='button'] {
+  transition: background-color 150ms ease, transform 150ms cubic-bezier(.2, .8, .2, 1);
+}
+
+.git-board [role='button']:hover { transform: translateX(2px); }
+
+.git-commit-backdrop[data-state='open'] { animation: git-commit-fade-in 180ms ease-out both; }
+.git-commit-backdrop[data-state='closing'] { animation: git-commit-fade-out 160ms ease-in both; }
+.git-commit-dialog[data-state='open'] { animation: git-commit-dialog-in 210ms cubic-bezier(.2, .8, .2, 1) both; }
+.git-commit-dialog[data-state='closing'] { animation: git-commit-dialog-out 160ms ease-in both; }
+
+@keyframes git-commit-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes git-commit-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes git-commit-dialog-in { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes git-commit-dialog-out { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(6px) scale(.99); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .git-board button, .git-commit-dialog button, .git-board [role='button'] { transition: none; }
+  .git-commit-backdrop, .git-commit-dialog { animation: none !important; }
+}

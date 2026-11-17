@@ -4,250 +4,248 @@
 
 # Pi mx Desktop
 
-**A desktop workbench for the [pi](https://github.com/earendil-works/pi) coding agent.**<br/>
-The same agent and the same `~/.pi/agent` you use in the terminal — with a timeline, Git review, a built-in terminal, and a phone app to keep going from your phone.
+**[pi](https://github.com/earendil-works/pi) 编程 Agent 的桌面工作台。**<br/>
+还是终端里那个 Agent、那份 `~/.pi/agent`，多了时间线、Git Review、内置终端，还有一个能在手机上接着干活的手机应用。
 
 [![Release](https://img.shields.io/github/v/release/q971668593/Pi-mx-Desktop?style=flat-square&color=d97706&label=release)](https://github.com/q971668593/Pi-mx-Desktop/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/q971668593/Pi-mx-Desktop/total?style=flat-square&color=d97706)](https://github.com/q971668593/Pi-mx-Desktop/releases)
 ![Platforms](https://img.shields.io/badge/platform-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-d97706?style=flat-square)
 [![License](https://img.shields.io/github/license/q971668593/Pi-mx-Desktop?style=flat-square&color=d97706)](LICENSE)
 
-**English** · [简体中文](./README.zh-CN.md) · [Download](https://github.com/q971668593/Pi-mx-Desktop/releases/latest) · [Getting started](./doc/guide/getting-started.md) · [Adapters](./doc/guide/adapters.en.md)
+[English](./README.en.md) · **简体中文** · [下载](https://github.com/q971668593/Pi-mx-Desktop/releases/latest) · [上手指南](./doc/guide/getting-started.zh-CN.md) · [适配器列表](./doc/guide/adapters.zh-CN.md)
 
-<sub>Based on [pi Desktop](https://github.com/justhil/pi-app) by [justhil](https://github.com/justhil), MIT licensed.</sub>
+<sub>基于 [pi Desktop](https://github.com/justhil/pi-app)（作者 [justhil](https://github.com/justhil)）开发，MIT 许可。</sub>
 
 </div>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="doc/assets/readme/en/hero-dark.png" />
-  <img src="doc/assets/readme/en/hero-light.png" alt="Pi mx Desktop: a finished turn in the timeline, with the Git diff open in the Review panel" />
+  <source media="(prefers-color-scheme: dark)" srcset="doc/assets/readme/zh/hero-dark.png" />
+  <img src="doc/assets/readme/zh/hero-light.png" alt="Pi mx Desktop：时间线里一轮已完成的对话，右侧 Review 面板展开了 Git diff" />
 </picture>
 
-Pi mx Desktop is not another agent. It runs the pi SDK in a background worker and reads the same files as the CLI — sessions, model logins, `settings.json`, installed extensions. Open a project and the sessions you started in the terminal are already in the sidebar; continue any of them, or start a new one.
+Pi mx Desktop 不是另一个 Agent。它在后台 Worker 里运行 pi SDK，读写的就是 CLI 用的那些文件：会话、模型登录、`settings.json`、已安装的扩展。打开项目，终端里聊过的会话已经在侧栏里，接着聊或者新开都行。
 
-## What this fork adds
+## 这个分支加了什么
 
-Same agent, same `~/.pi/agent` — plus a few things upstream does not have yet:
+同一个 Agent、同一份 `~/.pi/agent`，另外多了上游还没有的几样东西：
 
 | | | |
 |---|---|---|
-| **Portable mode** | Drop a `data` folder next to the executable and the entire profile (settings, sessions, cache) lives there. Carry it on a USB stick; nothing is written to `%APPDATA%`. |
-| **Warm editorial theme** | Light and dark palettes rebuilt around warm ivory and amber, applied through the same design tokens, so panes, chips and code blocks finally look like one product. |
-| **Right sidebar, your order** | Files → Git → Terminal → Browser → Run are on by default; Review, Context and Tree stay out of the way until you need them. |
-| **Drag folders too** | The Files panel drags folders as well as files into the composer — a folder lands as an `@path` reference the agent can list and read. |
-| **Titles that follow you** | Optional: the conversation name in the sidebar follows your latest message, so a long session stays recognisable without renaming it by hand. |
-| **Git sync in one click** | Pull / Sync / Push sit in the Git header; `↑` is red and `↓` is green, so unpushed or unpulled work is visible at a glance. |
+| **便携模式** | 程序目录下放一个 `data` 文件夹，配置、会话、缓存就都落在里面。放 U 盘带走，不往 `%APPDATA%` 写任何东西。 |
+| **暖色编辑器主题** | 浅色和深色都换成暖白 + 琥珀色，走同一套设计变量，面板、chip 和代码块看起来像同一个产品。 |
+| **右侧栏顺序由你定** | 默认打开 文件 → Git → 终端 → 浏览器 → Run；Review、Context、Tree 需要时再开，不占视线。 |
+| **文件夹也能拖** | 文件面板里的文件夹可以直接拖进输入框，落成 `@路径` 引用，Agent 自己会去列目录、读文件。 |
+| **对话名跟着你走** | 可选：侧栏里的对话名跟随你最新发的消息，长会话不用手动改名也认得出。 |
+| **一键同步 Git** | Git 头部就有 拉取 / 同步 / 推送；`↑` 红、`↓` 绿，有没有没推送的提交一眼看出来。 |
 
-## At a glance
+## 一图看全
 
-<img src="doc/assets/readme/en/overview.png" alt="Overview: timeline steps, side-by-side review, parallel sessions, @ file references, context breakdown, built-in adapters, themes and the shared ~/.pi/agent files" width="100%" />
+<img src="doc/assets/readme/zh/overview.png" alt="功能总览：时间线步骤、并排 Review、多会话并行、@ 引用文件、上下文占比、内置适配器、主题，以及与 CLI 共用的 ~/.pi/agent 文件" width="100%" />
 
-## One turn, start to finish
+## 一轮对话的全过程
 
-<img src="doc/assets/readme/en/agent-turn.gif" alt="A prompt is sent; the agent runs tests, reads a file, edits it, reruns tests, and the changes appear in Review" width="100%" />
+<img src="doc/assets/readme/zh/agent-turn.gif" alt="发送需求后，Agent 依次运行测试、读取文件、修改代码、再次测试，改动出现在 Review 面板" width="100%" />
 
-<sub>Recorded from the app itself. The model replies come from a scripted local endpoint so the demo is reproducible; the <code>bash</code>, <code>read</code> and <code>edit</code> tools ran for real on the sample repo.</sub>
+<sub>直接录自应用界面。为了让演示可复现，模型回复来自本地脚本化接口；<code>bash</code>、<code>read</code>、<code>edit</code> 工具都在示例仓库上真实执行。</sub>
 
-## Timeline
+## 时间线
 
-Tool calls stream in as flat steps — thinking, commands, reads, edits — and fold into one summary line once the answer starts. Each edit shows `+N −M`; the turn ends with a **Files changed** card that opens the file in Files or Review.
+工具调用按步骤平铺流式出现——思考、命令、读文件、改文件——正文开始输出后折叠成一行摘要。每次编辑标出 `+N −M`，回合结束时附一张「文件已更改」卡片，点开即可在文件面板或 Review 中查看。
 
-<img src="doc/assets/readme/en/timeline.png" alt="Expanded tool steps: thinking, ran node --test, read src/links.mjs, edited src/links.mjs and README.md" width="100%" />
+<img src="doc/assets/readme/zh/timeline.png" alt="展开的工具步骤：思考、运行 node --test、读取 src/links.mjs、编辑 src/links.mjs 与 README.md" width="100%" />
 
-Markdown, code blocks, KaTeX and long outputs render in place. Hover a message to copy it, rewind to it, or fork a new session from it.
+Markdown、代码块、KaTeX 和长输出都在原位渲染。悬停消息可以复制、回退到此处，或从这里 Fork 一个新会话。
 
 ## Review
 
-<img src="doc/assets/readme/en/review-stage.gif" alt="The right sidebar is dragged wider, the Git diff of links.mjs switches to side by side, and one hunk is staged" width="100%" />
+<img src="doc/assets/readme/zh/review-stage.gif" alt="把右侧栏拖宽，links.mjs 的 Git diff 切换为并排视图，并暂存其中一个片段" width="100%" />
 
-Pick a scope — this turn, this session, or the whole Git working tree — and expand a file for its diff; drag the sidebar wider for a side-by-side view. Hunks can be staged or unstaged one at a time, and a line comment goes straight back into the conversation.
+按「本轮 / 本对话 / Git 工作区」选范围，展开文件看 diff；把侧栏拖宽即可切到并排视图。可以逐个 hunk 暂存或撤销，行评直接发回当前对话。
 
-## Files
+## 文件
 
-- Open multiple files in tabs; up to five unpinned tabs are retained. Pin tabs from the context menu, drag to reorder, or close them manually.
-- Markdown opens in preview; other text files open in a syntax-highlighted editor. Use `Ctrl`/`⌘`+`F` to find and `Ctrl`/`⌘`+`S` to save. Unsaved edits remain in memory while switching tabs.
-- Hidden files are shown by default. Search across the project, create files or folders from the tree background, and zoom or drag image previews.
-- The gutter button quotes `path:line` into the composer as a reference.
-- **Expand preview** gives the file the whole chat column; click again to go back. Drag a file onto the composer to attach it.
+- 点击文件即可在标签页打开；未固定标签最多保留 5 个，右键可固定，标签支持拖动和关闭。
+- Markdown 默认预览，其他文本文件默认编辑；支持语法高亮、`Ctrl`/`⌘`+`F` 查找和 `Ctrl`/`⌘`+`S` 保存。切换标签时未保存的编辑保留在当前应用进程中。
+- 文件树默认显示隐藏文件，搜索覆盖整个项目；空白处右键可新建文件或文件夹。图片预览支持滚轮缩放和拖动。
+- 行号旁的按钮把 `路径:行号` 作为引用插入输入框。
+- 「展开预览」让文件铺满聊天区，再点一次恢复。把文件拖到输入框即可作为附件。
 
-## Composer
+## 输入框
 
-<img src="doc/assets/readme/en/composer-mention.gif" alt="Typing @li suggests src/links.mjs; Enter inserts it as a file chip" width="66%" />
+<img src="doc/assets/readme/zh/composer-mention.gif" alt="输入 @li 后提示 src/links.mjs，回车后作为文件标签插入" width="66%" />
 
-- `@` searches project files (respects `.gitignore`, uses `fd`) and inserts them as references.
-- `/` lists pi's built-in commands and the ones your extensions register.
-- Paste or drop images and files; model and thinking level sit at the right of the input.
-- While the agent is working, `Enter` steers the current turn and `Alt+Enter` queues a follow-up for when it finishes.
+- `@` 搜索项目文件（遵守 `.gitignore`，基于 `fd`），插入为文件引用。
+- `/` 列出 pi 内置命令和扩展注册的命令。
+- 可粘贴、拖入图片和文件；模型与思考等级在输入框右侧切换。
+- Agent 运行中：`Enter` 插话引导当前回合，`Alt+Enter` 排队到本轮结束后执行。
 
-## Parallel sessions
+## 多会话并行
 
-<img src="doc/assets/readme/en/parallel-sessions.gif" alt="A fix turn starts, a second session starts a read-only turn, both run at once while the view switches between them" width="100%" />
+<img src="doc/assets/readme/zh/parallel-sessions.gif" alt="一个会话开始修复，另一个会话开始只读分析，两者同时运行，界面在两者之间切换" width="100%" />
 
-Each session runs in its own worker. Start a turn, open another session and start a second one: both keep going, the sidebar marks the ones that are working and the status bar counts them. **Settings → General** sets how many workers stay alive and when idle ones are reclaimed; running sessions are never reclaimed.
+每个会话运行在自己的 Worker 里。在一个会话里发起回合，再开一个会话发起第二个：两边都继续跑，侧栏标出正在工作的会话，底部状态栏显示运行数量。保留多少个 Worker、空闲多久回收，在「设置 → 通用」里调整；正在运行的会话不会被回收。
 
-## Built-in terminal
+## 内置终端
 
-`` Ctrl+` `` opens the right-side terminal page. Terminals are grouped by project and stacked vertically. Use **+** to create one, the adjacent menu to choose a shell, and the context menu to copy, paste or add selected output to chat. A task terminal can rerun its recorded command; for an ordinary shell, enter a command the first time you use its restart button.
+按 `` Ctrl+` `` 打开右侧终端页，终端按项目分组并纵向排列。「+」新建终端，旁边的菜单可选择 PowerShell、cmd 或其他已检测到的外壳；右键可复制、粘贴或把选中内容加入对话。终端标题栏可以重运行命令；从任务启动的终端直接重运行，普通终端第一次使用时需要指定命令。
 
-The terminal page reads `.vscode/tasks.json` for one-click run and publish actions. The AI button drafts task configuration and lets you choose what to run. Conversations can use `desktop_terminal` to inspect, start and restart project terminals. Pi's ordinary short-command `bash` tool still runs separately, so not every short command appears in the sidebar.
+终端页读取项目的 `.vscode/tasks.json`，提供一键运行和发布。右上角 AI 按钮可以生成任务配置，保存前选择本次运行的命令。对话可使用 `desktop_terminal` 查看当前项目的终端输出、启动或重启命令；pi 原有的短命令 `bash` 工具仍由 pi 执行，并非所有短命令都会显示在右侧终端中。
 
-## Branches
+## 分支
 
-The right-side **Git** panel manages changes, the commit graph, branches, stashes, tags, remotes and worktrees. The bottom status bar no longer contains a branch picker. The selected panel and file tabs are remembered separately for each project.
+右侧「Git」面板集中管理更改、提交图谱、分支、暂存、标签、远程仓库和工作树。分支入口不再显示在底部状态栏。切换项目时，右侧所选面板和文件标签分别记忆。
 
-## Usage
+## 用量
 
-<img src="doc/assets/readme/en/usage.png" alt="Settings → Usage for 90 days: cost, tokens, requests and cache hit rate, a stacked daily chart with one day hovered, and an activity heatmap" width="100%" />
+<img src="doc/assets/readme/zh/usage.png" alt="设置 → 用量，最近 90 天：费用、token、请求数、缓存命中率，按天堆叠的柱状图（悬停在某一天），以及活跃热力图" width="100%" />
 
-**Settings → Usage** adds up tokens and cost from every pi session on the machine — the desktop's and terminal pi's, including a custom `sessionDir` — by day, hour, model, project and session. Hover a layer of a day for its share; replies copied into a fork count once.
+「设置 → 用量」统计本机所有 pi 会话的 token 和费用——桌面端和终端 pi 的都算，包括自定义的 `sessionDir`——可按天、小时、模型、项目和会话查看。悬停在某天的某一层可以看到占比；复制进分叉会话的回复只计一次。
 
-## More panels
+## 更多面板
 
-<img src="doc/assets/readme/en/panels.png" alt="Tree panel with the session as a tree, Run panel with the context breakdown ring, and the Context panel listing context entries with token estimates" width="100%" />
+<img src="doc/assets/readme/zh/panels.png" alt="Tree 面板的会话树、Run 面板的上下文占比环形图、Context 面板的上下文条目列表" width="100%" />
 
-| Panel | What it does |
+| 面板 | 用途 |
 |---|---|
-| **Tree** | The session as a tree, like `pi /tree`: filter to user messages, jump back to any node and continue from there as a new branch. |
-| **Run** | Run state, model and thinking level, and how the context window splits between user, assistant and tool messages. |
-| **Context** | The messages that make up the current context, with token estimates per entry. |
+| **Tree** | 像 `pi /tree` 一样以树形查看会话：只看用户消息、跳回任意节点，从那里继续就是一条新分支。 |
+| **Run** | 运行状态、当前模型与思考等级，以及上下文窗口在用户、助手、工具消息之间的占比。 |
+| **Context** | 组成当前上下文的消息列表，每条附 token 估算。 |
 
-## Themes and background
+## 主题与背景图
 
-<img src="doc/assets/readme/en/themes.png" alt="The Claude theme: warm ivory with serif replies in light mode, and warm charcoal over a soft background image in dark mode" width="100%" />
+<img src="doc/assets/readme/zh/themes.png" alt="Claude 主题：浅色是暖米白底、衬线体回复，深色是暖炭灰，背后衬着一张柔和的背景图" width="100%" />
 
-Light and dark each take a preset — **Claude**, VS Code Light+, Codex Dark — or your own: colours for the sidebar, chat, your messages, code blocks and borders, a heading / reply font (serif included), chat text size and line height, corner radius and shadow. Everything is a CSS variable, listed next to the custom CSS editor. A background image can sit behind the window — per mode or shared, with its strength, blur and the panes' opacity adjustable; text always stays on a frosted surface. Themes import from `pi-theme-v1` / `codex-theme-v1` strings; five icon sets and 90–110% density are in **Settings → Appearance** too.
+浅色、深色各自可以选预设——**Claude**、VS Code Light+、Codex Dark——也可以自己调：侧栏、聊天区、你的消息、代码块、边框的颜色，标题 / 回复字体（含衬线体），聊天字号和行高，圆角和阴影。这些都是 CSS 变量，自定义 CSS 编辑器旁边列出了全部变量。还可以在窗口背后放一张背景图，浅色深色分开或共用，图片强度、模糊和界面不透明度都能调，文字始终在磨砂层上。支持导入 `pi-theme-v1` / `codex-theme-v1` 主题字符串；5 套图标、90%–110% 界面缩放也在「设置 → 外观」。
 
-## pi on your phone
+## 手机上的 pi
 
-<img src="doc/assets/readme/en/phone.png" alt="pi Remote on Android: the inbox of sessions, a session with its tool steps and changed files, a diff with a line comment, and the session panel with context, changes, branches and cost" width="100%" />
+<img src="doc/assets/readme/zh/phone.png" alt="Android 上的 pi Remote：会话收件箱、带工具步骤和改动文件的会话、选中两行准备批注的 diff，以及显示上下文、改动、分支和费用的会话面板" width="100%" />
 
-**pi Remote** (Android) connects to the desktop app: turn on **Settings → Mobile**, scan the QR code, and every session is on the phone — read along while a turn runs, answer its questions, send prompts with images, pick the model and thinking level. Review a turn's changes or the working tree file by file, long-press lines to leave comments that go into your next message, switch the session's branch or fork from any message. The connection is end-to-end encrypted and stays on your network; away from home, put both devices in the same Tailscale / ZeroTier / WireGuard network (the app finds the overlay address, or add one by hand). English and Chinese follow the phone's language, with an in-app override.
+**pi Remote**（Android）连到桌面端：打开「设置 → 手机连接」，扫码配对，所有会话就都在手机上了——回合运行时可以跟着看，回答它的提问，发带图片的消息，切换模型和思考强度。按文件查看本轮或工作区的改动，长按几行写批注，批注会进到下一条消息里；还能切换会话分支，或从任意一条消息分叉。连接端到端加密、不出你的网络；在外面时，让电脑和手机加入同一个 Tailscale / ZeroTier / WireGuard 网络即可（应用会自动发现组网地址，也可以手动添加）。界面中英文跟随手机系统语言，也可以在应用里单独设置。
 
-## How it fits together
+## 整体结构
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="doc/assets/readme/en/architecture-dark.png" />
-  <img src="doc/assets/readme/en/architecture-light.png" alt="Terminal pi and Pi mx Desktop both read and write ~/.pi/agent; Pi mx Desktop has a renderer, a main process, and one worker per session" width="100%" />
+  <source media="(prefers-color-scheme: dark)" srcset="doc/assets/readme/zh/architecture-dark.png" />
+  <img src="doc/assets/readme/zh/architecture-light.png" alt="终端 pi 与 Pi mx Desktop 都读写 ~/.pi/agent；Pi mx Desktop 由 Renderer、Main 进程和每个会话一个的 Worker 组成" width="100%" />
 </picture>
 
-The renderer never talks to the SDK directly: the main process routes each request to the worker that owns the session, and that worker runs the pi SDK on your machine or inside a WSL distribution. Sessions, logins and settings stay in `~/.pi/agent`, so the CLI and the app can take turns on the same session.
+界面层不直接调用 SDK：Main 进程把每个请求转给负责该会话的 Worker，由它在本机或 WSL 发行版里运行 pi SDK。会话、登录和设置都留在 `~/.pi/agent`，CLI 和桌面端可以轮流接着同一个会话聊。
 
-## Also included
+## 其他能力
 
 | | |
 |---|---|
-| **Extensions, unchanged** | Extensions you installed for terminal pi load here. Their dialogs, tool cards, panels and `/commands` are mapped to native UI by declarative adapters — 36 ship built in. [List](./doc/guide/adapters.en.md) |
-| **Notifications** | A system notification and an in-app inbox when a turn finishes or needs input; the status bar shows what is running. |
-| **WSL runtime** (Windows) | Run the worker inside a chosen WSL distribution, with sessions, Git and previews resolved on the Linux side. |
-| **Chinese / English UI** | Switch in Settings; the phone app follows the system language. |
-| **Updates** | Checks GitHub Releases in the background and can download and launch the installer. |
+| **扩展照常用** | 给终端 pi 装的扩展在这里同样加载。弹窗、工具卡片、面板和 `/命令` 由声明式适配器映射成原生界面，内置 36 个。[列表](./doc/guide/adapters.zh-CN.md) |
+| **完成通知** | 回合结束或需要你作答时发系统通知，应用内有通知收件箱；底部状态栏显示正在运行的会话。 |
+| **WSL 运行时**（Windows） | 把 Worker 跑在指定的 WSL 发行版里，会话、Git 和预览都在 Linux 侧解析。 |
+| **中英文界面** | 在设置里切换；手机应用跟随系统语言。 |
+| **更新** | 后台检查 GitHub Releases，可一键下载并启动安装包。 |
 
-## Install
+## 安装
 
-| Platform | Package |
+| 平台 | 安装包 |
 |---|---|
-| Windows x64 | `Pi mx-Setup-<version>-x64.exe` (installer) or `Pi mx-Portable-<version>-x64.exe` |
-| macOS | `.dmg` / `.zip` for Apple Silicon (`arm64`) and Intel (`x64`) |
-| Linux x64 | `.AppImage` or `.deb` |
-| Android 9+ (arm64) | Built from [`apps/mobile`](./apps/mobile) with your own signing key — see [pi on your phone](#pi-on-your-phone) |
+| Windows x64 | `Pi mx-Setup-<版本>-x64.exe`（安装版）或 `Pi mx-Portable-<版本>-x64.exe`（便携版） |
+| macOS | Apple Silicon（`arm64`）与 Intel（`x64`）的 `.dmg` / `.zip` |
+| Linux x64 | `.AppImage` 或 `.deb` |
+| Android 9+（arm64） | 用你自己的签名密钥从 [`apps/mobile`](./apps/mobile) 构建，见「pi 在手机上」 |
 
-Get them from [Releases](https://github.com/q971668593/Pi-mx-Desktop/releases/latest); each release lists SHA-256 checksums in `SHA256SUMS.txt`. The app bundles its own pi SDK; you only need to sign in to a model provider once, the same way you do for terminal pi (the credentials live in `~/.pi/agent`). Settings → Runtime can switch to a globally installed pi version.
+到 [Releases](https://github.com/q971668593/Pi-mx-Desktop/releases/latest) 下载，每个版本附带 `SHA256SUMS.txt` 校验和。应用自带 pi SDK，只需像使用终端 pi 一样登录一次模型服务商（凭据保存在 `~/.pi/agent`）。在「设置 → 运行时」可以切换到全局安装的 pi 版本。
 
 <details>
-<summary>Build from source</summary>
+<summary>从源码构建</summary>
 
-Requires Node.js ≥ 22.19.
+需要 Node.js ≥ 22.19。
 
 ```bash
 git clone https://github.com/q971668593/Pi-mx-Desktop.git
 cd Pi-mx-Desktop
 npm install
-npm run dev          # development
-npm run build        # production bundle in out/
-npm run package      # installers via electron-builder
+npm run dev          # 开发模式
+npm run build        # 生产构建，输出到 out/
+npm run package      # 用 electron-builder 打安装包
 ```
 
 </details>
 
-## First five minutes
+## 上手五分钟
 
-1. **Open folder** — the folder becomes the agent's working directory. For a throwaway chat, use **+** next to *Conversations* instead.
-2. **Pick a session** — sessions from terminal pi for that folder are listed; **+** next to the project starts a new one.
-3. **Send** — `Enter` sends, `Shift+Enter` adds a line.
-4. **Look right** — Review, Run, Context, Tree and Files share the right sidebar; drag its edge to make it wider.
-5. **Go back** — hover a message to rewind or fork, or press `Esc` twice in an empty composer to open the session tree.
+1. **打开文件夹**：文件夹就是 Agent 的工作目录。只想随手聊聊，点「对话」旁的 **+** 新建临时对话。
+2. **选会话**：终端 pi 在该目录下的会话都会列出；点项目旁的 **+** 新建会话。
+3. **发送**：`Enter` 发送，`Shift+Enter` 换行。
+4. **看右侧**：Review、Run、Context、Tree、文件共用右侧栏，拖动边缘可以加宽。
+5. **回退**：悬停消息可回退或 Fork；输入框为空时连按两次 `Esc` 打开会话树。
 
-## Shortcuts
+## 快捷键
 
-| Action | Keys |
+| 操作 | 按键 |
 |---|---|
-| Send / new line | `Enter` / `Shift+Enter` |
-| Steer the running turn / queue a follow-up | `Enter` / `Alt+Enter` while running |
-| Pull the last queued message back | `Alt+↑` |
-| Stop | `Esc` |
-| Session tree | `Esc` `Esc` in an empty composer |
-| Previous / next sent message | `↑` / `↓` with an empty composer or the caret at the start / end |
-| File reference / command | `@` / `/` |
-| Open a file in a new tab | `Ctrl`/`⌘`+click in Files |
-| Show / hide the terminal | `` Ctrl+` `` |
-| Close the focused terminal pane / find in it | `Ctrl+Shift+W` / `Ctrl+Shift+F` (`⌘W` / `⌘F` on macOS) |
+| 发送 / 换行 | `Enter` / `Shift+Enter` |
+| 插话引导当前回合 / 排队下一条 | 运行中按 `Enter` / `Alt+Enter` |
+| 取回最后一条排队消息 | `Alt+↑` |
+| 停止 | `Esc` |
+| 会话树 | 输入框为空时 `Esc` `Esc` |
+| 上一条 / 下一条已发送消息 | 输入框为空或光标在开头 / 结尾时按 `↑` / `↓` |
+| 引用文件 / 命令 | `@` / `/` |
+| 在新标签打开文件 | 文件面板中 `Ctrl`/`⌘`+点击 |
+| 显示 / 收起终端 | `` Ctrl+` `` |
+| 关闭当前终端栏 / 在终端中查找 | `Ctrl+Shift+W` / `Ctrl+Shift+F`（macOS 为 `⌘W` / `⌘F`） |
 
-## Extensions
+## 扩展
 
-Install and enable extensions exactly as for terminal pi:
+和终端 pi 一样安装、启用扩展：
 
 ```bash
-pi install npm:<package>      # or: pi install git:github.com/<owner>/<repo>
+pi install npm:<包名>      # 或：pi install git:github.com/<owner>/<repo>
 ```
 
-then make sure the package is enabled in `~/.pi/agent/settings.json` → `packages` and start a new session. **Settings → Extensions** shows what the current worker loaded; **Settings → Adapters** holds each adapter's desktop options. To override or add an adapter, put a `.json` adapter file in `~/.pi/desktop/adapters/` (or `<project>/.pi/desktop/adapters/`, which takes precedence) — see the [authoring guide](./doc/adapter-authoring-guide.md).
+确认 `~/.pi/agent/settings.json` 的 `packages` 中已启用该包，然后新开一个会话。「设置 → 扩展」显示当前 Worker 加载了哪些工具，「设置 → 适配器」里是各适配器的桌面端选项。要覆盖或新增适配器，把 `.json` 适配器文件放进 `~/.pi/desktop/adapters/`（项目内的 `<项目>/.pi/desktop/adapters/` 优先级更高），写法见[适配器编写指南](./doc/adapter-authoring-guide.md)。
 
 <details>
-<summary>Voice input</summary>
+<summary>语音输入</summary>
 
-The mic button in the composer transcribes speech into the input. By default it uses the built-in service, which calls ChatGPT's transcription endpoint with your Codex / ChatGPT sign-in — no OpenAI API key and no local process. In **Settings → Voice**, paste an `access_token` or import it from `~/.codex/auth.json` (written by `codex login`), then **Verify login**.
+输入框里的麦克风会把语音转写成文字。默认使用内置服务：用你的 Codex / ChatGPT 登录直接调用 ChatGPT 的转写接口，不需要 OpenAI API Key，也不用启动本地进程。在「设置 → 语音」粘贴 `access_token`，或从 `~/.codex/auth.json`（`codex login` 后生成）导入，再点「验证登录」。
 
-Under *Advanced* you can use a local [codex-asr](https://github.com/Wangnov/codex-asr) CLI or your own `codex-asr serve` URL instead. Typing always works without voice.
+「高级」里也可以改用本地 [codex-asr](https://github.com/Wangnov/codex-asr) CLI 或自建的 `codex-asr serve` 地址。不配置语音不影响打字输入。
 
 </details>
 
 <details>
-<summary>FAQ</summary>
+<summary>常见问题</summary>
 
-| Problem | Try |
+| 问题 | 处理 |
 |---|---|
-| An extension is listed in Settings but missing in chat | Enable it in `packages`, then start a new session. |
-| The first switch to a long session is slow | Only the latest messages load first; the rest loads on scroll or when you send. |
-| Closed an extension dialog by accident | Use **Continue** on its timeline card. |
-| Voice says the login is invalid | The token expired — run `codex login` again and re-import. |
-| Blank window after changing source | Delete `node_modules/.vite` and rerun `npm run dev`. |
+| 设置里能看到扩展，对话里却没有 | 在 `packages` 中启用后新开一个会话。 |
+| 第一次切到很长的会话较慢 | 先加载最近的消息，其余在滚动或发送时再加载。 |
+| 误关了扩展弹窗 | 点时间线卡片上的「继续」。 |
+| 语音提示登录无效 | token 已过期，重新 `codex login` 后再导入。 |
+| 改源码后窗口白屏 | 删除 `node_modules/.vite`，重新 `npm run dev`。 |
 
 </details>
 
 <details>
-<summary>For developers</summary>
+<summary>开发者</summary>
 
-- Stack: Electron 43 · React 18 · TypeScript · Tailwind · Zustand · i18next · xterm.js · `@earendil-works/pi-coding-agent`
-- Processes: Electron main (IPC, worker pool, Git, previews) → one utility-process worker per session running the pi SDK → renderer.
-- Checks: `npm run test:unit`, `npm run test:scripts`, `npm run typecheck`, `npm run lint`
-- Docs: [`doc/`](./doc/README.md) · [adapter authoring](./doc/adapter-authoring-guide.md) · [changelog](./CHANGELOG.md)
-- Phone app: Kotlin / Compose in [`apps/mobile`](./apps/mobile); `node scripts/remote-dev-host.mjs` runs a fake desktop to develop against.
-- Releases: pushing a `v*` tag runs `.github/workflows/release.yml` and builds Windows, macOS, Linux and Android packages.
+- 技术栈：Electron 43 · React 18 · TypeScript · Tailwind · Zustand · i18next · xterm.js · `@earendil-works/pi-coding-agent`
+- 进程结构：Electron Main（IPC、Worker 池、Git、预览）→ 每个会话一个 utilityProcess Worker 运行 pi SDK → Renderer。
+- 检查：`npm run test:unit`、`npm run test:scripts`、`npm run typecheck`、`npm run lint`
+- 文档：[`doc/`](./doc/README.md) · [适配器编写](./doc/adapter-authoring-guide.md) · [更新日志](./CHANGELOG.md)
+- 手机应用：Kotlin / Compose，位于 [`apps/mobile`](./apps/mobile)；`node scripts/remote-dev-host.mjs` 会启动一个假桌面端供开发调试。
+- 发布：推送 `v*` 标签触发 `.github/workflows/release.yml`，构建 Windows、macOS、Linux 和 Android 安装包。
 
 </details>
 
-## Support
+## 支持
 
-Questions and feedback: [GitHub Issues](https://github.com/q971668593/Pi-mx-Desktop/issues).
+问题与反馈：[GitHub Issues](https://github.com/q971668593/Pi-mx-Desktop/issues)。
 
-## Attribution
+## 致谢与来源
 
-Pi mx Desktop is a derivative work based on [pi Desktop / pi-app](https://github.com/justhil/pi-app) by [justhil](https://github.com/justhil), used under the MIT License. The original copyright notice is kept in [LICENSE](./LICENSE).
+本项目基于 [pi Desktop / pi-app](https://github.com/justhil/pi-app)（作者 [justhil](https://github.com/justhil)）开发，沿用 MIT 许可，原始版权声明保留在 [LICENSE](./LICENSE) 中。
 
-The agent runtime is [pi](https://github.com/earendil-works/pi) (`@earendil-works/pi-coding-agent`, MIT).
+Agent 运行时来自 [pi](https://github.com/earendil-works/pi)（`@earendil-works/pi-coding-agent`，MIT）。上游更新通过 `upstream` remote 跟踪：`git fetch upstream && git merge upstream/main`。
 
-Upstream project changes are tracked under the `upstream` remote, so upstream fixes can be merged in with `git fetch upstream && git merge upstream/main`.
+## 许可证
 
-## License
-
-[MIT](LICENSE) — original work Copyright (c) 2026 justhil; modifications Copyright (c) 2026 q971668593.
+[MIT](LICENSE) — 原始作品版权 (c) 2026 justhil；修改部分版权 (c) 2026 q971668593。

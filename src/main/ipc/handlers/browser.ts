@@ -7,7 +7,7 @@ import { getMainWindow } from '../../window'
 import { getBrowserHost, peekBrowserHost } from '../../browser/browser-host'
 import { partitionForProfile, peekDownloadManager } from '../../browser/electron-session'
 import { aria2Version, findAria2 } from '../../browser/downloads/download-manager'
-import { configureCapabilities } from '../../capabilities/catalog'
+import { configureCapabilities, supportsComputerControl } from '../../capabilities/catalog'
 import { configStore } from '../../config-store'
 import { resolveActiveSdk } from '../../sdk-loader'
 import { writeClipboardTempText } from '../../clipboard-temp-images'
@@ -30,6 +30,8 @@ export function registerBrowserHandlers(): void {
   configureCapabilities({
     browserPanelEnabled: () => !!configStore.get('rightPanelPrefs')?.browser,
     chromeBridgeEnabled: () => chromeBridgeEnabled(),
+    webSearchEnabled: () => true,
+    computerUseEnabled: supportsComputerControl,
     // tool_search arrived in pi 0.99; older runtimes get every browser tool declared.
     deferTools: () => sdkAtLeast(resolveActiveSdk(app.getPath('userData')).version, [0, 99, 0]),
   })

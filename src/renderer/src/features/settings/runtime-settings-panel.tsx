@@ -7,6 +7,7 @@ import { AlertTriangle, Check, Copy, Loader2, RefreshCw, XCircle } from '@render
 import { SettingRow, SettingsSection } from './settings-page-shared'
 import { selectCls, btnOutline } from './settings-controls'
 import { useSettingsDraft } from './settings-draft-context'
+import type { PythonRuntimeStatusResponse } from '@shared/ipc-contract'
 
 type WslDistroInfo = { name: string; version?: number; isDefault: boolean }
 type WslProbeResult = {
@@ -38,8 +39,37 @@ export function RuntimeSettingsPanel() {
   const [distros, setDistros] = useState<WslDistroInfo[] | null>(null)
   const [probe, setProbe] = useState<WslProbeResult | null>(null)
   const [probeState, setProbeState] = useState<'idle' | 'checking'>('idle')
+  const [pythonStatus, setPythonStatus] = useState<PythonRuntimeStatusResponse | null>(null)
+  const [pythonInstalling, setPythonInstalling] = useState(false)
 
   const runtime = draft.agentRuntime
+
+  const refreshPythonStatus = useCallback(() => {
+    if (!isWindows) return
+    void ipcClient.invoke('python.status', {}).then(setPythonStatus).catch(() => setPythonStatus(null))
+  }, [isWindows])
+
+  useEffect(() => { refreshPythonStatus() }, [refreshPythonStatus])
+
+  const installLatestPython = async () => {
+    setPythonInstalling(true)
+    try {
+      const status = await ipcClient.invoke('python.installLatest', {})
+      setPythonStatus(status)
+      if (status.installed) toast.success(t('settings:python.installSuccess', { version: status.version }))
+      else toast.error(t('settings:python.installFailed'))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (message.includes('WINGET_NOT_FOUND')) {
+        toast.error(t('settings:python.wingetMissing'))
+        await ipcClient.invoke('python.openDownloads', {}).catch(() => {})
+      } else {
+        toast.error(t('settings:python.installFailed'))
+      }
+    } finally {
+      setPythonInstalling(false)
+    }
+  }
 
   useEffect(() => {
     if (!isWindows) return
@@ -72,6 +102,24 @@ export function RuntimeSettingsPanel() {
   const selectedExists = !distros || distros.some((d) => d.name === runtime.distro)
 
   return (
+    <>
+    {isWindows && (
+      <SettingsSection title={t('settings:python.title')} description={t('settings:python.description')}>
+        <SettingRow label={t('settings:python.statusLabel')} description={pythonStatus?.installed ? t('settings:python.installed', { version: pythonStatus.version }) : t('settings:python.notInstalled')}>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className={cn(btnOutline, 'text-xs')} disabled={pythonInstalling} onClick={() => void installLatestPython()}>
+              {pythonInstalling ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+              {pythonInstalling ? t('settings:python.installing') : t('settings:python.installButton')}
+            </button>
+            <button type="button" className={cn(btnOutline, 'text-xs')} onClick={refreshPythonStatus}>
+              <RefreshCw className="h-3 w-3" />{t('settings:python.checkButton')}
+            </button>
+          </div>
+        </SettingRow>
+        {pythonStatus?.path ? <p className="-mt-2 mb-3 break-all font-mono text-[11px] text-muted-foreground">{pythonStatus.path}</p> : null}
+        <p className="mb-3 text-[11.5px] leading-relaxed text-muted-foreground">{t('settings:python.optionalNote')}</p>
+      </SettingsSection>
+    )}
     <SettingsSection title={t('settings:runtime.sectionAgentRuntime')} description={t('settings:runtime.sectionAgentRuntimeDesc')}>
       <SettingRow label={t('settings:runtime.mode')} description={t('settings:runtime.modeDesc')}>
         <select
@@ -137,6 +185,7 @@ export function RuntimeSettingsPanel() {
         </>
       )}
     </SettingsSection>
+    </>
   )
 }
 

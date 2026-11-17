@@ -29,8 +29,7 @@ import { ipcClient } from './ipc-client'
 type AppLanguage = 'zh' | 'en'
 
 function detectInitialLanguage(): AppLanguage {
-  const systemLanguage = (navigator.language || 'en').toLowerCase()
-  return systemLanguage.startsWith('zh') ? 'zh' : 'en'
+  return 'zh'
 }
 
 function normalizeAppLanguage(language: unknown, fallbackLanguage: AppLanguage): AppLanguage {
@@ -76,7 +75,7 @@ const i18nInitialization = i18n.use(initReactI18next).init({
     },
   },
   lng: detectInitialLanguage(),
-  fallbackLng: 'en',
+  fallbackLng: 'zh',
   defaultNS: 'common',
   interpolation: {
     escapeValue: false,

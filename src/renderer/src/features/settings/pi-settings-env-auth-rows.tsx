@@ -1,42 +1,9 @@
-import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Check, AlertCircle, Loader2, Copy, FolderOpen } from '@renderer/components/icons'
+import { Check, AlertCircle } from '@renderer/components/icons'
 import { ipcClient } from '@renderer/lib/ipc-client'
 import { SettingRow } from './settings-page-shared'
 import { btnOutline } from './settings-controls'
 import { type PiInfo, type PiSettingsSnapshot } from './pi-settings-shared'
-
-function PiPathRow() {
-  const { t } = useTranslation()
-  const [path, setPath] = useState('')
-  const [ok, setOk] = useState<boolean | null>(null)
-  const [error, setError] = useState(false)
-  const [copied, setCopied] = useState(false)
-  useEffect(() => {
-    void ipcClient.invoke('desktop.whichPi', {}).then((res) => {
-      setOk(res?.ok === true)
-      setPath(String(res?.path || ''))
-    }).catch(() => setError(true))
-  }, [])
-  return (
-    <SettingRow label={t('settings:pi.pathTitle')} description={t('settings:pi.pathDesc')}>
-      <div className="flex w-full max-w-[340px] flex-col gap-2">
-        <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground" title={path} role="status">
-          {ok === null && !error ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" /> : ok ? <Check className="h-3.5 w-3.5 shrink-0 text-[var(--success-semantic)]" /> : <AlertCircle className="h-3.5 w-3.5 shrink-0" />}
-          <span className="min-w-0 truncate font-mono">{error ? t('common:operationFailed') : ok === null ? t('common:loading') : ok ? path : t('settings:pi.pathMissing')}</span>
-        </span>
-        {path ? <div className="flex flex-wrap gap-2">
-          <button type="button" className={`${btnOutline} inline-flex items-center gap-1.5`} onClick={() => { void navigator.clipboard.writeText(path).then(() => setCopied(true)).catch(() => setError(true)) }}>
-            <Copy className="h-3.5 w-3.5" />{copied ? t('settings:copied') : t('settings:pi.pathCopy')}
-          </button>
-          <button type="button" className={`${btnOutline} inline-flex items-center gap-1.5`} onClick={() => void ipcClient.invoke('shell.showItemInFolder', { path })}>
-            <FolderOpen className="h-3.5 w-3.5" />{t('settings:pi.reveal')}
-          </button>
-        </div> : null}
-      </div>
-    </SettingRow>
-  )
-}
 
 export function PiSettingsEnvAuthRows({ info, ui }: { info: PiInfo | null; ui: PiSettingsSnapshot }) {
   const { t } = useTranslation()
@@ -46,7 +13,6 @@ export function PiSettingsEnvAuthRows({ info, ui }: { info: PiInfo | null; ui: P
   }
   return (
     <>
-      <PiPathRow />
       <SettingRow label={t('settings:pi.agentDir')} description={t('settings:pi.agentDirDesc')}>
         <div className="flex max-w-[280px] items-center gap-2">
           <span className="min-w-0 truncate font-mono text-xs text-muted-foreground" title={info?.agentDir}>

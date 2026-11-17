@@ -10,6 +10,7 @@ import type { BeforeAgentStartEvent, BeforeAgentStartEventResult, ExtensionAPI, 
 import type { WorkerIncomingMessage } from './worker-port-types.js'
 import type { WorkerReply } from './worker-handler-types.js'
 import { setBrowserToolsEnabled } from './worker-browser-tools.js'
+import { setExtensionCapabilityToolsEnabled } from './extension-capability-guard.js'
 
 const SECTION_PREFIX = 'desktop_'
 let sections: Record<string, string> = {}
@@ -62,5 +63,6 @@ export async function handleSetCapabilities(msg: WorkerIncomingMessage, reply: W
   setCapabilitySections(msg.sections)
   const tools = Array.isArray(msg.tools) ? msg.tools : []
   setBrowserToolsEnabled(tools.includes('browser'))
+  setExtensionCapabilityToolsEnabled({ webSearch: tools.includes('web-search'), computer: tools.includes('computer') })
   reply({ ok: true, count: Object.keys(sections).length })
 }
