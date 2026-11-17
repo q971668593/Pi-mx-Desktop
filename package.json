@@ -1,6 +1,6 @@
 {
   "name": "pi-desktop",
-  "version": "0.7.8",
+  "version": "1.0.1",
   "description": "Pi mx Desktop — a desktop workbench for the pi coding agent",
   "main": "./out/main/index.js",
   "author": "pi-desktop",
