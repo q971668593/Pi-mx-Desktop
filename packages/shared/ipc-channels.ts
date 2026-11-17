@@ -8,6 +8,7 @@ export const IPC_INVOKE_CHANNELS = [
   'ipc:adapters.catalog',
   'ipc:adapters.json.catalog',
   'ipc:alerts.signal',
+  'ipc:aiActivityGlow.preview',
   'ipc:alerts.test',
   'ipc:app.checkUpdate',
   'ipc:app.shellReady',

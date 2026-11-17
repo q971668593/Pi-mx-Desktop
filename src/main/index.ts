@@ -18,6 +18,7 @@ import {
   initializeCompletionNotifications,
 } from './completion-notification'
 import { notifyForegroundChanged } from './completion-notification-events'
+import { disposeAiActivityGlow } from './ai-activity-glow'
 import { disposeCompletionDelivery, focusCompletionNotificationHost } from './completion-notification-delivery'
 import { isCompletionNotificationShortcut } from './completion-notification-shortcut'
 // Prevent EPIPE / write errors from crashing the main process
@@ -190,6 +191,7 @@ async function performGracefulShutdown(): Promise<void> {
   } finally {
     sessionPreviewProcess.stop()
     disposeCompletionNotifications()
+    disposeAiActivityGlow()
     shutdownTerminals()
   }
   try {

@@ -30,7 +30,7 @@ export function registerExtensionHandlers(): void {
     const capability = req?.capability === 'computer' ? 'computer' : req?.capability === 'web-search' ? 'web-search' : null
     if (!capability) return { ok: false, error: 'unknown_capability' }
     if (capability === 'computer') {
-      if (!supportsComputerControl()) return { ok: false, error: 'Computer control requires Windows 11 x64.' }
+      if (!supportsComputerControl()) return { ok: false, error: 'Computer control requires Windows 10 (build 19041 or later) or Windows 11, x64.' }
       const entry = CAPABILITY_PACKAGES.computer
       try {
         await installPiMarketplacePackage(entry)

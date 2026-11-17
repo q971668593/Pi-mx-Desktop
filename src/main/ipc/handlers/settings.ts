@@ -1,6 +1,7 @@
 import { shell, BrowserWindow } from 'electron'
 import type { AppUpdateAvailableInfo } from '@shared/app-update'
 import { configStore, type StoreSchema } from '../../config-store'
+import { previewAiActivityGlow } from '../../ai-activity-glow'
 import { asrConfigForSettingsResponse, loadAsrConfig, saveAsrConfig } from '../../asr-config-store'
 import { getMainWindow } from '../../window'
 import { invalidateAdapterCatalog } from '../../../extension-compat/adapter-loader'
@@ -171,6 +172,11 @@ export function registerSettingsHandlers(): void {
   registerHandler('ipc:alerts.test', async () => {
     const { deliverTestCompletionNotification } = await import('../../completion-notification')
     deliverTestCompletionNotification()
+    return { ok: true }
+  })
+
+  registerHandler('ipc:aiActivityGlow.preview', async () => {
+    await previewAiActivityGlow()
     return { ok: true }
   })
 }

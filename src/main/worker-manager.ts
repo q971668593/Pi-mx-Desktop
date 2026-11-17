@@ -46,6 +46,7 @@ import {
   setSessionLeafOverride,
 } from './session-leaf-override'
 import { observeAppEventForCompletion, observeWorkerExitForCompletion } from './completion-notification-events'
+import { observeAiActivityGlow } from './ai-activity-glow'
 import { remoteTap } from './remote/tap'
 
 interface InitResult extends WorkerInitResult {}
@@ -332,6 +333,7 @@ export class WorkerManager {
     }
     applySessionEventToSessionLeafOverride(enriched)
     observeAppEventForCompletion(enriched)
+    observeAiActivityGlow(enriched)
     remoteTap.appEvent(enriched)
     if (!this.mainWindow || this.mainWindow.isDestroyed()) return
     this.mainWindow.webContents.send('ipc:events', enriched)

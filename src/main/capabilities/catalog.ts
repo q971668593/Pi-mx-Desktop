@@ -53,6 +53,9 @@ const PROMPTS: Partial<Record<CapabilityId, string>> = {
   computer: [
     '# Windows computer control',
     'You can inspect and operate the user’s Windows desktop through computer-use tools. The user has explicitly enabled this for this chat. Observe before acting, explain consequential actions, and ask before sending messages, purchasing, deleting files, or changing security/account settings. Do not assume a click succeeded; inspect the result.',
+    '- Aim at elements, not pixels: pass `target` (a ref from the window’s last {read}, or a locator like getByRole(\'button\', { name: \'Save\' })) whenever the read lists one. Element actions go through Windows UI Automation — they work while the user keeps using their mouse and can report whether they took effect.',
+    '- Coordinates (`x`/`y`) are the fallback for self-drawn or canvas UIs where the read lists no actionable element. A point on a native window moves the real pointer and brings that window to the front, so prefer a ref and say so if only a point can work.',
+    '- If a read returns no elements, the app draws its own UI. Read again with a larger timeout_ms before falling back to a point, and tell the user that app can only be driven by coordinates.',
   ].join('\n'),
   browser: [
     '# Built-in browser',
@@ -98,9 +101,16 @@ export function configureCapabilities(opts: { browserPanelEnabled: () => boolean
   if (opts.deferTools) deferTools = opts.deferTools
 }
 
+/**
+ * Windows x64, build 19041 (Windows 10 2004) or later. The bundled Cua driver is documented for
+ * Windows 11 only, but on Windows 10 19045 UI Automation, window enumeration, screenshots and input
+ * all work (verified against the pinned runtime). 19041 is the floor because excluding the agent
+ * cursor from captures needs Windows 10 2004 or later. Windows 11 24H2 stays required for the
+ * optional isolated-session feature, which the extension refuses by itself.
+ */
 export function supportsComputerControl(): boolean {
   const build = Number(release().split('.')[2])
-  return process.platform === 'win32' && process.arch === 'x64' && build >= 22000
+  return process.platform === 'win32' && process.arch === 'x64' && build >= 19041
 }
 
 function available(id: CapabilityId): { ok: boolean; reason?: string } {

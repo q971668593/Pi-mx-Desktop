@@ -52,6 +52,7 @@ export type SettingsDraft = {
   alertOnRunIdle: boolean
   alertOnBackgroundRunIdle: boolean
   alertOnRunFailed: boolean
+  aiActivityGlowEnabled: boolean
   completionNotificationTimeoutSeconds: number
   completionNotificationPreview: CompletionPreviewMode
   completionNotificationOnlyWhenUnfocused: boolean
@@ -139,6 +140,7 @@ export function draftSignature(d: SettingsDraft): string {
     alertOnRunIdle: d.alertOnRunIdle,
     alertOnBackgroundRunIdle: d.alertOnBackgroundRunIdle,
     alertOnRunFailed: d.alertOnRunFailed,
+    aiActivityGlowEnabled: d.aiActivityGlowEnabled,
     completionNotificationTimeoutSeconds: d.completionNotificationTimeoutSeconds,
     completionNotificationPreview: d.completionNotificationPreview,
     completionNotificationOnlyWhenUnfocused: d.completionNotificationOnlyWhenUnfocused,
@@ -183,6 +185,7 @@ export async function loadSettingsDraftFromDisk(i18nLanguage: string): Promise<S
     alertOnRunIdle: s.alertOnRunIdle !== false,
     alertOnBackgroundRunIdle: s.alertOnBackgroundRunIdle === true,
     alertOnRunFailed: s.alertOnRunFailed !== false,
+    aiActivityGlowEnabled: s.aiActivityGlowEnabled !== false,
     completionNotificationTimeoutSeconds: normalizeCompletionTimeoutSeconds(s.completionNotificationTimeoutSeconds),
     completionNotificationPreview: normalizeCompletionPreviewMode(s.completionNotificationPreview),
     completionNotificationOnlyWhenUnfocused: s.completionNotificationOnlyWhenUnfocused !== false,
@@ -306,6 +309,10 @@ export async function commitSettingsDraft(draft: SettingsDraft, i18n: I18n): Pro
     value: draft.alertOnBackgroundRunIdle,
   })
   await ipcClient.invoke('settings.set', { key: 'alertOnRunFailed', value: draft.alertOnRunFailed })
+  await ipcClient.invoke('settings.set', {
+    key: 'aiActivityGlowEnabled',
+    value: draft.aiActivityGlowEnabled,
+  })
   await ipcClient.invoke('settings.set', {
     key: 'completionNotificationTimeoutSeconds',
     value: normalizeCompletionTimeoutSeconds(draft.completionNotificationTimeoutSeconds),

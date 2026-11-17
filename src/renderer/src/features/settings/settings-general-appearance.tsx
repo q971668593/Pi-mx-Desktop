@@ -94,6 +94,7 @@ export function GeneralSettings() {
     setAlertOnRunIdle,
     setAlertOnBackgroundRunIdle,
     setAlertOnRunFailed,
+    setAiActivityGlowEnabled,
     setCompletionNotificationTimeoutSeconds,
     setCompletionNotificationPreview,
     setCompletionNotificationOnlyWhenUnfocused,
@@ -108,6 +109,8 @@ export function GeneralSettings() {
   const [checkingUpdate, setCheckingUpdate] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [testingAlert, setTestingAlert] = useState(false)
+  const [previewingGlow, setPreviewingGlow] = useState(false)
+  const [glowPreviewFailed, setGlowPreviewFailed] = useState(false)
   const [alertTestFeedback, setAlertTestFeedback] = useState<'sent' | 'failed' | null>(null)
   const updateCheckAttemptRef = useRef(0)
   const mountedRef = useRef(true)
@@ -182,6 +185,19 @@ export function GeneralSettings() {
     }
   }
 
+  const handlePreviewGlow = async () => {
+    setPreviewingGlow(true)
+    setGlowPreviewFailed(false)
+    try {
+      const result = await ipcClient.invoke('aiActivityGlow.preview', {})
+      if (result?.ok === false) setGlowPreviewFailed(true)
+    } catch {
+      setGlowPreviewFailed(true)
+    } finally {
+      setPreviewingGlow(false)
+    }
+  }
+
   return (
     <div className="space-y-8">
       <SettingsPageHeader title={t('settings:general.title')} description={t('settings:general.description')} />
@@ -249,6 +265,33 @@ export function GeneralSettings() {
           description={t('settings:general.alertOnExtensionUiDesc')}
         >
           <Switch checked={draft.alertOnExtensionUi} onCheckedChange={setAlertOnExtensionUi} />
+        </SettingRow>
+      </SettingsSection>
+
+      <SettingsSection
+        title={t('settings:general.aiGlow')}
+        description={t('settings:general.aiGlowDesc')}
+      >
+        <SettingRow label={t('settings:general.aiGlowEnabled')} description={t('settings:general.aiGlowEnabledDesc')}>
+          <Switch checked={draft.aiActivityGlowEnabled} onCheckedChange={setAiActivityGlowEnabled} />
+        </SettingRow>
+        <SettingRow label={t('settings:general.aiGlowPreview')} description={t('settings:general.aiGlowPreviewDesc')}>
+          <div className="flex flex-col items-start gap-1.5 sm:items-end">
+            <button
+              type="button"
+              className={cn(btnOutline, 'min-h-11')}
+              aria-busy={previewingGlow}
+              disabled={previewingGlow}
+              onClick={() => void handlePreviewGlow()}
+            >
+              {previewingGlow ? t('settings:general.aiGlowPreviewing') : t('settings:general.aiGlowPreviewAction')}
+            </button>
+            {glowPreviewFailed ? (
+              <span role="status" className="text-xs text-destructive">
+                {t('settings:general.aiGlowPreviewFailed')}
+              </span>
+            ) : null}
+          </div>
         </SettingRow>
       </SettingsSection>
 

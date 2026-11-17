@@ -238,8 +238,9 @@
       "chrome-off": "先在「设置 → 浏览器」打开「我的 Chrome」并配对扩展",
       "web-search-not-installed": "请先在设置 → 插件中安装网络搜索；随后在设置 → 适配器配置 Pi Search",
       "computer-use-not-installed": "请先在设置 → 插件中安装电脑控制扩展",
-      "computer-use-platform": "电脑控制需要 Windows 11 x64"
+      "computer-use-platform": "电脑控制需要 Windows 10（19041 及以上）或 Windows 11，x64"
     },
+    "noneAvailable": "本会话暂无可启用的能力。先在「设置 → 插件」安装需要的扩展。",
     "computerConfirm": "电脑控制可以查看和操作真实的 Windows 桌面。只对可信任务启用，并在发送消息、删除文件、付款或修改账户设置前要求你确认。现在为本对话启用吗？",
     "enabledTitle": "已启用：{{names}}",
     "cacheWarming": {

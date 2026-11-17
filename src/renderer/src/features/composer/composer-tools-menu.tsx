@@ -55,11 +55,10 @@ function CacheWarmingRow() {
   return (
     <div className="border-t border-border/50 pt-1" data-cache-warming={mode ?? ''}>
       <div className="px-3 pb-0.5 text-[10.5px] text-muted-foreground/65">{t('composer:tools.cacheWarming.group')}</div>
-      <div className="flex items-start gap-2 px-3 py-1.5">
+      <div className="flex items-start gap-2 px-3 py-1.5" title={t('composer:tools.cacheWarming.desc')}>
         <Clock className="mt-[3px] h-3.5 w-3.5 shrink-0 text-foreground-secondary" />
         <div className="min-w-0 flex-1">
-          <div className="text-[12px] text-foreground">{t('composer:tools.cacheWarming.name')}</div>
-          <div className="text-[10.5px] leading-4 text-muted-foreground/70">{t('composer:tools.cacheWarming.desc')}</div>
+          <div className="truncate text-[12px] text-foreground">{t('composer:tools.cacheWarming.name')}</div>
           <div
             role="radiogroup"
             aria-label={t('composer:tools.cacheWarming.name')}
@@ -106,24 +105,31 @@ function BrowserModeRow({ builtin, chrome, enabled, sessionFile }: { builtin: Ca
     setSessionCapability(sessionFile, 'browser', next === 'builtin')
     setSessionCapability(sessionFile, 'chrome', next === 'chrome')
   }
-  const options: { id: BrowserMode; info?: CapabilityInfo }[] = [{ id: 'off' }, { id: 'builtin', info: builtin }, { id: 'chrome', info: chrome }]
+  // Only the choices this machine can actually switch on; the current one stays visible so it can be
+  // turned off even if it just became unavailable (e.g. the Chrome extension was removed).
+  const options: { id: BrowserMode; info?: CapabilityInfo }[] = (
+    [
+      { id: 'off' },
+      { id: 'builtin', info: builtin },
+      { id: 'chrome', info: chrome },
+    ] as { id: BrowserMode; info?: CapabilityInfo }[]
+  ).filter((o) => !o.info || o.info.available || mode === o.id)
   const active = mode === 'chrome' ? chrome : mode === 'builtin' ? builtin : undefined
-  const unavailable = options.filter((o) => o.info && !o.info.available)
   const cost = active
     ? [active.tools > 0 ? (active.coreTools ? t('composer:tools.toolCountDeferred', { count: active.tools, core: active.coreTools }) : t('composer:tools.toolCount', { count: active.tools })) : '', active.promptTokens > 0 ? t('composer:tools.tokens', { n: formatTokens(active.promptTokens) }) : '']
         .filter(Boolean)
         .join(' · ')
     : ''
+  // What the current choice costs rides on the label line; the descriptions live in the tooltip.
+  const hint = [t(`composer:tools.browserMode.desc.${mode}`), cost].filter(Boolean).join(' · ')
   return (
     <div className="px-3 py-1.5">
-      <div className="flex items-start gap-2">
-        <Globe className="mt-[3px] h-3.5 w-3.5 shrink-0 text-foreground-secondary" />
-        <div className="min-w-0 flex-1">
-          <div className="text-[12px] text-foreground">{t('composer:tools.browserMode.label')}</div>
-          <div className="text-[10.5px] leading-4 text-muted-foreground/70">{t(`composer:tools.browserMode.desc.${mode}`)}</div>
-        </div>
+      <div className="flex items-center gap-2" title={hint}>
+        <Globe className="h-3.5 w-3.5 shrink-0 text-foreground-secondary" />
+        <span className="min-w-0 flex-1 truncate text-[12px] text-foreground">{t('composer:tools.browserMode.label')}</span>
+        {cost ? <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/55">{cost}</span> : null}
       </div>
-      <div role="radiogroup" aria-label={t('composer:tools.browserMode.label')} className="mt-1.5 flex rounded-md border border-border/60 p-0.5">
+      <div role="radiogroup" aria-label={t('composer:tools.browserMode.label')} className="mt-1 flex rounded-md border border-border/60 p-0.5">
         {options.map((o) => {
           const disabled = !!o.info && !o.info.available
           return (
@@ -133,7 +139,7 @@ function BrowserModeRow({ builtin, chrome, enabled, sessionFile }: { builtin: Ca
               role="radio"
               aria-checked={mode === o.id}
               disabled={disabled}
-              title={disabled && o.info?.reason ? t(`composer:tools.reasons.${o.info.reason}`) : undefined}
+              title={disabled && o.info?.reason ? t(`composer:tools.reasons.${o.info.reason}`) : t(`composer:tools.browserMode.desc.${o.id}`)}
               onClick={() => pick(o.id)}
               className={cn(
                 'flex-1 rounded px-1.5 py-1 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-40',
@@ -145,8 +151,6 @@ function BrowserModeRow({ builtin, chrome, enabled, sessionFile }: { builtin: Ca
           )
         })}
       </div>
-      {cost ? <div className="mt-1 text-[10px] tabular-nums text-muted-foreground/55">{cost}</div> : null}
-      {unavailable.map((o) => (o.info?.reason ? <div key={o.id} className="mt-0.5 text-[10px] leading-4 text-muted-foreground/55">{t(`composer:tools.browserMode.${o.id}`)}：{t(`composer:tools.reasons.${o.info.reason}`)}</div> : null))}
     </div>
   )
 }
@@ -186,6 +190,11 @@ export function ComposerToolsMenu({ disabled, running }: { disabled?: boolean; r
 
   const label = (id: CapabilityId) => t(`composer:tools.items.${id}.name`)
   const names = enabled.map(label).join('、')
+  // Only what this chat can switch on. Anything that cannot be enabled here (panel off, extension
+  // missing, wrong platform) is set up in Settings, so it is not a switch in this menu.
+  const all = catalog ?? []
+  const chrome = all.find((c) => c.id === 'chrome')
+  const visible = all.filter((cap) => (cap.id === 'browser' ? cap.available || !!chrome?.available : cap.available))
 
   return (
     <div className="flex min-w-0 items-center">
@@ -222,43 +231,44 @@ export function ComposerToolsMenu({ disabled, running }: { disabled?: boolean; r
         >
           <div className="px-3 pb-0.5 pt-2 text-[10.5px] text-muted-foreground/65">{t('composer:tools.title')}</div>
           <div className="min-h-0 flex-1 overflow-y-auto pb-1">
-            {(catalog ?? []).map((cap) => {
+            {all.length > 0 && visible.length === 0 ? (
+              <div className="px-3 py-1.5 text-[10.5px] leading-4 text-muted-foreground/70">{t('composer:tools.noneAvailable')}</div>
+            ) : null}
+            {all
               // One browser row: off / built-in / my Chrome (the two capabilities are exclusive).
-              if (cap.id === 'chrome') return null
-              if (cap.id === 'browser') {
-                return <BrowserModeRow key="browser" builtin={cap} chrome={(catalog ?? []).find((c) => c.id === 'chrome')} enabled={enabled} sessionFile={sessionFile} />
-              }
-              const Icon = ICONS[cap.id]
-              const on = enabled.includes(cap.id)
-              const cost = !cap.available
-                ? t(cap.reason ? `composer:tools.reasons.${cap.reason}` : 'composer:tools.comingSoon')
-                : [cap.tools > 0 ? (cap.coreTools ? t('composer:tools.toolCountDeferred', { count: cap.tools, core: cap.coreTools }) : t('composer:tools.toolCount', { count: cap.tools })) : '', cap.promptTokens > 0 ? t('composer:tools.tokens', { n: formatTokens(cap.promptTokens) }) : '']
-                    .filter(Boolean)
-                    .join(' · ')
-              return (
-                <label
-                  key={cap.id}
-                  className={cn('flex items-start gap-2 px-3 py-1.5', cap.available ? 'cursor-pointer hover:bg-[var(--bg-hover)]' : 'opacity-55')}
-                >
-                  <Icon className="mt-[3px] h-3.5 w-3.5 shrink-0 text-foreground-secondary" />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[12px] text-foreground">{label(cap.id)}</div>
-                    <div className="text-[10.5px] leading-4 text-muted-foreground/70">{t(`composer:tools.items.${cap.id}.desc`)}</div>
-                    {cost ? <div className="text-[10px] tabular-nums text-muted-foreground/55">{cost}</div> : null}
-                  </div>
-                  <Switch
-                    checked={on}
-                    disabled={!cap.available}
-                    aria-label={label(cap.id)}
-                    onCheckedChange={(next) => {
-                      if (cap.id === 'computer' && next && !window.confirm(t('composer:tools.computerConfirm'))) return
-                      setSessionCapability(sessionFile, cap.id, next)
-                    }}
-                    className="mt-0.5 origin-top-right scale-75"
-                  />
-                </label>
-              )
-            })}
+              .map((cap) => {
+                if (cap.id === 'chrome') return null
+                if (cap.id === 'browser') {
+                  if (!cap.available && !chrome?.available) return null
+                  return <BrowserModeRow key="browser" builtin={cap} chrome={chrome} enabled={enabled} sessionFile={sessionFile} />
+                }
+                if (!cap.available) return null
+                const Icon = ICONS[cap.id]
+                const on = enabled.includes(cap.id)
+                const cost = [cap.tools > 0 ? (cap.coreTools ? t('composer:tools.toolCountDeferred', { count: cap.tools, core: cap.coreTools }) : t('composer:tools.toolCount', { count: cap.tools })) : '', cap.promptTokens > 0 ? t('composer:tools.tokens', { n: formatTokens(cap.promptTokens) }) : '']
+                  .filter(Boolean)
+                  .join(' · ')
+                return (
+                  <label
+                    key={cap.id}
+                    title={[t(`composer:tools.items.${cap.id}.desc`), cost].filter(Boolean).join(' · ')}
+                    className="flex cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-[var(--bg-hover)]"
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0 text-foreground-secondary" />
+                    <span className="min-w-0 flex-1 truncate text-[12px] text-foreground">{label(cap.id)}</span>
+                    {on && cost ? <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/55">{cost}</span> : null}
+                    <Switch
+                      checked={on}
+                      aria-label={label(cap.id)}
+                      onCheckedChange={(next) => {
+                        if (cap.id === 'computer' && next && !window.confirm(t('composer:tools.computerConfirm'))) return
+                        setSessionCapability(sessionFile, cap.id, next)
+                      }}
+                      className="origin-right scale-75"
+                    />
+                  </label>
+                )
+              })}
             <CacheWarmingRow />
           </div>
           <div className="border-t border-border/50 px-3 py-1.5 text-[10px] leading-4 text-muted-foreground/60">

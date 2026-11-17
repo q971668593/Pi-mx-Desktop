@@ -62,6 +62,8 @@ export interface StoreSchema {
   alertOnBackgroundRunIdle: boolean
   /** Agent 失败时提醒 */
   alertOnRunFailed: boolean
+  /** AI 操作本机屏幕时，屏幕四周显示蓝色呼吸光 */
+  aiActivityGlowEnabled: boolean
   completionNotificationTimeoutSeconds: number
   completionNotificationPreview: 'response' | 'fixed'
   completionNotificationOnlyWhenUnfocused: boolean
@@ -148,6 +150,7 @@ const store = new Store<StoreSchema>({
     alertOnRunIdle: true,
     alertOnBackgroundRunIdle: false,
     alertOnRunFailed: true,
+    aiActivityGlowEnabled: true,
     completionNotificationTimeoutSeconds: 15,
     completionNotificationPreview: 'response',
     completionNotificationOnlyWhenUnfocused: true,

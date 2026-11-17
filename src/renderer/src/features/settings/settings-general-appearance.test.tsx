@@ -41,6 +41,7 @@ vi.mock('@renderer/features/settings/settings-draft-context', () => ({
       alertOnRunIdle: false,
       alertOnBackgroundRunIdle: false,
       alertOnRunFailed: true,
+      aiActivityGlowEnabled: true,
       completionNotificationTimeoutSeconds: 15,
       completionNotificationPreview: 'response',
       completionNotificationOnlyWhenUnfocused: true,

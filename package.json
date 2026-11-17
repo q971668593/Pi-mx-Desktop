@@ -15,8 +15,9 @@
     "node": ">=22.19.0"
   },
   "scripts": {
-    "dev": "electron-vite dev",
-    "dev:alert-trace": "set PI_ALERT_TRACE=1&& set PI_AUDIO_TRACE=1&& electron-vite dev",
+    "dev": "node scripts/dev.mjs",
+    "dev:raw": "electron-vite dev",
+    "dev:alert-trace": "set PI_ALERT_TRACE=1&& set PI_AUDIO_TRACE=1&& node scripts/dev.mjs",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "start": "electron-vite preview",

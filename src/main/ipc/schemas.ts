@@ -279,6 +279,7 @@ const settingsValueSchemas: Record<string, z.ZodTypeAny> = {
   alertOnRunIdle: z.boolean(),
   alertOnBackgroundRunIdle: z.boolean(),
   alertOnRunFailed: z.boolean(),
+  aiActivityGlowEnabled: z.boolean(),
   completionNotificationTimeoutSeconds: z.number().int().min(5).max(60),
   completionNotificationPreview: z.enum(['response', 'fixed']),
   completionNotificationOnlyWhenUnfocused: z.boolean(),

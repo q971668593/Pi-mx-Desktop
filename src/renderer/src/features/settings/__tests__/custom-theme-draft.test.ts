@@ -41,6 +41,7 @@ function draft(): SettingsDraft {
     alertOnRunIdle: true,
     alertOnBackgroundRunIdle: false,
     alertOnRunFailed: true,
+    aiActivityGlowEnabled: true,
     completionNotificationTimeoutSeconds: 15,
     completionNotificationPreview: 'response',
     completionNotificationOnlyWhenUnfocused: true,

@@ -238,8 +238,9 @@
       "chrome-off": "Turn on My Chrome in Settings → Browser and pair the extension first",
       "web-search-not-installed": "Install Web search in Settings → Extensions, then configure Pi Search under Settings → Adapters.",
       "computer-use-not-installed": "Install the Computer control extension in Settings → Extensions first.",
-      "computer-use-platform": "Computer control requires Windows 11 x64."
+      "computer-use-platform": "Computer control requires Windows 10 (build 19041 or later) or Windows 11, x64."
     },
+    "noneAvailable": "Nothing to enable in this chat yet. Install the extensions you need in Settings → Extensions.",
     "computerConfirm": "Computer control can inspect and operate the real Windows desktop. Enable it only for trusted tasks, and require your confirmation before sending messages, deleting files, purchasing, or changing account settings. Enable it for this chat?",
     "enabledTitle": "On: {{names}}",
     "cacheWarming": {

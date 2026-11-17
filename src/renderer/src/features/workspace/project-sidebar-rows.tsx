@@ -23,6 +23,22 @@ import { moveSidebarItem, readSidebarOrder, saveSidebarOrder, useSidebarReorder 
 
 const NO_CHILDREN: SubagentSessionChild[] = []
 
+/**
+ * Sidebar rows show only "how long ago" (5 天 / 3 小时 / 12 分钟); the exact timestamp
+ * lives in the row's tooltip so a long date string never eats the title width.
+ */
+function relativeSessionTime(
+  updatedAt: number,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string {
+  const minutes = Math.max(0, Math.round((Date.now() - updatedAt) / 60_000))
+  if (minutes < 1) return t('common:sidebar.timeNow')
+  if (minutes < 60) return t('common:sidebar.timeMinutes', { count: minutes })
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return t('common:sidebar.timeHours', { count: hours })
+  return t('common:sidebar.timeDays', { count: Math.floor(hours / 24) })
+}
+
 export function ProjectSessionTree({
   workspacePath,
   projectSessions,
@@ -234,24 +250,21 @@ export function ProjectSessionTree({
                   />
                 ) : null}
                 <span className="truncate">{s.title || s.sessionId.slice(0, 8)}</span>
+                {isChild ? null : (
+                  <span
+                    className="ml-auto shrink-0 pl-1.5 text-[11px] leading-[16px] tabular-nums text-foreground-secondary/70"
+                    title={new Date(s.updatedAt).toLocaleString()}
+                  >
+                    {relativeSessionTime(s.updatedAt, t)}
+                  </span>
+                )}
               </div>
-              {isChild ? null : s.forkedFromSessionFile ? (
+              {isChild || !s.forkedFromSessionFile ? null : (
                 <div
                   className="mt-0.5 truncate text-[12px] leading-[18px] text-foreground-secondary"
                   title={`${t('common:sidebar.forkedFrom', { title: forkSourceTitle })}\n${s.forkedFromSessionFile}`}
                 >
                   {t('common:sidebar.forkedFrom', { title: forkSourceTitle })}
-                </div>
-              ) : (
-                // The title says what the conversation is (its name, or its first message); the
-                // second line is only its time, so a renamed row does not repeat the first message.
-                <div className="text-[11px] leading-[16px] tabular-nums text-foreground-secondary/85">
-                  {new Date(s.updatedAt).toLocaleString(undefined, {
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
                 </div>
               )}
             </div>
