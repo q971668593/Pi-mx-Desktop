@@ -28,6 +28,7 @@
     "lint": "eslint .",
     "package": "npm run icon:export && electron-vite build && electron-builder",
     "icon:export": "node scripts/export-app-icon.mjs",
+    "icon:fix-alpha": "node scripts/fix-icon-alpha.mjs",
     "docs:adapters": "node scripts/generate-adapter-readme-table.mjs",
     "readme:capture": "node scripts/readme-capture/run.mjs",
     "test:e2e": "playwright test",
