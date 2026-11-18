@@ -25,6 +25,8 @@
     "gen:ipc": "node scripts/generate-ipc-channels.mjs",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
+    "selfcheck": "node scripts/selfcheck.mjs",
+    "selfcheck:quick": "node scripts/selfcheck.mjs --quick",
     "typecheck": "tsc -p tsconfig.web.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "lint": "eslint .",
     "package": "npm run icon:export && electron-vite build && electron-builder",

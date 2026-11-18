@@ -864,7 +864,6 @@ export function Timeline() {
       }
     }
     return map
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: structureEpoch only
   }, [structureEpoch])
 
   if (!hasWorkspace) {

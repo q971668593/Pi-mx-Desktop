@@ -156,7 +156,7 @@ export function registerDesktopChromeHandlers(): void {
       const cmd = process.platform === 'win32' ? 'where' : 'which'
       const paths = execFileSync(cmd, ['pi'], { encoding: 'utf8' }).trim().split(/\r?\n/).filter(Boolean)
       let prefix = ''
-      try { prefix = execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['prefix', '-g'], { encoding: 'utf8', windowsHide: true }).trim() } catch {}
+      try { prefix = execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['prefix', '-g'], { encoding: 'utf8', windowsHide: true }).trim() } catch { /* npm not on PATH; fall back to `where pi` only */ }
       const globalPath = prefix ? (process.platform === 'win32' ? join(prefix, 'pi.cmd') : join(prefix, 'bin', 'pi')) : ''
       const prefixOnPath = prefix ? process.env.PATH?.split(delimiter).some((entry) => entry.replace(/[\\/]+$/, '').toLowerCase() === prefix.replace(/[\\/]+$/, '').toLowerCase()) : false
       const detectedGlobal = paths.find((item) => prefix && item.toLowerCase().startsWith(prefix.toLowerCase()))

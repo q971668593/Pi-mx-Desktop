@@ -212,8 +212,8 @@ test('full-site ui review walkthrough', async () => {
     void agent.app.evaluate(({ BrowserWindow }, file) => {
       const wc = BrowserWindow.getAllWindows()[0]?.webContents
       void (wc as unknown as { collectJavaScriptCallStack?: () => Promise<string> }).collectJavaScriptCallStack?.()
-        .then((stack) => require('node:fs').writeFileSync(file, String(stack)))
-        .catch((error) => require('node:fs').writeFileSync(file, `stack failed: ${String(error)}`))
+        .then((stack) => fs.writeFileSync(file, String(stack)))
+        .catch((error) => fs.writeFileSync(file, `stack failed: ${String(error)}`))
     }, stackFile).catch(() => {})
     await win.waitForTimeout(6000)
     try { console.log(`[review] renderer stack after git click:\n${fs.readFileSync(stackFile, 'utf8')}`) } catch { console.log('[review] no stack file written') }
