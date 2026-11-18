@@ -13,6 +13,10 @@
 | `npm run test:scripts` | 99 文件 / 304 例全绿 | ~10s |
 | `npm run test:unit` | 429 文件 / 2508 例，**1 例偶发红** | 173.6s |
 
+> 复测（修掉下述 S3/S6 后，排除并行半成品）：**429 文件 / 2531 例全绿，153s**。
+>
+> 排查提示：vitest 的 `Error: STACK_TRACE_ERROR` 不是代码崩溃，而是**测试超时**（`withTimeout` 把 stack 指向那个哨兵异常）。默认 5s 在满载 Windows 上役不住真实 git 子进程。
+
 规模：`src` + `packages` 非测试代码约 11.8 万行；主进程 3.0MB、渲染层 5.7MB；IPC 注册点 286 个（131 带 zod，155 不带）。
 
 > 自检期间工作区仍有并行改动（team-board 功能，未提交），全量 `typecheck` / `test:unit` 的最后一次结果因此夹带其半成品错误；本报告只对**本分支提交范围内**的绿灯负责。
@@ -26,6 +30,7 @@
 | S3 | 全量单测偶发红（"门禁一直红"就等于没门禁） | `markdown-file-links.test.tsx` 的 shiki 断言用 `waitFor` 默认 1s；150 行 fixture 在满载 runner 上超时，单跑必绿 | 该用例 5s 窗口，注明原因 |
 | S4 | IPC 入参校验覆盖率无人看守 | 155 个 `registerHandler` 注册点中 **99 个拿请求但不校验**（另有 56 个无入参，属合理豁免）；preload 白名单只校验通道名 | 新增 `scripts/tests/ipc-schema-coverage.test.mjs`：预算 99，只降不升；失败时打印全部未校验通道与文件（已注入探针验证能红） |
 | S5 | 门禁要一条条敲，容易漏 | — | 新增 `npm run selfcheck`（typecheck→lint→build→契约→单测，按 CI 顺序，失败即列出全部红项）与 `selfcheck:quick` |
+| S6 | 满载下 5 个 git 套件整片红（`STACK_TRACE_ERROR`） | 单跑必绿；并行跑 build/另一套测试时超时——vitest 默认 `testTimeout 5s` / `hookTimeout 10s` 不够真实 git 子进程 | `vitest.config.ts` 提到 `testTimeout 20s` / `hookTimeout 30s`；复测 429 文件 2531 例全绿且总时长从 178s 降到 153s（超时不再拖住 worker） |
 
 新增单测 40 例（路径越界、大小写、尾随点/空格、`javascript:`/`data:`、`.app` 目录、UNC/WSL 路径），`lint` 5 条 warning 清零。
 

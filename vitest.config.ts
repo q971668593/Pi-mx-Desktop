@@ -13,6 +13,11 @@ export default defineConfig({
     globals: true,
     execArgv: webstorageOff,
     setupFiles: ['src/renderer/src/test/setup.ts'],
+    // Several main-process suites drive real git/spawn fixtures; the 5s default flakes on a
+    // loaded Windows runner (observed as STACK_TRACE_ERROR timeouts in git-stage-hunk,
+    // git-branches, git-conflict-discard when a build ran concurrently).
+    testTimeout: 20_000,
+    hookTimeout: 30_000,
     include: [
       'src/renderer/src/**/*.test.{ts,tsx}',
       'src/main/**/*.test.ts',
