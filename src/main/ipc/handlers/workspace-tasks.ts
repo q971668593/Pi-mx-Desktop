@@ -149,13 +149,29 @@ export function registerWorkspaceTaskHandlers(): void {
         // 否则每检测一次就多一套（一键运行 (AI) / 早已失效的 dev:api…），底部列表只增不减。
         const manifest = getRunTaskAiManifest()
         // 旧版本没有账本：`mergeTaskDocument` 撞名时会在 label 后面加 ` (AI)` / ` (AI 2)`，
-        // 这类名字只可能是我们自己写的。连同它对应的原件一起清掉（否则新草稿又会撞名成 (AI)）；
-        // 但用户在「管理运行组合」里手建的组合有 `presentation.group = pi-app-exact` 标记，绝不能动。
+        // 这类副本只可能是我们自己写的。连带它对应的基底一起清掉（否则新草稿又会撞名成 (AI)），
+        // 但两条 Constraints：
+        //  1. 基底带 `pi-app-exact` 标记（用户在管理对话框手建）→ 绝不动；
+        //  2. 基底内容（command/args/cwd/dependsOn）必须与 `(AI)` 副本完全一致——
+        //     名字撞上不等于同一个任务。之前只比名字，会把用户同名的自己的任务静默删掉并由
+        //     AI 版本顶替（不可恢复的数据丢失）。内容不同就只删副本，让新草稿自动加 `(AI)`。
         const rawByLabel = new Map(
           currentTasks
             .filter((task) => typeof task.label === 'string')
             .map((task) => [String(task.label), task] as const),
         )
+        const sameTaskBody = (a: Record<string, unknown> | undefined, b: Record<string, unknown> | undefined): boolean => {
+          if (!a || !b) return false
+          const view = (task: Record<string, unknown>): string =>
+            JSON.stringify({
+              command: typeof task.command === 'string' ? task.command : null,
+              args: Array.isArray(task.args) ? task.args : [],
+              cwd: String((task.options as { cwd?: unknown } | null | undefined)?.cwd ?? ''),
+              dependsOn: Array.isArray(task.dependsOn) ? task.dependsOn : typeof task.dependsOn === 'string' ? [task.dependsOn] : [],
+              kind: typeof task.group === 'string' ? task.group : (task.group as { kind?: unknown } | null | undefined)?.kind ?? '',
+            })
+          return view(a) === view(b)
+        }
         const legacy = [...labels].filter((label) => / \(AI(?: \d+)?\)$/.test(label))
         const legacyBases = legacy
           .map((label) => label.replace(/ \(AI(?: \d+)?\)$/, ''))
@@ -163,7 +179,9 @@ export function registerWorkspaceTaskHandlers(): void {
             const raw = rawByLabel.get(base) as { presentation?: { group?: unknown } } | undefined
             if (!raw) return false
             const marker = raw.presentation?.group
-            return !(typeof marker === 'string' && marker === 'pi-app-exact')
+            if (typeof marker === 'string' && marker === 'pi-app-exact') return false
+            // 只有「内容完全一样的副本」才敢把基底也当成我们写的
+            return legacy.some((copy) => sameTaskBody(rawByLabel.get(copy), raw))
           })
         const previous = existing
           ? [

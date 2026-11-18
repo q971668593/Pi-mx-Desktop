@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 import http from 'node:http'
 import fs from 'node:fs'
-import { BROWSER_TOOL_NAMES } from '../packages/shared/browser-tools'
+import { BROWSER_CORE_TOOLS, BROWSER_TOOL_NAMES } from '../packages/shared/browser-tools'
 import { launchAgentApp, listen, refIn, startScriptedModel, type Script, type Seen } from './helpers/scripted-agent'
 
 /**
@@ -152,10 +152,10 @@ test.describe('browser agent runtime', () => {
       expect(r).toHaveLength(29)
       // At first only the core tools and tool_search are declared…
       const first = seen.find((s) => s.firstUser.includes('LAB-TASK'))!
-      expect(first.tools.filter((t) => t.startsWith('browser_')).sort()).toEqual(['browser_click', 'browser_mouse_wheel', 'browser_navigate', 'browser_snapshot', 'browser_take_screenshot', 'browser_type'])
+      expect(first.tools.filter((t) => t.startsWith('browser_')).sort()).toEqual([...BROWSER_CORE_TOOLS].sort())
       expect(first.tools).toContain('tool_search')
       // …and tool_search loads the rest of the Playwright MCP set.
-      expect(search).toMatch(/browser_tabs/)
+      expect(search).toMatch(/browser_file_upload/)
       expect(seen.at(-1)!.tools.filter((t) => t.startsWith('browser_'))).toHaveLength(BROWSER_TOOL_NAMES.length)
 
       expect(r[0]).toMatch(/URL: .*\/app/)

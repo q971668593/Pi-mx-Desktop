@@ -98,6 +98,15 @@ describe('parseGoalProgress', () => {
     expect(parseGoalProgress('GOAL-PROGRESS: 1\n…\nGOAL-PROGRESS: 2', 3)).toEqual([2])
   })
 
+  it('reads the indices when the model annotates the line (a bare-number report is the rare case)', () => {
+    // 真实模型几乎总会加说明；只认纯数字会丢掉真进度 → 误判「连亏 3 轮」停机。
+    expect(parseGoalProgress('GOAL-PROGRESS: 1,3（背景图已生成，高度待调）', 3)).toEqual([1, 3])
+    expect(parseGoalProgress('GOAL-PROGRESS: 2 — 移动端不塌陷已验证', 3)).toEqual([2])
+    expect(parseGoalProgress('GOAL-PROGRESS: none（本轮只做了调研）', 3)).toEqual([])
+    // 但仍不能拿复述指令往自己脸上贴金：注解里出现我们自己的规则片段就算复述
+    expect(parseGoalProgress('GOAL-PROGRESS: 1,3（本轮完成后达到的标准编号）', 3)).toBeNull()
+  })
+
   it('tolerates markdown decoration and trailing punctuation around the value', () => {
     expect(parseGoalProgress('**GOAL-PROGRESS:** `1`', 3)).toEqual([1])
     expect(parseGoalProgress('GOAL-PROGRESS: 1, 3.', 3)).toEqual([1, 3])

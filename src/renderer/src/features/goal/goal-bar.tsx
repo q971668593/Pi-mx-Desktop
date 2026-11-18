@@ -27,6 +27,8 @@ export function GoalBar({ className }: { className?: string }) {
 
   const [editing, setEditing] = useState(false)
   const [expanded, setExpanded] = useState(true)
+  /** 两段式清除：误点一次不该把目标（以及注入给模型的 goal 段）直接抹掉。 */
+  const [confirmClear, setConfirmClear] = useState(false)
   const [goalDraft, setGoalDraft] = useState('')
   const [criteriaDraft, setCriteriaDraft] = useState('')
   const [saving, setSaving] = useState(false)
@@ -47,6 +49,18 @@ export function GoalBar({ className }: { className?: string }) {
   useEffect(() => {
     if (editing) goalInputRef.current?.focus()
   }, [editing])
+
+  // 确认态会自己超时退回：用户点了第一个＋、然后去干别的，不该在下一次点击时意外清除。
+  useEffect(() => {
+    if (!confirmClear) return
+    const timer = setTimeout(() => setConfirmClear(false), 4000)
+    return () => clearTimeout(timer)
+  }, [confirmClear])
+
+  // 目标变了（清除/重设/切会话）就不再需要确认。
+  useEffect(() => {
+    setConfirmClear(false)
+  }, [goal?.updatedAt, sessionFile])
 
   const beginEdit = useCallback(() => {
     setGoalDraft(goal?.goal ?? '')
@@ -203,12 +217,26 @@ export function GoalBar({ className }: { className?: string }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => void clearGoal()}
-                  aria-label={t('goal:bar.clear')}
-                  title={t('goal:bar.clear')}
-                  className="rounded p-1 text-foreground-secondary/70 hover:bg-[var(--bg-hover)] hover:text-destructive"
+                  onClick={() => {
+                    if (!confirmClear) {
+                      setConfirmClear(true)
+                      return
+                    }
+                    setConfirmClear(false)
+                    void clearGoal()
+                  }}
+                  aria-label={confirmClear ? t('goal:bar.clearConfirm') : t('goal:bar.clear')}
+                  title={confirmClear ? t('goal:bar.clearConfirm') : t('goal:bar.clear')}
+                  className={cn(
+                    'rounded p-1 text-foreground-secondary/70 hover:bg-[var(--bg-hover)] hover:text-destructive',
+                    confirmClear && 'bg-destructive/10 text-destructive',
+                  )}
                 >
-                  <Trash2 className="h-3 w-3" />
+                  {confirmClear ? (
+                    <span className="text-[11px] leading-none">{t('goal:bar.clearConfirm')}</span>
+                  ) : (
+                    <Trash2 className="h-3 w-3" />
+                  )}
                 </button>
               </div>
             </div>

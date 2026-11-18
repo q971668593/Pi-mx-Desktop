@@ -168,10 +168,10 @@ export async function launchAgentApp(modelPort: number, opts: { language?: 'en' 
       await win.waitForTimeout(1200)
     },
     async enableBrowserControl() {
-      await pickBrowserMode(/^(Built-in|内置)$/)
+      await pickBrowserMode(/^(Built-in|This app|内置|本应用内置)$/)
     },
     async disableBrowserControl() {
-      await pickBrowserMode(/^(Off|关)$/)
+      await pickBrowserMode(/^(Off|关|关闭)$/)
     },
     async send(message: string) {
       const editor = win.locator('[contenteditable="true"]').last()

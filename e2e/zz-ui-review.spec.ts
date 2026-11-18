@@ -34,7 +34,8 @@ function makePng(width: number, height: number, [r, g, b]: [number, number, numb
 }
 
 // Review-only walkthrough: captures every right panel and exercises the main interactions
-// so UI/UX issues can be inspected from screenshots. Not part of the regression suite.
+// so UI/UX issues can be inspected from screenshots. Not part of the regression suite —
+// playwright.config.ts skips it unless UI_REVIEW=1 (it needs the full 5 minutes).
 test('full-site ui review walkthrough', async () => {
   test.setTimeout(300_000)
   const model = startScriptedModel(() => ({ text: '好的，已收到。' }), [])

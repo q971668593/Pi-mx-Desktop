@@ -8,6 +8,7 @@ import {
   type GoalCriterion,
   type SessionGoal,
 } from '@shared/session-goal'
+import { normalizeSessionFileKey } from '@shared/session-file-key'
 
 export type { GoalCriterion, SessionGoal }
 
@@ -15,8 +16,34 @@ type GoalFile = { version: 1; goals: Record<string, SessionGoal> }
 
 const MAX_GOALS = 200
 
+/**
+ * 写入与**注入**用的键必须是同一个字符串。
+ *
+ * 渲染层用 `normalizeSessionFileKey`（`C:/a/b.jsonl`），而 `prompt.send` 带的 sessionFile 可能是
+ * pi 返回的原生路径（`C:\a\b.jsonl`）。两侧不一致时目标会被存到一个键、用另一个键去查：
+ * `promptSection()` 返回 null，worker 的 goal 段被当成「用户清掉了目标」而撤下——
+ * 目标条显示正常、模型却从头到尾没见过目标。所以这里统一归一化，存量数据也在 load 时搬家。
+ */
+function goalKey(sessionFile: string | null | undefined): string {
+  return normalizeSessionFileKey(sessionFile)
+}
+
 function empty(): GoalFile {
   return { version: 1, goals: {} }
+}
+
+/** 把存量键收敛到归一化形式（旧版本按原样字符串存，盘里可能是反斜杠路径）。 */
+function migrate(parsed: GoalFile): GoalFile {
+  const goals: Record<string, SessionGoal> = {}
+  for (const [rawKey, goal] of Object.entries(parsed.goals)) {
+    if (!goal || typeof goal !== 'object') continue
+    const key = goalKey(goal.sessionFile || rawKey)
+    if (!key) continue
+    const previous = goals[key]
+    if (previous && previous.updatedAt > (goal.updatedAt ?? 0)) continue
+    goals[key] = { ...goal, sessionFile: key }
+  }
+  return { version: 1, goals }
 }
 
 /**
@@ -41,7 +68,7 @@ export class SessionGoalStore {
       if (!parsed || parsed.version !== 1 || typeof parsed.goals !== 'object' || !parsed.goals) {
         this.data = empty()
       } else {
-        this.data = parsed
+        this.data = migrate(parsed)
       }
     } catch {
       // 文件不存在或损坏：从空开始，不能因为历史数据把 app 拖死
@@ -69,8 +96,9 @@ export class SessionGoalStore {
   }
 
   get(sessionFile: string | null | undefined): SessionGoal | null {
-    if (!sessionFile) return null
-    return this.load().goals[sessionFile] ?? null
+    const key = goalKey(sessionFile)
+    if (!key) return null
+    return this.load().goals[key] ?? null
   }
 
   /** 设置/编辑目标；已有验收项按文本保留 done 标记（编辑不该把打过勾的清掉）。 */
@@ -80,7 +108,7 @@ export class SessionGoalStore {
     criteria?: string[]
     now?: number
   }): SessionGoal | null {
-    const key = input.sessionFile
+    const key = goalKey(input.sessionFile)
     const goal = String(input.goal ?? '').trim().slice(0, MAX_GOAL_LENGTH)
     if (!key || !goal) return null
     const now = input.now ?? Date.now()
@@ -145,10 +173,11 @@ export class SessionGoalStore {
   }
 
   clear(sessionFile: string | null | undefined): boolean {
-    if (!sessionFile) return false
+    const key = goalKey(sessionFile)
+    if (!key) return false
     const data = this.load()
-    if (!data.goals[sessionFile]) return false
-    delete data.goals[sessionFile]
+    if (!data.goals[key]) return false
+    delete data.goals[key]
     this.persist()
     return true
   }

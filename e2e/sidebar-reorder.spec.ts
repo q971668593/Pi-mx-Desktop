@@ -19,7 +19,7 @@ test('project and session drag order survive reload, and hidden projects restore
       await expect(projects.first()).toHaveAttribute('data-workspace', project)
       await projects.first().locator('.sidebar-project-header').dragTo(projects.last().locator('.sidebar-project-header'), { targetPosition: { x: 55, y: 35 } })
       await expect(projects.first()).toHaveAttribute('data-workspace', second)
-      await expect(win.getByRole('button', { name: '切换项目排序' })).toHaveAttribute('aria-pressed', 'true')
+      // 排序/标题开关已搬到 设置 → 侧栏；这里只验证拖动结果本身（重新加载后仍然生效，见文件末尾断言）
 
       const demo = projects.filter({ has: win.getByRole('button', { name: 'Expand or collapse sessions in demo', exact: true }) })
       await demo.getByRole('button', { name: 'New session', exact: true }).click()
@@ -29,8 +29,10 @@ test('project and session drag order survive reload, and hidden projects restore
       await agent.send('Second sidebar conversation')
       const sessions = demo.locator('[data-session-file] .sidebar-session-row')
       await expect(sessions).toHaveCount(2)
+      // 会话顺序 = 用户最后发送时间优先（会话级手动拖拽已按设计移除，不能再靠拖动改序）
       await expect(sessions.first()).toContainText('Second sidebar conversation')
-      await sessions.first().dragTo(sessions.last(), { targetPosition: { x: 55, y: 30 } })
+      await sessions.filter({ hasText: 'First sidebar conversation' }).click()
+      await agent.send('First sidebar conversation again')
       await expect(sessions.first()).toContainText('First sidebar conversation')
 
       await win.reload()
@@ -39,10 +41,23 @@ test('project and session drag order survive reload, and hidden projects restore
       if (await expandDemo.getAttribute('aria-expanded') === 'false') await expandDemo.click()
       await expect(sessions.first()).toContainText('First sidebar conversation')
       await win.screenshot({ path: test.info().outputPath('project-cards.png') })
-      await projects.first().locator('.sidebar-project-hit').click({ button: 'right' })
-      await win.getByRole('button', { name: '隐藏项目', exact: true }).click()
+      // 右键菜单是 portal：reload 之后侧栏还在刷会话列表，菜单可能被重渲染卸载（元素 detached）。
+      // 先等侧栏稳定，再把「开菜单 + 点菜单项」整体重试；单次等待加长没用，元素会换新的。
+      await win.waitForTimeout(800)
+      const hideItem = win.getByRole('button', { name: '隐藏项目', exact: true })
+      let hidden = false
+      for (let attempt = 0; attempt < 4 && !hidden; attempt += 1) {
+        await projects.first().locator('.sidebar-project-hit').click({ button: 'right' })
+        try {
+          await hideItem.click({ timeout: 5_000 })
+          hidden = true
+        } catch {
+          await win.keyboard.press('Escape').catch(() => {})
+        }
+      }
       await expect(projects).toHaveCount(1)
-      await win.getByRole('button', { name: '管理隐藏项目' }).click()
+      // 「管理隐藏项目」按钮的 aria-label 跟随界面语言，用结构选择器找它
+      await win.locator('.sidebar-section-action[aria-haspopup="dialog"]').click()
       const dialog = win.getByRole('dialog', { name: /隐藏的项目/ })
       await expect(dialog).toBeVisible()
       const centered = await dialog.evaluate((element) => {

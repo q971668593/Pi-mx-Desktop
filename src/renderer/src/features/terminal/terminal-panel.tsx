@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, MessageSquarePlus, Plus, RefreshCw, SlidersHorizontal, Sparkles, Terminal as TerminalIcon, X } from '@renderer/components/icons'
+import { ChevronDown, MessageSquarePlus, Plus, RefreshCw, Rows2, SlidersHorizontal, Sparkles, Terminal as TerminalIcon, X } from '@renderer/components/icons'
 import { sendToComposer } from '@renderer/features/browser/browser-composer'
 import { cn } from '@renderer/lib/utils'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { TerminalRunBar } from './terminal-run-bar'
 import { initializeTerminalBridge, killPty, loadProfiles, spawnPane } from './terminal-bridge'
 import { clearTerminalDisplay, disposeTerminalInstance, onTerminalSelection, TerminalPane, terminalSelection, useClosePane } from './terminal-pane'
-import { tabTitle, terminalActions, useTerminalStore, type ShellProfile, type TerminalTab } from './terminal-store'
+import { MAX_PANES, tabTitle, terminalActions, useTerminalStore, type ShellProfile, type TerminalTab } from './terminal-store'
 import { workspacePathKey, workspacePathsEqual } from '@shared/workspace-path'
 import { ipcClient } from '@renderer/lib/ipc-client'
 
@@ -85,8 +85,8 @@ function ProfileMenu({ anchor, onPick, onClose }: { anchor: HTMLElement; onPick:
   )
 }
 
-function IconButton({ label, onClick, children, buttonRef, active }: { label: string; onClick: () => void; children: React.ReactNode; buttonRef?: React.Ref<HTMLButtonElement>; active?: boolean }) {
-  return <button ref={buttonRef} type="button" title={label} aria-label={label} className={cn('flex h-6 w-6 items-center justify-center rounded-md text-foreground-tertiary hover:bg-muted hover:text-foreground', active && 'bg-muted text-foreground')} onClick={onClick}>{children}</button>
+function IconButton({ label, onClick, children, buttonRef, active, disabled }: { label: string; onClick: () => void; children: React.ReactNode; buttonRef?: React.Ref<HTMLButtonElement>; active?: boolean; disabled?: boolean }) {
+  return <button ref={buttonRef} type="button" title={label} aria-label={label} disabled={disabled} className={cn('flex h-6 w-6 items-center justify-center rounded-md text-foreground-tertiary hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent', active && 'bg-muted text-foreground')} onClick={onClick}>{children}</button>
 }
 
 function SplitPanes({ tab, active, onClose }: { tab: TerminalTab; active: boolean; onClose: (ptyId: string) => void }) {
@@ -169,6 +169,20 @@ export function TerminalPanel() {
   const activePty = tab?.panes[tab.activePane]?.ptyId
 
   useEffect(() => onTerminalSelection(activePty || '', setHasSelection), [activePty])
+  /** 在聚焦的 pane 下面再开一个 shell（与它同 profile / 同 cwd）。pane 头、拖动分隔条、关闭 pane 都已就位，
+      这个按钮是它们唯一的入口——侧栏/右栏改版时曾丢掉过一次。 */
+  const splitDown = async () => {
+    const current = tab
+    if (!current || current.panes.length >= MAX_PANES) return
+    const focused = current.panes[current.activePane]
+    setError(null)
+    const pane = await spawnPane(focused?.profile.id, current.cwd, current.workspace)
+    if ('error' in pane) { setError(pane.error); return }
+    if (!terminalActions.splitTab(current.id, pane)) {
+      await killPty(pane.ptyId)
+      setError(t('common:terminal.splitFull'))
+    }
+  }
   useEffect(() => {
     const onClose = (e: Event) => closePane(String((e as CustomEvent).detail))
     const onRestart = async (e: Event) => {
@@ -225,6 +239,7 @@ export function TerminalPanel() {
         <IconButton label={t('common:terminal.detectTasks')} onClick={() => window.dispatchEvent(new Event('pi-desktop:terminal-detect-tasks'))}><Sparkles className="h-3.5 w-3.5" /></IconButton>
         <IconButton label={t('common:terminal.manageTasks')} onClick={() => window.dispatchEvent(new Event('pi-desktop:terminal-manage-tasks'))}><SlidersHorizontal className="h-3.5 w-3.5" /></IconButton>
         <IconButton label={t('common:terminal.new')} onClick={() => { setError(null); void openTerminalTab() }}><Plus className="h-3.5 w-3.5" /></IconButton>
+        <IconButton label={t('common:split.splitDown')} disabled={!tab || tab.panes.length >= MAX_PANES} onClick={() => void splitDown()}><Rows2 className="h-3.5 w-3.5" /></IconButton>
         <IconButton label={t('common:terminal.selectShell')} buttonRef={newRef} active={menuFor === 'new'} onClick={() => setMenuFor(menuFor === 'new' ? null : 'new')}><ChevronDown className="h-3.5 w-3.5" /></IconButton>
         <IconButton label={t('common:terminal.closeAll')} onClick={() => { if (workspaceTabs.length && window.confirm(t('common:terminal.confirmCloseAll', { count: workspaceTabs.length }))) workspaceTabs.forEach((item) => item.panes.forEach((pane) => closePane(pane.ptyId)) ) }}><X className="h-3.5 w-3.5" /></IconButton>
       </div>

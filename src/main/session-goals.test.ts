@@ -120,6 +120,53 @@ describe('SessionGoalStore', () => {
     expect(section).toContain('[未达成] 背景图')
   })
 
+  it('resolves the same session for native and normalized spellings of its path', () => {
+    // 回归：写入用的键（渲染层归一化）与 prompt.send 带的原生路径曾经不是同一个字符串，
+    // promptSection() 返回 null → worker 的 goal 段被当成「已清掉」而撑下。
+    const store = new SessionGoalStore(tempDir())
+    const saved = store.set({ sessionFile: 'C:\\w\\b\\a.jsonl', goal: 'banner 抽组件', criteria: ['背景图'] })
+    expect(saved?.sessionFile).toBe('C:/w/b/a.jsonl')
+
+    for (const spelling of ['C:\\w\\b\\a.jsonl', 'C:/w/b/a.jsonl', 'c:/w/b/a.jsonl']) {
+      expect(store.get(spelling)?.goal).toBe('banner 抽组件')
+      expect(store.promptSection(spelling)).toContain('banner 抽组件')
+      expect(store.remaining(spelling)).toBe(1)
+    }
+    // 写入也走同一个键：不会因为拼写差异多出一份
+    store.toggleCriterion('C:\\w\\b\\a.jsonl', 0)
+    expect(store.remaining('C:/w/b/a.jsonl')).toBe(0)
+  })
+
+  it('migrates keys persisted by the pre-normalization build', () => {
+    const dir = tempDir()
+    writeFileSync(
+      join(dir, 'session-goals.json'),
+      JSON.stringify({
+        version: 1,
+        goals: {
+          'C:\\old\\path.jsonl': {
+            sessionFile: 'C:\\old\\path.jsonl',
+            goal: '旧目标',
+            criteria: [{ text: 'x', done: false }],
+            createdAt: 1,
+            updatedAt: 2,
+          },
+        },
+      }),
+      'utf8',
+    )
+
+    const store = new SessionGoalStore(dir)
+    expect(store.get('C:/old/path.jsonl')?.goal).toBe('旧目标')
+    // 一次写入就把存量键换掉，不再留两份
+    store.toggleCriterion('C:/old/path.jsonl', 0, 10)
+    const raw = JSON.parse(readFileSync(join(dir, 'session-goals.json'), 'utf8')) as {
+      goals: Record<string, { sessionFile: string }>
+    }
+    expect(Object.keys(raw.goals)).toEqual(['C:/old/path.jsonl'])
+    expect(raw.goals['C:/old/path.jsonl'].sessionFile).toBe('C:/old/path.jsonl')
+  })
+
   it('writes atomically so a half-written file never lands', () => {
     const dir = tempDir()
     const store = new SessionGoalStore(dir)

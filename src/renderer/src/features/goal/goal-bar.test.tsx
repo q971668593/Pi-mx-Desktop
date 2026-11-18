@@ -107,6 +107,11 @@ describe('GoalBar', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: '清除目标' }))
     })
+    // 两段式：第一下只进入确认态，不发 IPC——误点一下不该把目标（以及注入给模型的 goal 段）抹掉
+    expect(mocks.invoke).not.toHaveBeenCalledWith('sessionGoal.clear', { sessionFile })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '确认清除' }))
+    })
     expect(mocks.invoke).toHaveBeenCalledWith('sessionGoal.clear', { sessionFile })
     await waitFor(() => expect(screen.getByText('这个会话要达成什么？（一句话）')).toBeInTheDocument())
   })

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createRunLedger, DEFAULT_MAX_ENTRIES } from './run-ledger'
+import { exitLedgerCommands, turnEndCommands } from './worker-lifecycle-machine'
 
 const dirs: string[] = []
 
@@ -84,6 +85,42 @@ describe('run ledger', () => {
   it('markOrphaned reports false for unknown sessions', () => {
     const { ledger } = newLedger()
     expect(ledger.markOrphaned('/missing.jsonl')).toBe(false)
+  })
+
+  /**
+   * 回归：曾经的接线方式把 mark-orphan 和 release 一起执行，releaseRun 按 sessionFile
+   * 把整行删掉 → 崩渍归因当场销毁，启动 sweep 与 `ipc:worker-fatal.orphanedRuns` 永远是 0。
+   * 这里按 manager 的真实执行方式跑一遍转移表命令，断言孤儿能活到下一次启动。
+   */
+  it('a crashed run survives as an orphan that the next boot sweep reports', () => {
+    const clock = 50_000
+    const first = newLedger({ now: () => clock })
+    first.ledger.beginRun({ sessionFile: '/a.jsonl', cwd: '/work' })
+
+    const runCommands = (
+      ledger: ReturnType<typeof createRunLedger>,
+      commands: readonly { type: string; reason?: string }[],
+    ) => {
+      for (const command of commands) {
+        if (command.type === 'run.mark-orphan') ledger.markOrphaned('/a.jsonl', { reason: command.reason })
+        else if (command.type === 'run.release') ledger.releaseRun('/a.jsonl')
+      }
+    }
+    runCommands(first.ledger, exitLedgerCommands('busy', 1))
+
+    expect(first.ledger.read()).toHaveLength(1)
+    expect(first.ledger.listOrphans()).toHaveLength(1)
+
+    // 另一个进程（重启）打开同一份账本：启动 sweep 必须看得到这条
+    const rebooted = createRunLedger({ filePath: first.filePath, now: () => clock + 1_000 })
+    expect(rebooted.sweep('app-boot').orphans.map((row) => row.sessionFile)).toEqual(['/a.jsonl'])
+    expect(rebooted.listOrphans().map((row) => row.orphanReason)).toEqual(['worker-exit:1'])
+
+    // 正常终态才删行：同样一套执行器，idle 之后不再留孤儿
+    rebooted.beginRun({ sessionFile: '/a.jsonl' })
+    runCommands(rebooted, turnEndCommands('busy', 'idle'))
+    expect(rebooted.listOrphans()).toEqual([])
+    expect(rebooted.read()).toEqual([])
   })
 
   it('sweep marks leftovers as orphans and drops stale entries', () => {

@@ -34,10 +34,6 @@
     "conversations": "对话",
     "firstMsgIsTitle": "首条消息即标题",
     "projects": "项目",
-    "projectTitleFollowOn": "对话名跟随最新消息：已开启（点击关闭）",
-    "projectTitleFollowOff": "对话名跟随最新消息：已关闭（点击开启）",
-    "projectOrderManual": "手动排序：已开启（点击改为最近访问排序）",
-    "projectOrderRecent": "最近访问排序：已开启（点击改为手动排序）",
     "manageHiddenProjects": "管理隐藏项目（{{count}}）",
     "mainWorktree": "主目录",
     "detachedWorktree": "未绑定分支",
@@ -231,6 +227,7 @@
     "palette": "切换分支…"
   },
   "terminal": {
+    "splitFull": "分屏已满（最多 4 个）",
     "title": "终端",
     "toggle": "终端 (Ctrl+`)",
     "new": "新建终端",

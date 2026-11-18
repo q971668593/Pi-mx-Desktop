@@ -149,11 +149,19 @@ test.describe('built-in browser panel', () => {
       await expect.poll(async () => (await viewState(app))[0]?.url).toBe(`${base}/a`)
       await expect.poll(async () => (await viewState(app))[0]?.visible).toBe(true)
 
+      // 视图 bounds 跟随占位元素是异步的（重排/缩放后下一帧才对）：轮询到贴合，别做一次性比较
+      await expect
+        .poll(async () => {
+          const [current] = await viewState(app)
+          const r = await placeholderRect(window)
+          return Math.max(
+            Math.abs(current.bounds.x - r.x),
+            Math.abs(current.bounds.y - r.y),
+            Math.abs(current.bounds.width - r.width),
+          )
+        }, { timeout: 15_000 })
+        .toBeLessThanOrEqual(2)
       const [tab] = await viewState(app)
-      const rect = await placeholderRect(window)
-      expect(Math.abs(tab.bounds.x - rect.x)).toBeLessThanOrEqual(2)
-      expect(Math.abs(tab.bounds.y - rect.y)).toBeLessThanOrEqual(2)
-      expect(Math.abs(tab.bounds.width - rect.width)).toBeLessThanOrEqual(2)
       expect(tab.page.ua).not.toMatch(/Electron|pi-desktop|pi Desktop/i)
       // navigator.languages repeats the base language in Electron (known, not patched); headers are Chrome-shaped.
       expect(seen.find((s) => s.path === '/a')?.acceptLanguage ?? '').not.toMatch(/(^|,)([a-z]+)(;[^,]*)?,\2(;|,|$)/)

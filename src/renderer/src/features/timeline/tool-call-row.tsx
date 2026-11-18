@@ -28,8 +28,6 @@ import { resolveSkillContextActivity } from './skill-context-activity'
 const NATIVE_TOOLS = new Set(['read', 'edit', 'insert', 'write', 'grep', 'ffgrep', 'fffind', 'find', 'bash', 'ls', 'codemode'])
 
 function ToolOutputExpanded({ item }: { item: ToolTimelineItem }) {
-  const outputText = extractToolText(item.toolOutput || '')
-  const imageText = [outputText, JSON.stringify(item.toolDetails || ''), JSON.stringify(item.toolArgs || '')].filter(Boolean).join('\n')
   const name = item.toolName || ''
   const adapterTpl = resolveAdapterToolCardTemplate(name)
   const adapterPreview = tryRenderAdapterToolCard(item, adapterTpl)

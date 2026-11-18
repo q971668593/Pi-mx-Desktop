@@ -15,6 +15,7 @@ import { FileImagePreview } from './file-image-preview'
 import { FilePreviewFind } from './file-preview-find'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { clearFileDraft, getFileDraft, putFileDraft } from './file-edit-guard'
+import { normalizeEol, withEolOf } from './file-text-eol'
 import { toast } from 'sonner'
 
 type ReadTextFn = (
@@ -91,7 +92,7 @@ export function FilePreviewRouter({
   const maxBytes = mode === 'html' || sourceLocation || fullReadPath === absPath ? WORKSPACE_TEXT_MAX_BYTES : PREVIEW_READ_MAX_BYTES
   const htmlDocument = useMemo(() => content == null ? '' :
     `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${htmlPolicy}"><script>${escapeScript}</script>${content}`, [content])
-  const dirty = editing && draft !== (content ?? '')
+  const dirty = editing && normalizeEol(draft) !== normalizeEol(content ?? '')
   dirtyRef.current = dirty
   editingRef.current = editing
   const editable = !!relativePath && content !== null && !truncated && (mode === 'code' || mode === 'markdown' || mode === 'html' || mode === 'text')
@@ -197,9 +198,11 @@ export function FilePreviewRouter({
       const current = await readText(relativePath, { maxBytes: WORKSPACE_TEXT_MAX_BYTES })
       if (!current.ok || current.truncated) throw new Error('read_failed')
       if (current.content !== content && !window.confirm(t('preview.externalChange'))) return
-      const result = await ipcClient.invoke('workspace.fs.writeText', { workspaceRoot, path: relativePath, content: draft })
+      // 编辑器里是 LF；写回时沿用原文件的换行风格。
+      const next = withEolOf(content ?? '', draft)
+      const result = await ipcClient.invoke('workspace.fs.writeText', { workspaceRoot, path: relativePath, content: next })
       if (!result?.ok) throw new Error(result?.error || 'write_failed')
-      setContent(draft)
+      setContent(next)
       clearFileDraft(workspaceRoot, relativePath)
       if (relativePath.replace(/\\/g, '/').toLowerCase() === '.vscode/tasks.json') window.dispatchEvent(new CustomEvent('pi-desktop:workspace-tasks-changed', { detail: workspaceRoot }))
       toast.success(t('preview.saved'))

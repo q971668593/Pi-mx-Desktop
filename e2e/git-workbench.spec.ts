@@ -17,8 +17,9 @@ test('git tabs provide branch creation and contextual checkout', async () => {
     await agent.win.getByRole('button', { name: 'Expand right panel' }).click()
     await agent.win.getByRole('tab', { name: 'Git', exact: true }).click()
     await agent.win.getByRole('tab', { name: 'Branches', exact: true }).click()
-    await agent.win.getByPlaceholder('Branch, tag or commit').fill('feature/demo')
-    await agent.win.getByRole('button', { name: 'New branch', exact: true }).click()
+    // 分支页现在是「New branch name 输入 + Create」，不再是单个 Branch/tag/commit 输入
+    await agent.win.getByPlaceholder('New branch name').fill('feature/demo')
+    await agent.win.getByRole('button', { name: 'Create', exact: true }).click()
     await expect.poll(() => git(agent.project, ['branch', '--list', 'feature/demo'])).toContain('feature/demo')
     await expect.poll(() => git(agent.project, ['branch', '--show-current'])).toBe('feature/demo')
     await agent.win.getByRole('button', { name: 'Actions for main' }).click()

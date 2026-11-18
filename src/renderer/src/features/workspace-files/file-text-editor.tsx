@@ -7,6 +7,7 @@ import { languages } from '@codemirror/language-data'
 import { openSearchPanel, search, searchKeymap } from '@codemirror/search'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { useUIStore } from '@renderer/stores/ui-store'
+import { normalizeEol } from './file-text-eol'
 
 export function FileTextEditor({ value, path, saving, wordWrap, onChange, onSave }: {
   value: string
@@ -62,7 +63,8 @@ export function FileTextEditor({ value, path, saving, wordWrap, onChange, onSave
 
   useEffect(() => {
     const view = viewRef.current
-    if (view && view.state.doc.toString() !== value) view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: value } })
+    // 只比换行风格差异就不回写，否则 CRLF 文件一挂载就会触发一次假变更。
+    if (view && normalizeEol(view.state.doc.toString()) !== normalizeEol(value)) view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: value } })
   }, [value])
 
   useEffect(() => {

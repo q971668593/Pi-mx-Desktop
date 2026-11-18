@@ -15,6 +15,7 @@ import { loadWorkspaceSessionList } from '@renderer/lib/refresh-workspace-sessio
 import { workspacePathKey, workspacePathsEqual } from '@shared/workspace-path'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { SessionAttentionDot } from '@renderer/features/workspace/session-attention-dot'
+import { BranchStatusTrigger } from '@renderer/features/git/branch-status'
 import { ShellPopover } from './shell-popover'
 
 type WorkerRow = { sessionFile: string; running: boolean; cwd: string }
@@ -183,6 +184,8 @@ export function StatusBar() {
         )}
         <ChevronDown className="h-3 w-3 shrink-0 rotate-180 opacity-60" />
       </button>
+      {/* 当前项目与分支：曾经在侧栏改版时丢了入口（命令面板的「切换分支」因此变成空操作），挂回状态栏左侧 */}
+      <BranchStatusTrigger />
       <div className="ml-auto flex shrink-0 items-center">
         <button type="button" className="workbench-status-trigger" aria-pressed={!rightHidden && activePanel === 'terminal'} title={t('common:terminal.toggle')} aria-label={t('common:terminal.toggle')} onClick={() => {
           const state = useUIStore.getState()

@@ -114,9 +114,16 @@ export function RunPanel() {
   )
 
   // Failed tool calls belong to the run that reported errorCount, so match on its id.
-  const failedTools = errorsOpen
-    ? collectFailedTools(useUIStore.getState().timelineItems, runState.activeRunId ?? runState.lastRunId)
-    : NO_TOOLS
+  // 展开时才订阅 timeline：收着的时候 selector 返回同一个常量（不因流式 token 重渲），
+  // 展开后新失败的 tool 才会实时出现（之前 render 里直接 getState()，拿到的是展开那一刻的快照）。
+  const timelineItems = useUIStore((s) => (errorsOpen ? s.timelineItems : NO_TOOLS))
+  const failedTools = useMemo(
+    () =>
+      errorsOpen
+        ? collectFailedTools(timelineItems, runState.activeRunId ?? runState.lastRunId)
+        : NO_TOOLS,
+    [errorsOpen, timelineItems, runState.activeRunId, runState.lastRunId],
+  )
 
   const freeTokens =
     metrics.contextWindow != null && metrics.estContextTokens != null

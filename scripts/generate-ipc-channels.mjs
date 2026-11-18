@@ -76,6 +76,27 @@ function scanEventChannels() {
   return found
 }
 
+/**
+ * 通道名不是字面量的发送点（`win.webContents.send(channel, …)`）。
+ *
+ * 这类通道**收不进**白名单/文档，但它们是合法的（包装器把通道名作参数传进来）。
+ * 登记到文档里是为了让「事件通道 12 个」不被误读成全集，也方便 review 时一眼看到漏在哪。
+ */
+function scanDynamicEventSends() {
+  const found = []
+  for (const file of walkTs(mainDir)) {
+    const text = readFileSync(file, 'utf8')
+    const rel = relative(root, file).replaceAll('\\', '/')
+    if (text.includes('export function registerHandler')) continue
+    for (const match of text.matchAll(/webContents\.send\s*\(\s*([^),\s]+)/g)) {
+      const name = match[1]
+      if (name.startsWith("'") || name.startsWith('"') || name.startsWith('`')) continue
+      found.push({ channel: name, file: rel })
+    }
+  }
+  return found
+}
+
 /** 通道域名：`ipc:dialog:openFiles` → dialog；`ipc:gitBoard.stage` → gitBoard */
 function domainOf(channel) {
   const rest = channel.startsWith('ipc:') ? channel.slice(4) : channel
@@ -102,6 +123,9 @@ for (const entry of scanEventChannels()) {
   events.get(entry.channel).files.add(entry.file)
 }
 const eventRows = [...events.values()].sort((a, b) => (a.channel < b.channel ? -1 : a.channel > b.channel ? 1 : 0))
+const dynamicEventRows = scanDynamicEventSends().sort((a, b) =>
+  a.file === b.file ? (a.channel < b.channel ? -1 : 1) : a.file < b.file ? -1 : 1,
+)
 
 // ── 生成 TS 白名单 ──
 const ts = [
@@ -133,7 +157,11 @@ md.push('> 手写文档在 `doc/IPC-CONTRACTS.md`；本文件保证「代码里�
 md.push('')
 md.push(`- invoke 通道：**${channels.length}** 个（唯一）`)
 md.push(`- main → renderer 事件通道：**${eventRows.length}** 个（唯一）`)
-md.push(`- 非字面量注册：**${nonLiteral.length}** 处${nonLiteral.length === 0 ? '' : '（见文末，需改为字面量才能被收录）'}`)
+md.push(`- 非字面量注册：**${nonLiteral.length}** 处${nonLiteral.length === 0 ? '' : '（白名单会漏项，是硬性失败）'}`)
+md.push(`- 动态事件通道（通道名非常量，未收录）：**${dynamicEventRows.length}** 处`)
+md.push('')
+md.push('> 事件表只收录字面量发送。`webContents.send(channel, …)` 这类包装器的通道名在运行时才确定，')
+md.push('> 因此**不能**把下面的数字当成「主进程一共只发这么多事件」；新增包装器请同步登记到 `doc/IPC-CONTRACTS.md`。')
 md.push('')
 md.push('## 通道数量（按域）')
 md.push('')
@@ -167,9 +195,15 @@ else {
 }
 if (nonLiteral.length > 0) {
   md.push('')
-  md.push('## 非字面量注册（未收录，需修正）')
+  md.push('## 非字面量注册（未收录，必须改为字面量）')
   md.push('')
   for (const row of nonLiteral) md.push(`- \`${row.file}\`：\`${row.channel}\``)
+}
+if (dynamicEventRows.length > 0) {
+  md.push('')
+  md.push('## 动态事件通道（未收录，仅登记位置）')
+  md.push('')
+  for (const row of dynamicEventRows) md.push(`- \`${row.file}\`：\`${row.channel}\``)
 }
 md.push('')
 
@@ -203,11 +237,23 @@ if (process.argv.includes('--check')) {
     }
     process.exit(1)
   }
-  console.log(`[gen:ipc] 无漂移（${channels.length} 个 invoke 通道 / ${eventRows.length} 个事件通道）`)
+  // 通道名不是字面量 → 生成器看不到它 → 白名单漏项 → preload 运行时拒掉该通道。
+  // 以前只是「文档里提一句」，于是一个手滑就能把门禁变成无意义。现在硬失败。
+  if (nonLiteral.length > 0) {
+    console.error('[gen:ipc] registerHandler 的通道名必须是字面量（否则白名单会漏项）：')
+    for (const row of nonLiteral) console.error(`  - ${row.file}: ${row.channel}`)
+    process.exit(1)
+  }
+  console.log(`[gen:ipc] 无漂移（${channels.length} 个 invoke 通道 / ${eventRows.length} 个事件通道 / ${dynamicEventRows.length} 个动态事件通道未收录）`)
   process.exit(0)
 }
 
 if (currentTs === ts && currentMd === mdText) {
+  if (nonLiteral.length > 0) {
+    console.error('[gen:ipc] registerHandler 的通道名必须是字面量（否则白名单会漏项）：')
+    for (const row of nonLiteral) console.error(`  - ${row.file}: ${row.channel}`)
+    process.exit(1)
+  }
   console.log(`[gen:ipc] 已是最新（${channels.length} 个 invoke 通道 / ${eventRows.length} 个事件通道）`)
   process.exit(0)
 }
@@ -218,8 +264,9 @@ if (currentTs !== ts) writeFileSync(outTs, ts, 'utf8')
 if (currentMd !== mdText) writeFileSync(outMd, mdText, 'utf8')
 
 if (nonLiteral.length > 0) {
-  console.warn(`[gen:ipc] 有 ${nonLiteral.length} 处非字面量注册未被收录：`)
-  for (const row of nonLiteral) console.warn(`  - ${row.file}: ${row.channel}`)
+  console.error(`[gen:ipc] 有 ${nonLiteral.length} 处非字面量注册未被收录（白名单会漏项，必须改成字面量）：`)
+  for (const row of nonLiteral) console.error(`  - ${row.file}: ${row.channel}`)
+  process.exit(1)
 }
 console.log(
   `[gen:ipc] 已生成 ${channels.length} 个 invoke 通道、${eventRows.length} 个事件通道 → ${relative(root, outTs).replaceAll('\\', '/')}, ${relative(root, outMd).replaceAll('\\', '/')}`,

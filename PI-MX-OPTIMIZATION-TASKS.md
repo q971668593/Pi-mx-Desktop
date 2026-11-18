@@ -152,8 +152,86 @@
 | T10 | 发布产物校验和 + 更新通道 | ⬜ |
 | T11 | `.pi/skills` + i18n 术语表 | ⬜ |
 
+## Phase 2.6 · 审查修复轮（2026-11-18，commit ce47910 之后）
+
+对上一批改动做了一次逐块审查（不是"跑一遍门禁"），发现的问题是**门禁全绿也照样存在**的，因此每条都补了能单独变红的观察测试。
+
+| # | 缺陷 | 根因 | 修复 | 见证测试 |
+|---|---|---|---|---|
+| R1 | 崩溃归因永远是 0：启动 `sweep` / `ipc:worker-fatal.orphanedRuns` 永远扫不到东西 | 转移表把 `run.mark-orphan` 与 `run.release` 一起发，`releaseRun` 按 sessionFile 删整行 → 标记当场被删 | 崩溃分支只发 `mark-orphan`（记录留下来）；终态已知（idle/failed/cancelled/正常退出）才 `release` | `run-ledger.test.ts`「crash survives as an orphan that the next boot sweep reports」 |
+| R2 | 设了目标但模型收不到 `<goal>` 段，还会把已推送的段撤掉 | 目标存储用原样字符串做 key，渲染层用 `normalizeSessionFileKey`（`C:/a`），`prompt.send` 可能带原生路径（`C:`）→ 查不到 → `setGoal(null)` | `SessionGoalStore` 读写统一归一化 + 存量键自动迁移 | `session-goals.test.ts`「resolves the same session for native and normalized spellings」 |
+| R3 | 模型正常的进度写法被判无效 → 连续 3 轮"停滞"停机 | 进度行只接受纯数字，`GOAL-PROGRESS: 1,3（说明）` 整行被丢弃 | 取行首编号串，允许后缀说明；用注入文案自身的片段（`本轮完成后`/`标准编号`/…）挡"复述指令" | `session-goal.test.ts`「reads the indices when the model annotates the line」 |
+| R4 | AI 任务快照会删掉用户同名的手写任务（不可恢复） | 升级路径按"名字含 ` (AI)`"推断归属，连带删除基底，只保护 `pi-app-exact` | 基底只有在与 `(AI)` 副本 `command/args/cwd/dependsOn/kind` 完全一致时才敢删 | `workspace-tasks.test.ts`「keeps a hand-written task that merely shares the label」 |
+| R5 | 运行面板展开后失败工具列表不再更新 | render 里 `useUIStore.getState()`，不订阅 | 展开时才订阅 `timelineItems`（收着时返回同一常量，不随流式 token 重渲） | `run-panel.test.tsx`（旧实现下该用例红） |
+| R6 | 通道名非字面量时白名单静默漏项，门禁照样绿（preload 运行时拒） | `gen:ipc` 只 warn | `--check` 与写入模式都硬失败 | `ipc-channels-generated.test.mjs` + 实跑 `--check` |
+| R7 | 文档声称"12 个事件通道 = 全集"，实际用变量的发送全漏 | 只扫 `webContents.send('字面量')` | 生成物新增「动态事件通道（未收录）」清单（实为 7 处：browser/update/terminal 等） | 生成物 diff |
+| R8 | 展开的工具卡里 `outputText` / `imageText` 是死代码，每次展开白跑两次 `JSON.stringify` | `no-unused-vars` 被关，死变量能过门禁 | 删除；把"规则被关"记进技术债 | eslint 实测 |
+| R9 | `models.json` 被 agent 在 turn 中途改 → 立刻广播 `reloadModels`，正在跑的 worker 被换模型表 | 广播不区分忙闲 | 忙的槽位推迟到 turn 结束再补，并补发一次 `ipc:model-catalog-changed` | `tsc` + 结构边界门禁（无行为测试，见技术债） |
+| R10 | 目标条「清除」一次误点就丢目标 + 注入段 | 无二次确认（同批次里"删除运行组合"已有两段式） | 两段式确认（4s 自动退回） | `goal-bar.test.tsx` |
+| R11 | `file://server/share/a` 掉成 `server/share/a` | UNC 前缀被吃掉 | 补回 `//`，并区分 `file://C:/…` | `workspace-files-types.test.ts` |
+
+**本轮验收（实测）**
+
+| 命令 | 结果 |
+|---|---|
+| `node scripts/generate-ipc-channels.mjs --check` | ✅ 无漂移（273 invoke / 12 事件 / 7 动态未收录） |
+| `npx tsc -p tsconfig.web.json --noEmit` | ✅ 0 error |
+| `npx tsc -p tsconfig.node.json --noEmit` | ✅ 0 error |
+| `npx eslint .` | ✅ 0 error（5 条既有 warning） |
+| `npm run test:unit` | ✅ **425 文件 / 2471 例 / 0 失败**（本轮 +3 文件 / +17 例） |
+| `npm run test:scripts` | ✅ 99 文件 / 304 例 / 0 失败 |
+
+`session-shell-stream-switch-race.test.ts` 未修改，仍随全量通过。
+
+## Phase 2.7 · UI 归位 + e2e 修复轮（2026-11-18）
+
+用户反馈：侧栏「项目」标题行里两个迷你开关「太丑、图标看不出来、不知道干什么」。顺带把 e2e 整套跑通。
+
+| # | 改动 | 性质 |
+|---|---|---|
+| U1 | 「对话名跟随最新消息」「项目手动排序」从侧栏标题行移到 **设置 → 通用 → 侧栏**，标准 Switch + 一句说明；侧栏标题行只剩「隐藏的项目」「打开文件夹」 | 用户要求 |
+| U2 | 两个功能仍需在侧栏生效：设置里写入后广播 `pi-desktop:settings-changed`，侧栏重读；删掉 `.project-toggle*` / `.project-tool-sep` 共约 40 行 CSS | 清理 |
+| R12 | **分支切换器挂回状态栏**：36d46e0 侧栏改版时 `BranchStatusTrigger` 从状态栏消失，导致分支切换/新建/冲突暂存整块无入口、命令面板的「切换分支」是空操作 | 产品缺陷（恢复入口） |
+| R13 | **终端分屏入口挂回**：`splitTab` / pane 头 / 拖动分隔条 / 关闭 pane 都在，但没有任何按钮能加 pane；工具栏加「向下拆分」（≤4 pane，满了禁用） | 产品缺陷（恢复入口） |
+| R14 | **浏览器工具延迟加载的顺序 bug**：capabilities 消息先到、tool_search 后到时，第一轮只能全部直declare，之后切到 deferred 仍把 12 个非 core 工具当成「已通过 tool_search 加载」保留 → 每个会话每次请求多带整套工具定义。修法：只有上一轮本来就是 deferred，才认这些工具是「加载过的」 | 回归（有单测见证） |
+| E1 | e2e 修 11 个用例（详见下表） | 测试债 |
+| E2 | `zz-ui-review`（5 分钟、断言很少的人工巡检）默认跳过：`UI_REVIEW=1` 才跑 | 测试债 |
+
+e2e 逐个失败的根因（都是界面改了、用例没跟）：
+
+| 用例 | 原因 | 处理 |
+|---|---|---|
+| `sidebar-reorder` | 断言已删除的「切换项目排序」按钮 + 已按设计移除的会话级拖拽 | 改用 role=switch / 新排序语义；右键菜单 portal 重试 |
+| `capability-cache` | 内置浏览器已默认开启，用例前提「起始关闭」失效 | 改成 默认开 → 关 → 再开，仍断言缓存前缀逐字不变 |
+| `scripted-agent` 助手 | 浏览器模式单选项文案改了（Built-in → This app / 内置 → 本应用内置） | 正则同时兼容中英新旧 |
+| `branch-switch` | 分支切换器没有入口了（见 R12） | 恢复入口 |
+| `git-workbench` | 分支页改成「New branch name + Create」 | 更新选择器 |
+| `files-workbench`（第 4 个） | 新项目默认面板由 run 改 files | 断言默认面板 + 不继承标签页 |
+| `terminal` | 分屏按钮不存在（见 R13）；且 xterm 会吞掉聚焦后第一个按键 | 恢复按钮；先 `press('End')` 吃掉首键再输入 |
+| `browser-agent` / `browser-runtime` | core 工具集从 6 个扩到 10 个（BROWSER_CORE_TOOLS），用例里写死旧集合；会话 2 的浏览器是「自动挂载」而非关闭 | 断言对齐 `BROWSER_CORE_TOOLS`、tool_search 后工具变多、自动挂载=工具已声明 |
+| `browser-annotate-scroll` | 标签条改成「有一个标签就显示」，新建标签移到条尾 + 号 | 更新交互路径 |
+| `browser`（bounds） | 视图 bounds 跟随占位元素是异步的，满载时一次比较会差 100px | 改 `expect.poll` 收敛 |
+
+**验收（实测）**
+
+| 命令 | 结果 |
+|---|---|
+| `env -u ELECTRON_RUN_AS_NODE npx playwright test` | ✅ **60 passed / 1 skipped / 0 failed**（9.8 分钟，首次全绿） |
+| `npx tsc -p tsconfig.web.json --noEmit` | ✅ 0 |
+| `npx tsc -p tsconfig.node.json --noEmit` | ✅ 0 |
+| `npx eslint .` | ✅ 0 error |
+| `npm run test:unit` | ✅ 426 文件 / 2477 例（新增 1 例：浏览器工具延迟加载的顺序回归） |
+| `npm run test:scripts` | ✅ 99 文件 / 304 例 |
+
+> 本机注意：shell 里常驻 `ELECTRON_RUN_AS_NODE=1`，Electron 会退化成 node 跑 `out/main/index.js`，e2e 一律报 `Process failed to launch!`。跑 e2e 前用 `env -u ELECTRON_RUN_AS_NODE`（写进了本文档，避免下次再踩）。
+**本轮明确不改的**：
+- `afterPromptSent` 与 run 结算各刷一次会话列表 —— `refreshWorkspaceSessionLists` 已有 per-workspace single-flight，两处刷新时点不同（发完 / 这一轮结束），合并反而会让侧栏数据变旧。
+- `@typescript-eslint/no-unused-vars` 保持 `off`：实测打开后有 **170 处**存量违规，会淹掉真正的信号。要开就按预算型门禁（先记 170，只许降）单独排一轮，不要混在功能改动里。
+
 ## 已登记的技术债（本轮不做，写在这里防丢）
 1. `IpcMethodMap`（`packages/shared/ipc-contract.ts`）与实现脱节：266 处 handler 全用字面量，`ipcChannel()` **0 次使用**。T1 后白名单已自动同步，但 request/response 类型仍未从注册点推导 → 下一步让 `registerHandlerWithSchema` 反推类型，逐步淘汰手写接口。
 2. 仓库根目录有 6 个游离调试文件（`_check.ps1`、`_check.txt`、`_filter.ps1`、`_full.txt`、`_probe.ps1`、`_probe.txt`、`_parse.mjs`），非本次产物，未清理；建议加入 `.gitignore` 或删除。
 3. `handleSlotExit` 的 `autoRestartEnabled=false` 行为本轮未改（只增加可观测性）。若将来要"崩溃后自动续跑会话"，需要产品决策 + T5 的状态机。
 4. `packages/shared/feature-flags.ts` 目前只有基建与单测，**尚无读取点**；第一个接入点建议放在 G2（`plugin_manager`）或 T8（`theme_json_presets`），不要为了"用上"而给现有稳定功能套开关。
+5. `models.json` 监听对「正在跑 turn 的槽位」是推迟重载（Phase 2.6 R9），但**没有行为测试**：`worker-manager` 的槽位池需要真实 transport 才能驱动。要补得先给 `worker-manager` 抽一层可注入的 transport（Phase 3 一起做，别在功能改动里顺手改）。
+6. `@typescript-eslint/no-unused-vars` 目前是 `off`（实测打开有 170 处存量违规）。建议按预算型门禁单开一轮：先把它设成 `warn` + 记 170 的基线测试，再逐月降。在此之前 R8 这类死代码只能靠 review 抓。

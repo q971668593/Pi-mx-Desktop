@@ -16,8 +16,13 @@ test.describe('built-in terminal', () => {
       await win.keyboard.press('Control+Backquote')
       await expect(win.locator('.terminal-drawer [role="tab"]')).toHaveCount(1, { timeout: 15_000 })
       await expect(rows.first()).toBeVisible()
+      // 等 shell 真的把提示符打出来，再点进去打字：机器忙时抢在 pty 就绪前输入会丢字符
+      await expect.poll(async () => (await rows.first().innerText()).trimEnd(), { timeout: 30_000 }).toMatch(/[>$#]$/)
       await win.locator('.terminal-drawer .xterm').first().click()
-      await win.keyboard.type('echo PI_TERM_$((40+2)); pwd\n')
+      await expect(win.locator('.terminal-drawer .xterm-helper-textarea').first()).toBeFocused({ timeout: 15_000 })
+      // xterm 会吞掉聚焦后的第一个按键（用于切换焦点）：先用 End 吃掉它，否则 echo 会变成 cho
+      await win.keyboard.press('End')
+      await win.keyboard.type('echo PI_TERM_$((40+2)); pwd\n', { delay: 15 })
       await expect(rows.first()).toContainText('PI_TERM_42', { timeout: 15_000 })
       await expect(rows.first()).toContainText('demo')
       if (process.env.SHOT) await win.screenshot({ path: process.env.SHOT.replace('.png', '-terminal.png') })
@@ -29,12 +34,12 @@ test.describe('built-in terminal', () => {
       await expect(rows.first()).toContainText('PI_TERM_42')
 
       // Split: a second shell beside the first.
+      // 拆分按钮直接拆（不再有二级菜单）
       await win.getByRole('button', { name: 'Split down' }).click()
-      await win.getByRole('menuitem').first().click()
       await expect(rows).toHaveCount(2, { timeout: 15_000 })
       // A third, then close the middle one on its own: the other two stay.
+      // 拆分按钮直接拆（不再有二级菜单）
       await win.getByRole('button', { name: 'Split down' }).click()
-      await win.getByRole('menuitem').first().click()
       await expect(rows).toHaveCount(3, { timeout: 15_000 })
       await expect(win.locator('.terminal-drawer [role="separator"][aria-orientation="horizontal"]')).toHaveCount(2)
       if (process.env.SHOT) await win.screenshot({ path: process.env.SHOT.replace('.png', '-split.png') })
@@ -47,8 +52,8 @@ test.describe('built-in terminal', () => {
       await win.keyboard.press('Control+Shift+W')
       await expect(rows).toHaveCount(1)
       await expect(closePane).toHaveCount(0)
+      // 拆分按钮直接拆（不再有二级菜单）
       await win.getByRole('button', { name: 'Split down' }).click()
-      await win.getByRole('menuitem').first().click()
       await expect(rows).toHaveCount(2, { timeout: 15_000 })
 
       // Closing the terminal ends both shells and leaves the terminal page empty.

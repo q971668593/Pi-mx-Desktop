@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { FilePreviewRouter } from './file-preview-router'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { EditorView } from '@codemirror/view'
 import { WORKSPACE_TEXT_MAX_BYTES } from '@shared/workspace-preview'
+import { ipcClient } from '@renderer/lib/ipc-client'
+import { FilePreviewRouter } from './file-preview-router'
+import { clearFileDraft, getFileDraft } from './file-edit-guard'
 
 vi.mock('@renderer/lib/ipc-client', () => ({ ipcClient: { invoke: vi.fn() } }))
 // i18n resources load async in unit tests; pin the translation to the key for determinism.
@@ -11,7 +14,15 @@ vi.mock('react-i18next', () => ({
 }))
 vi.mock('@renderer/features/timeline/markdown-view', () => ({ default: ({ children }: { children: string }) => <div>{children}</div> }))
 vi.mock('./file-source-preview', () => ({ FileSourcePreview: ({ code, sourceLocation }: { code: string; sourceLocation?: { line: number } }) => <pre data-line={sourceLocation?.line}>{code}</pre> }))
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  clearFileDraft('/ws', '账号密码.md')
+  vi.mocked(ipcClient.invoke).mockReset()
+})
+const findEditor = (container: HTMLElement) => {
+  const host = container.querySelector<HTMLElement>('.cm-editor')
+  return host ? EditorView.findFromDOM(host) : null
+}
 describe('file preview', () => {
   it('opens Markdown line references as source and reads beyond the usual preview prefix', async () => {
     const readText = vi.fn().mockResolvedValue({ ok: true, content: '# heading\nsource line' })
@@ -37,6 +48,37 @@ describe('file preview', () => {
     expect(frame.getAttribute('sandbox')).toBe('allow-scripts')
     expect(frame.getAttribute('srcdoc')).toContain('Content-Security-Policy')
     expect(frame.getAttribute('srcdoc')).toContain('connect-src')
+  })
+  it('does not mark an untouched CRLF file as modified after entering edit mode', async () => {
+    const readText = vi.fn().mockResolvedValue({ ok: true, content: '阿里云:\r\nluyaomeng3\r\n' })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const { container } = render(<FilePreviewRouter workspaceRoot="/ws" relativePath="账号密码.md" readText={readText} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'preview.edit' }))
+    await waitFor(() => expect(findEditor(container)).not.toBeNull())
+    // The editor normalizes CRLF to LF on mount; that must not count as a user edit.
+    await waitFor(() => expect(getFileDraft('/ws', '账号密码.md')).toBeUndefined())
+    await waitFor(() => expect(screen.queryByText('preview.unsaved')).toBeNull())
+    fireEvent.click(screen.getByRole('button', { name: 'preview.ready' }))
+    expect(confirm).not.toHaveBeenCalled()
+    confirm.mockRestore()
+  })
+  it('saves an edited CRLF file with its original line endings', async () => {
+    const readText = vi.fn().mockResolvedValue({ ok: true, content: '阿里云:\r\nluyaomeng3\r\n' })
+    vi.mocked(ipcClient.invoke).mockResolvedValue({ ok: true })
+    const { container } = render(<FilePreviewRouter workspaceRoot="/ws" relativePath="账号密码.md" readText={readText} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'preview.edit' }))
+    await waitFor(() => expect(findEditor(container)).not.toBeNull())
+    const view = findEditor(container)!
+    act(() => {
+      view.dispatch({ changes: { from: view.state.doc.length, insert: 'zhang37148\n' } })
+    })
+    await screen.findByText('preview.unsaved')
+    fireEvent.click(screen.getByRole('button', { name: 'preview.save' }))
+    await waitFor(() => expect(ipcClient.invoke).toHaveBeenCalledWith('workspace.fs.writeText', {
+      workspaceRoot: '/ws',
+      path: '账号密码.md',
+      content: '阿里云:\r\nluyaomeng3\r\nzhang37148\r\n',
+    }))
   })
   it('reports a rejected read instead of staying in loading', async () => {
     render(<FilePreviewRouter workspaceRoot="/ws" relativePath="a.txt" readText={vi.fn().mockRejectedValue(new Error('read failed'))} />)

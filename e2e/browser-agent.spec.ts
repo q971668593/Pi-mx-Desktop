@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
+import { BROWSER_CORE_TOOLS } from '../packages/shared/browser-tools'
 import { launchAgentApp, listen, refIn, root, startScriptedModel, type Script, type Seen } from './helpers/scripted-agent'
 
 const shotDir = path.join(root, 'test-results', 'browser-agent')
@@ -78,8 +79,12 @@ test.describe('browser control capability', () => {
       const browserTurns = seen.filter((s) => s.firstUser.includes('BROWSER-TASK'))
       expect(browserTurns[0].tools).toEqual(expect.arrayContaining(['browser_navigate', 'browser_snapshot', 'browser_click', 'browser_type', 'tool_search']))
       expect(browserTurns[0].tools).toContain('browser_take_screenshot')
-      expect(browserTurns[0].tools).not.toContain('browser_wait_for')
-      expect(browserTurns.at(-1)!.tools).toEqual(expect.arrayContaining(['browser_wait_for', 'browser_take_screenshot']))
+      // 首轮只声明 core 集合（BROWSER_CORE_TOOLS）；其余靠 tool_search 现取，省掉上万个字符的工具定义
+      expect([...browserTurns[0].tools].filter((t) => t.startsWith('browser_')).sort()).toEqual([...BROWSER_CORE_TOOLS].sort())
+      expect(browserTurns[0].tools).not.toContain('browser_file_upload')
+      // tool_search 取回的按需工具确实进了后续请求（只断言「变多了」，不写死具体名字）
+      expect(browserTurns.at(-1)!.tools.length).toBeGreaterThan(browserTurns[0].tools.length)
+      expect(browserTurns.at(-1)!.tools).toEqual(expect.arrayContaining([...BROWSER_CORE_TOOLS]))
       expect(browserTurns[0].system).toContain('# Built-in browser')
       // Every tool call succeeded: no error codes came back, and the snapshot carried the refs.
       const results = browserTurns.at(-1)!.toolTexts
@@ -94,14 +99,15 @@ test.describe('browser control capability', () => {
       expect(events).toContain('input:true')
       expect(events.filter((e) => e.endsWith(':false'))).toEqual([])
 
-      // Session 2: a new session starts with its own capabilities off. The project's open
-      // browser tabs keep the built-in browser auto-mounted (same as pinned tabs).
+      // Session 2: 新会话不继承上一个会话的开关，但项目里已经开着浏览器标签时会自动挂上内置浏览器
+      // （和固定标签同一个规则）。自动挂载的判据是「工具真的被声明了」，不是只有个 chip。
       await agent.newSession()
       await expect(win.locator('.composer-capability-chip')).toHaveCount(1)
       await agent.send('PLAIN-TASK hello')
       await expect.poll(() => seen.some((s) => s.firstUser.includes('PLAIN-TASK')), { timeout: 60_000 }).toBe(true)
       const plain = seen.find((s) => s.firstUser.includes('PLAIN-TASK'))!
-      expect(plain.tools.filter((t) => t.startsWith('browser_'))).toEqual([])
+      expect(plain.tools.filter((t) => t.startsWith('browser_')).length).toBeGreaterThan(0)
+      expect(plain.system).toContain('# Built-in browser')
     } finally {
       await agent.close()
       site.close()

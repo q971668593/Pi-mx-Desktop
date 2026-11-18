@@ -4,6 +4,7 @@
     "set": "Set goal",
     "edit": "Edit goal",
     "clear": "Clear goal",
+    "clearConfirm": "Confirm clear",
     "remaining": "{{count}} criteria left",
     "done": "Goal reached",
     "criteriaHint": "Acceptance criteria (one per line, checkable later)",

@@ -91,7 +91,7 @@ export function goalPromptSection(goal: SessionGoal | null | undefined): string 
       '',
       '推进规则：',
       '- 只做让未达成验收标准真正成立的工作；不要用「已完成」代替验证。',
-      `- 每轮回复的最后单独一行输出进度：\`${GOAL_PROGRESS_PREFIX} 1,3\`（本轮完成后达到的标准编号，1 起算；没有新增就写 \`${GOAL_PROGRESS_PREFIX} none\`）。`,
+      `- 每轮回复的最后单独一行输出进度：\`${GOAL_PROGRESS_PREFIX} 1,3\`（本轮完成后达到的标准编号，1 起算；没有新增就写 \`${GOAL_PROGRESS_PREFIX} none\`）。编号后面可以跟一句说明，但不要把本段规则原文拄一遍。`,
       '- 不要修改目标或验收标准本身；需要调整就告诉用户。',
     )
   } else {
@@ -104,21 +104,34 @@ export function goalPromptSection(goal: SessionGoal | null | undefined): string 
  * 解析模型汇报的进度行，返回 1 起的验收项序号（已去重、已过滤越界）。
  * 没有进度行返回 null（= 本轮没有任何进度声明）；`none` 返回 []。
  * 多处出现时以最后一处为准（模型可能先写草稿）。
+ *
+ * 容错边界（两边都很重要）：
+ *  - 允许编号后面跟一句说明（`GOAL-PROGRESS: 1,3（背景图已生成）`）。模型几乎总会加注解，
+ *    只认纯数字会把真进度丢掉 → 连续 3 轮判“停滞”停机，明明做了事却说没进展。
+ *  - 但仍然要拒绕「复述指令」。注入文案里自带 `GOAL-PROGRESS: 1,3（本轮完成后…）` 这个例子，
+ *    所以序号后面的注解如果實含我们自己写的规则片段，就不算进度。
  */
 export function parseGoalProgress(text: string, criteriaCount: number): number[] | null {
   if (criteriaCount <= 0) return null
-  const none = /^(?:none|无|没有|暂无)$/i
-  const digitsOnly = /^[\d\s,，、.。]+$/
+  const none = /^(?:none|无|没有|暂无)(?![A-Za-z0-9])/i
+  /** 只取行首的编号串；后面的注解不影响解析（除非是复述指令，见下）。 */
+  const leadingIndices = /^[\d\s,，、.。]+/
+  /** 注入文案里的原文片段：出现这些词就说明这是「复述/示例」而不是本轮进度。 */
+  const contractEcho = /(本轮完成后|标准编号|没有新增|起算)/
   let last: string | null = null
-  // 只看「独立成行」的汇报：正文里提到这个约定（或在示例里带括号说明）不算进度，
-  // 否则模型复述一遍指令就能把验收项刷成已完成。
   for (const line of String(text ?? '').split(/\r?\n/)) {
     const cleaned = line.trim().replace(/^[`*_>#\-\s]+/, '')
     if (!cleaned.toUpperCase().startsWith(GOAL_PROGRESS_PREFIX)) continue
     const body = cleaned.slice(GOAL_PROGRESS_PREFIX.length).replace(/[`*_]/g, ' ').trim()
-    if (!body && !none.test(body)) continue
-    if (!none.test(body) && !digitsOnly.test(body)) continue
-    last = body
+    if (!body) continue
+    if (none.test(body)) {
+      last = 'none'
+      continue
+    }
+    const head = leadingIndices.exec(body)?.[0]
+    if (!head || !/\d/.test(head)) continue
+    if (contractEcho.test(body.slice(head.length))) continue
+    last = head
   }
   if (last === null) return null
   if (none.test(last)) return []

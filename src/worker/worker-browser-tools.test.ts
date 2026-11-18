@@ -15,14 +15,15 @@ function fakePi(initial: string[], withSearch = false) {
   const byName = new Map<string, Tool>()
   const handlers: Record<string, (event?: unknown, ctx?: unknown) => void> = {}
   const setActiveTools = vi.fn((next: string[]) => (active = [...next]))
+  let search = withSearch
   const pi = {
     registerTool: (t: Tool) => byName.set(t.name, t),
     on: (name: string, fn: (event?: unknown, ctx?: unknown) => void) => (handlers[name] = fn),
     getActiveTools: () => active,
-    getAllTools: () => [...(withSearch ? [{ name: 'tool_search' }] : []), ...byName.values()],
+    getAllTools: () => [...(search ? [{ name: 'tool_search' }] : []), ...byName.values()],
     setActiveTools,
   }
-  return { pi, tools: () => [...byName.values()], tool: (n: string) => byName.get(n)!, handlers, setActiveTools, active: () => active }
+  return { pi, tools: () => [...byName.values()], tool: (n: string) => byName.get(n)!, handlers, setActiveTools, active: () => active, setSearch: (value: boolean) => { search = value } }
 }
 
 describe('worker browser tools', () => {
@@ -35,6 +36,20 @@ describe('worker browser tools', () => {
     expect(nextActiveTools(['read'], true)).toEqual(['read', ...BROWSER_TOOL_NAMES])
   })
 
+  it('drops back to core tools when tool_search only appears after the first switch', async () => {
+    // 真实顺序：权限消息（setCapabilities）先到，tool_search 的 session_start 后到。
+    // 第一次 apply 只能全部直declare；之后能延迟加载时必须收敛回 core + tool_search，
+    // 否则那 16 个 browser_* 定义会一直留在每次请求里（每个会话多花约 1.5k tokens）。
+    const f = fakePi(['read'], false)
+    await (browserToolsExtension as { factory: (pi: unknown) => void }).factory(f.pi)
+    setBrowserToolsEnabled(true)
+    expect(f.active()).toEqual(['read', ...BROWSER_TOOL_NAMES])
+
+    f.setSearch(true)
+    f.handlers.session_start()
+    expect(f.active()).toEqual(['read', 'tool_search', ...BROWSER_CORE_TOOLS])
+    expect(f.tool('browser_fill_form').exposure).toBe('deferred')
+  })
   it('declares only core tools plus tool_search when deferral is available, and hides the rest when off', async () => {
     const f = fakePi(['read', 'bash'], true)
     setBrowserToolsEnabled(false)

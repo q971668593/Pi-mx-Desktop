@@ -1,5 +1,5 @@
 import { StrictMode } from 'react'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { AppUpdateCheckResult } from '@shared/app-update'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { GeneralSettings } from './settings-general-appearance'
@@ -17,7 +17,8 @@ const mocks = vi.hoisted(() => ({
   showAppUpdateDialog: vi.fn(),
 }))
 
-vi.mock('react-i18next', () => ({
+vi.mock('react-i18next', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   useTranslation: () => ({ t: mocks.translate }),
 }))
 
@@ -259,5 +260,49 @@ describe('GeneralSettings manual update feedback', () => {
     })
 
     expect(mocks.showAppUpdateDialog).not.toHaveBeenCalled()
+  })
+})
+
+describe('GeneralSettings sidebar section', () => {
+  /** 侧栏标题行里那两个看不懂的小开关搬到这里：文案 + 标准 Switch。 */
+  it('exposes both sidebar behaviours as labelled switches', async () => {
+    mocks.invoke.mockImplementation((method: string, payload?: { key?: string }) => {
+      if (method === 'settings.get') {
+        if (payload?.key === 'recentProjectsFixedOrder') {
+          return Promise.resolve({ settings: { recentProjectsFixedOrder: true } })
+        }
+        if (payload?.key === 'sessionTitleFollowsLatest') {
+          return Promise.resolve({ settings: { sessionTitleFollowsLatest: true } })
+        }
+        return Promise.resolve({ settings: {} })
+      }
+      return Promise.resolve({ ok: true })
+    })
+    render(<GeneralSettings />)
+
+    const section = screen.getByText('settings:general.sidebarSection').closest('section')!
+    expect(section).not.toBeNull()
+    expect(within(section as HTMLElement).getByText('settings:general.titleFollowsLatestDesc')).toBeInTheDocument()
+
+    const switches = within(section as HTMLElement).getAllByRole('switch')
+    expect(switches).toHaveLength(2)
+    // 两个开关的当前状态必须一眼可读（而不是挤在标题行里的迷你轨道）
+    await waitFor(() => expect(switches[0]).toHaveAttribute('aria-checked', 'true'))
+    expect(switches[1]).toHaveAttribute('aria-checked', 'true')
+
+    fireEvent.click(switches[0])
+    await waitFor(() =>
+      expect(mocks.invoke).toHaveBeenCalledWith('settings.set', {
+        key: 'sessionTitleFollowsLatest',
+        value: false,
+      }),
+    )
+    fireEvent.click(switches[1])
+    await waitFor(() =>
+      expect(mocks.invoke).toHaveBeenCalledWith('settings.set', {
+        key: 'recentProjectsFixedOrder',
+        value: false,
+      }),
+    )
   })
 })

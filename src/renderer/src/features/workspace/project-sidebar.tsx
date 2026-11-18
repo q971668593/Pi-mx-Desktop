@@ -1,9 +1,9 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useUIStore } from '@renderer/stores/ui-store'
-import { ChevronRight, EyeOff, FolderOpen, ListOrdered, PencilLine, Plus, Search, X } from '@renderer/components/icons'
+import { ChevronRight, EyeOff, FolderOpen, Plus, Search, X } from '@renderer/components/icons'
 import { ipcClient } from '@renderer/lib/ipc-client'
-import { rememberTitleFollowsLatest, setTitleFollowsLatest } from '@renderer/lib/session-title-follow'
+import { rememberTitleFollowsLatest } from '@renderer/lib/session-title-follow'
 import { activateWorkspace } from '@renderer/lib/activate-workspace'
 import { SidebarAnimatedCollapse } from '@renderer/components/ui/sidebar-animated-collapse'
 import { SandboxContextMenuPortal } from './sandbox-context-menu'
@@ -113,7 +113,6 @@ export function ProjectSidebar({
   const [sandboxes, setSandboxes] = useState<SandboxEntry[]>([])
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set(readPathList(EXPANDED_PROJECTS_KEY)))
   const [recentProjectsFixedOrder, setRecentProjectsFixedOrder] = useState(false)
-  const [titleFollowsLatest, setTitleFollowsLatestState] = useState(false)
   const [hiddenProjects, setHiddenProjects] = useState(() => readPathList(HIDDEN_PROJECTS_KEY))
   const [manualOrder, setManualOrder] = useState(() => readPathList(MANUAL_PROJECT_ORDER_KEY))
   const [hiddenOpen, setHiddenOpen] = useState(false)
@@ -361,8 +360,8 @@ export function ProjectSidebar({
       .invoke('settings.get', { key: 'sessionTitleFollowsLatest' })
       .then((res) => {
         const v = res?.settings?.sessionTitleFollowsLatest === true
+        // 开关本身在 设置 → 侧栏，这里只维护发送时要读的模块缓存。
         rememberTitleFollowsLatest(v)
-        setTitleFollowsLatestState(v)
       })
       .catch(() => {})
     ipcClient
@@ -734,32 +733,8 @@ export function ProjectSidebar({
       <div className="mt-3 px-3" hidden={searchActive && visiblePaths.length === 0}>
         <div className="sidebar-section-head">
           <span className="sidebar-section-title flex-1 px-1">{t('common:sidebar.projects')}</span>
-          {/* Switches: their on/off must be readable at a glance, so each carries a mini track. */}
-          <button
-            type="button"
-            role="switch"
-            className="sidebar-section-action project-tool project-toggle"
-            aria-checked={titleFollowsLatest}
-            title={t(titleFollowsLatest ? 'common:sidebar.projectTitleFollowOn' : 'common:sidebar.projectTitleFollowOff')}
-            aria-label={t(titleFollowsLatest ? 'common:sidebar.projectTitleFollowOn' : 'common:sidebar.projectTitleFollowOff')}
-            onClick={() => { const next = !titleFollowsLatest; setTitleFollowsLatestState(next); rememberTitleFollowsLatest(next); void setTitleFollowsLatest(next).catch(() => setTitleFollowsLatestState(!next)) }}
-          >
-            <PencilLine size={14} />
-            <span className="project-toggle-track" aria-hidden><span className="project-toggle-knob" /></span>
-          </button>
-          <button
-            type="button"
-            role="switch"
-            className="sidebar-section-action project-tool project-toggle"
-            aria-checked={recentProjectsFixedOrder}
-            title={t(recentProjectsFixedOrder ? 'common:sidebar.projectOrderManual' : 'common:sidebar.projectOrderRecent')}
-            aria-label={t(recentProjectsFixedOrder ? 'common:sidebar.projectOrderManual' : 'common:sidebar.projectOrderRecent')}
-            onClick={() => setOrderMode(!recentProjectsFixedOrder)}
-          >
-            <ListOrdered size={14} />
-            <span className="project-toggle-track" aria-hidden><span className="project-toggle-knob" /></span>
-          </button>
-          <span className="project-tool-sep" aria-hidden />
+          {/* 项目排序 / 对话名跟随最新消息两个开关已经搬到 设置 → 侧栏：
+              嵌在这个只有 14px 高的标题行里既看不清图标也看不出开关状态。 */}
           <button type="button" className="sidebar-section-action project-tool" title={t('common:sidebar.manageHiddenProjects', { count: hiddenProjects.length })} aria-label={t('common:sidebar.manageHiddenProjects', { count: hiddenProjects.length })} aria-haspopup="dialog" onClick={() => setHiddenOpen(true)}><EyeOff size={15} />{hiddenProjects.length > 0 && <span className="project-hidden-dot" />}</button>
           {/* Projects come from opening a folder; refreshing lives in the top-right reload button. */}
           <button

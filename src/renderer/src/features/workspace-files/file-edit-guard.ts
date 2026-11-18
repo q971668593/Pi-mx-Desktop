@@ -1,4 +1,5 @@
 import { workspacePathKey } from '@shared/workspace-path'
+import { normalizeEol } from './file-text-eol'
 
 type FileDraft = { original: string; value: string }
 const drafts = new Map<string, FileDraft>()
@@ -10,7 +11,8 @@ export function getFileDraft(workspace: string, path: string): FileDraft | undef
 
 export function putFileDraft(workspace: string, path: string, original: string, value: string): void {
   const key = keyFor(workspace, path)
-  if (original === value) drafts.delete(key)
+  // 富文本编辑器会把 CRLF 归一成 LF，只有换行差异不算未保存。
+  if (normalizeEol(original) === normalizeEol(value)) drafts.delete(key)
   else drafts.set(key, { original, value })
 }
 

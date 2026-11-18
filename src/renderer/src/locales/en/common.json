@@ -37,10 +37,6 @@
     "conversations": "Conversations",
     "firstMsgIsTitle": "First message is the title",
     "projects": "Projects",
-    "projectTitleFollowOn": "Titles follow the latest message: on (click to turn off)",
-    "projectTitleFollowOff": "Titles follow the latest message: off (click to turn on)",
-    "projectOrderManual": "Manual order: on (click to sort by recent)",
-    "projectOrderRecent": "Recent order: on (click to sort manually)",
     "manageHiddenProjects": "Manage hidden projects ({{count}})",
     "mainWorktree": "Main checkout",
     "detachedWorktree": "Detached HEAD",
@@ -234,6 +230,7 @@
     "palette": "Switch branch…"
   },
   "terminal": {
+    "splitFull": "Split limit reached (max 4)",
     "title": "Terminal",
     "toggle": "Terminal (Ctrl+`)",
     "new": "New terminal",

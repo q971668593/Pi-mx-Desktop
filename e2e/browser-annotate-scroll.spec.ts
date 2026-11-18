@@ -103,14 +103,14 @@ test('annotation mode scrolls without stalling', async () => {
     // Leave annotation mode; open a second tab, then close tabs with the middle button.
     await win.keyboard.press('Escape')
     await win.getByRole('button', { name: /Exit|退出/ }).first().click().catch(() => {})
-    // A single tab has no strip; "New tab" lives in the toolbar's more menu until a second exists.
+    // 标签条现在只要有一个标签就显示（关掉/固定/新建都在条上），新建标签用条尾的 + 按钮。
     const tabs = win.locator('[data-browser-tab]')
-    await expect(tabs).toHaveCount(0)
-    await win.getByRole('button', { name: /^(More|更多)$/ }).click()
-    await win.getByRole('menuitem', { name: /New tab|新标签/ }).click()
+    await expect(tabs).toHaveCount(1)
+    const browserStrip = win.locator('[role="tablist"]').filter({ has: win.locator('[data-browser-tab]') })
+    await browserStrip.getByRole('button', { name: /^(New tab|新标签页)$/ }).last().click()
     await expect(tabs).toHaveCount(2)
     await tabs.nth(1).click({ button: 'middle' })
-    await expect(tabs).toHaveCount(0)
+    await expect(tabs).toHaveCount(1)
     await expect(win.getByRole('combobox', { name: /Address bar|地址栏/ })).toHaveValue(/127\.0\.0\.1/)
 
     // Right panel tab strip: vertical wheel over it scrolls it sideways, not the page.

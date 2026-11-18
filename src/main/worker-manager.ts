@@ -66,6 +66,14 @@ export class WorkerManager {
 
   /** 已记账「正在跑」的会话（转移表之外的去重器，进程内有效）。 */
   private readonly activeRuns = new Set<string>()
+
+  /**
+   * 等着「这一轮跑完再重载模型表」的槽位。
+   *
+   * models.json 可能被 agent 自己在 turn 中途改（本仓真实发生过）：立刻广播 reloadModels
+   * 等于在对话进行到一半时换掉它正在用的模型注册表。改成先给空闲槽位重载，忙到 turn 结束再补。
+   */
+  private readonly pendingModelReload = new Set<string>()
   private idleTimer: ReturnType<typeof setInterval> | null = null
 
   setMainWindow(win: BrowserWindow): void {
@@ -331,7 +339,7 @@ export class WorkerManager {
     sessionFile: string | null
     agentTurnActive: boolean
   }): void {
-    const { event, fromCwd, sessionFile, agentTurnActive } = payload
+    const { event, fromCwd, fromPoolKey, sessionFile, agentTurnActive } = payload
     let enriched = event
     if (event && typeof event === 'object') {
       const base = { ...(event as object) } as Record<string, unknown>
@@ -346,6 +354,7 @@ export class WorkerManager {
     observeAiActivityGlow(enriched)
     remoteTap.appEvent(enriched)
     this.releaseRunOnTerminalEvent(sessionFile, enriched)
+    this.applyDeferredModelReload(fromPoolKey, enriched)
     if (!this.mainWindow || this.mainWindow.isDestroyed()) return
     this.mainWindow.webContents.send('ipc:events', enriched)
     void agentTurnActive
@@ -392,6 +401,26 @@ export class WorkerManager {
     }
   }
 
+  /**
+   * 一轮结束后补做被推迟的 models.json 重载，并再通知一次界面：
+   * 推迟期间界面拿到的是旧表，重载完不复通知的话要等下次重启才看到新模型。
+   */
+  private applyDeferredModelReload(poolKey: string, event: AppEvent): void {
+    if (event.type !== 'run') return
+    const settled =
+      event.settled === true || event.phase === 'idle' || event.phase === 'failed' || event.phase === 'cancelled'
+    if (!settled || !this.pendingModelReload.has(poolKey)) return
+    this.pendingModelReload.delete(poolKey)
+    const slot = this.pool.get(poolKey)
+    if (!slot || slot.stopping) return
+    void this.requestOnSlot(slot, 'reloadModels')
+      .then(() => {
+        if (!this.mainWindow || this.mainWindow.isDestroyed()) return
+        this.mainWindow.webContents.send('ipc:model-catalog-changed', {})
+      })
+      .catch((error) => console.warn('[WorkerManager] deferred model reload failed (ignored):', error))
+  }
+
   private sweepOrphanedRunsOnce(): void {
     if (this.orphanSwept) return
     this.orphanSwept = true
@@ -418,6 +447,8 @@ export class WorkerManager {
 
   private handleSlotExit(slot: WorkerSlot, code: number): void {
     const key = slot.poolKey
+    // 槽位没了：挂在它名下的「推迟重载模型表」也一并作废
+    this.pendingModelReload.delete(key)
     if (this.pool.get(key) === slot) this.pool.delete(key)
     if (this.foregroundPoolKey === key) this.foregroundPoolKey = null
     slot.initPromise = null
@@ -1023,7 +1054,17 @@ export class WorkerManager {
     if (!this.isRunning) return
     // 每个活着的 worker 各持一份模型注册表：新加/改过的 provider 必须落到所有 slot，
     // 否则谁应答 model.list 谁就决定列表新旧（多会话时表现为「只有重启才更新」）。
-    await this.broadcast('reloadModels')
+    // 唯一例外：正在跑 turn 的槽位推迟到它结束（见 pendingModelReload）。
+    for (const key of [...this.pendingModelReload]) {
+      if (!this.pool.has(key)) this.pendingModelReload.delete(key)
+    }
+    const slots = [...this.pool.values()].filter((slot) => !slot.stopping)
+    const idle: WorkerSlot[] = []
+    for (const slot of slots) {
+      if (slot.agentTurnActive) this.pendingModelReload.add(slot.poolKey)
+      else idle.push(slot)
+    }
+    await Promise.allSettled(idle.map((slot) => this.requestOnSlot(slot, 'reloadModels')))
   }
   async getPiSettings(): Promise<Record<string, unknown>> {
     return ((await this.request('getPiSettings')).settings as Record<string, unknown>) || {}

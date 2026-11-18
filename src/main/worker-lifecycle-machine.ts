@@ -51,7 +51,7 @@ export type SlotCommand =
   | { readonly type: 'run.begin' }
   /** 释放运行账本（run-ledger.releaseRun） */
   | { readonly type: 'run.release' }
-  /** 记账为孤儿（run-ledger.markOrphaned），用于崩溃归因 */
+  /** 记账为孤儿（run-ledger.markOrphaned），用于崩溃归因；标记后不得紧跟 release，否则记录会被删掉 */
   | { readonly type: 'run.mark-orphan'; readonly reason: string }
   /** 通知渲染层 worker 异常退出（ipc:worker-fatal） */
   | { readonly type: 'notify.fatal'; readonly message: string }
@@ -82,12 +82,17 @@ export function derivePhase(flags: { stopping: boolean; agentTurnActive: boolean
  * 子进程退出时的运行账本处置（T5 接线点 1：`handleSlotExit`）。
  *
  * 只返回账本相关命令；`notify.fatal` 仍由 manager 根据 `autoRestartEnabled` 决定（那是策略，不是生命周期）。
+ *
+ * **崩渍分支只能 `mark-orphan`，绝不能紧跟 `release`**：`releaseRun` 是按 sessionFile
+ * 把整行删掉，「先标记再释放」等于当场销毁唯一的归因证据（曾经的真 bug：启动 sweep 与
+ * `ipc:worker-fatal.orphanedRuns` 永远是 0）。终态已知（正常退出 / run 事件落到
+ * idle·failed·cancelled）才 release。
  */
 export function exitLedgerCommands(phase: SlotPhase, code: number): readonly SlotCommand[] {
   if (phase === 'draining' || phase === 'dead') return []
   if (code === 0) return phase === 'busy' ? [{ type: 'run.release' }] : []
   if (phase !== 'busy') return []
-  return [{ type: 'run.mark-orphan', reason: `worker-exit:${code}` }, { type: 'run.release' }]
+  return [{ type: 'run.mark-orphan', reason: `worker-exit:${code}` }]
 }
 
 /** T5 接线点 2：一轮开始时的账本命令（`sendPrompt` / `followUp`）。 */
@@ -144,11 +149,9 @@ export function transition(state: SlotState, event: SlotEvent): SlotTransition {
 
     case 'turn.end': {
       if (state.phase !== 'busy') return unchanged(state)
-      // 顺序很重要：先记账为孤儿再释放（释放会把记录删掉，之后 mark-orphan 就无效了）
-      const commands: SlotCommand[] = []
-      if (event.outcome === 'failed') commands.push({ type: 'run.mark-orphan', reason: 'turn-failed' })
-      commands.push({ type: 'run.release' })
-      return { state: { ...state, phase: 'ready', turnId: null }, commands }
+      // 收到 run 终态 = 这一轮的去向已知（哪怕 failed），账本记录就该删掉。
+      // `mark-orphan` 只用于「进程没了、不知道这轮怎么了」，标记后必须保留记录。
+      return { state: { ...state, phase: 'ready', turnId: null }, commands: [{ type: 'run.release' }] }
     }
 
     case 'idle.timeout': {
@@ -170,9 +173,12 @@ export function transition(state: SlotState, event: SlotEvent): SlotTransition {
       // 预期退出（已 draining）不再告警；非主动停止才发 fatal
       if (state.phase !== 'draining' && event.code !== 0) {
         commands.push({ type: 'notify.fatal', message: `Worker 已退出（code ${event.code}）` })
+        // 崩在 turn 里：记成孤儿并**保留记录**（release 会把它删掉，见 exitLedgerCommands 注释）
         if (state.phase === 'busy') commands.push({ type: 'run.mark-orphan', reason: `worker-exit:${event.code}` })
+      } else if (state.phase === 'busy') {
+        // 干净退出（code 0）而 turn 还在：终态已知，直接释放
+        commands.push({ type: 'run.release' })
       }
-      if (state.phase === 'busy') commands.push({ type: 'run.release' })
       return { state: { ...state, phase: 'dead', turnId: null }, commands }
     }
 

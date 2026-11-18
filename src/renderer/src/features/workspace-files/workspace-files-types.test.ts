@@ -46,6 +46,13 @@ describe('file tree drag payload', () => {
     const encoded = dataTransfer({ 'text/uri-list': 'file:///C:/proj/my%20poster.png' })
     expect(readPiFilePathDrop(encoded)?.path).toBe('C:/proj/my poster.png')
 
+    // UNC 共享：file://server/share/a 去掉 file:// 后没有前导斜杠，前缀必须补回两个
+    const unc = dataTransfer({ 'text/uri-list': 'file://fileserver/team/out/a.png' })
+    expect(readPiFilePathDrop(unc)?.path).toBe('//fileserver/team/out/a.png')
+    // 已经是盘符形式（个别客户端会少一个斜杠）不能被当成 UNC
+    const bareDrive = dataTransfer({ 'text/uri-list': 'file://C:/proj/a.png' })
+    expect(readPiFilePathDrop(bareDrive)?.path).toBe('C:/proj/a.png')
+
     const text = dataTransfer({ 'text/plain': 'just some words' })
     expect(readPiFilePathDrop(text)).toBeNull()
     // 自研 MIME 缺失但 text/plain 是绝对路径时仍可用

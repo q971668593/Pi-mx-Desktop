@@ -13,6 +13,7 @@ import { SettingsPageHeader } from '@renderer/features/settings/settings-shell'
 import { SettingRow, SettingsSection } from '@renderer/features/settings/settings-page-shared'
 import { btnOutline, numberInputCls } from '@renderer/features/settings/settings-controls'
 import { previewAlertSound } from '@renderer/lib/alert-sound'
+import { setTitleFollowsLatest } from '@renderer/lib/session-title-follow'
 import { ALERT_SOUND_PRESETS } from '@shared/alert-sound'
 import { Switch } from '@renderer/components/ui/switch'
 import {
@@ -108,6 +109,8 @@ export function GeneralSettings() {
   } = useSettingsDraft()
   const [recentProjects, setRecentProjects] = useState<string[]>([])
   const [fixedOrder, setFixedOrder] = useState(false)
+  /** 侧栏：对话名跟随最新消息（键 sessionTitleFollowsLatest，侧栏不再直接提供开关）。 */
+  const [titleFollowsLatest, setTitleFollowsLatestState] = useState(false)
   const [updateCheck, setUpdateCheck] = useState<string | null>(null)
   const [checkingUpdate, setCheckingUpdate] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
@@ -149,7 +152,19 @@ export function GeneralSettings() {
         setFixedOrder(res.settings.recentProjectsFixedOrder)
       }
     })
+    // 直接读盘上的值：模块缓存可能被别处写过，设置页显示的必须是持久化状态
+    ipcClient.invoke('settings.get', { key: 'sessionTitleFollowsLatest' }).then((res) => {
+      if (mountedRef.current) setTitleFollowsLatestState(res?.settings?.sessionTitleFollowsLatest === true)
+    })
   }, [])
+
+  const toggleTitleFollowsLatest = (next: boolean) => {
+    setTitleFollowsLatestState(next)
+    // setTitleFollowsLatest 自己会写配置、更新模块缓存并广播 settings-changed（侧栏据此重读）
+    void setTitleFollowsLatest(next).catch(() => {
+      if (mountedRef.current) setTitleFollowsLatestState(!next)
+    })
+  }
 
   const toggleFixedOrder = (next: boolean) => {
     setFixedOrder(next)
@@ -583,10 +598,27 @@ export function GeneralSettings() {
 
       <RuntimeSettingsPanel />
 
-      <SettingsSection title={t('settings:general.recentProjects')}>
-        <SettingRow label={t('settings:general.fixedOrder')} description={t('settings:general.fixedOrderDesc')}>
+      <SettingsSection
+        title={t('settings:general.sidebarSection')}
+        description={t('settings:general.sidebarSectionDesc')}
+      >
+        <SettingRow
+          label={t('settings:general.titleFollowsLatest')}
+          description={t('settings:general.titleFollowsLatestDesc')}
+          settingKey="sessionTitleFollowsLatest"
+        >
+          <Switch checked={titleFollowsLatest} onCheckedChange={toggleTitleFollowsLatest} />
+        </SettingRow>
+        <SettingRow
+          label={t('settings:general.fixedOrder')}
+          description={t('settings:general.fixedOrderDesc')}
+          settingKey="recentProjectsFixedOrder"
+        >
           <Switch checked={fixedOrder} onCheckedChange={toggleFixedOrder} />
         </SettingRow>
+      </SettingsSection>
+
+      <SettingsSection title={t('settings:general.recentProjects')}>
         {recentProjects.length > 0 ? (
           <div className="space-y-1 py-3">
             {recentProjects.map((p, i) => (

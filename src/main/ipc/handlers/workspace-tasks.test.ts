@@ -149,6 +149,29 @@ describe('legacy AI duplicates', () => {
 })
 
 describe('legacy cleanup safety', () => {
+  it('keeps a hand-written task that merely shares the label of an "(AI)" copy', async () => {
+    const root = project([
+      // 用户自己写的 api（内容与旧 AI 副本不同）
+      { label: 'api', command: 'npm', args: ['run', 'dev:api'] },
+      // 旧版合写入撞名生成的副本
+      { label: 'api (AI)', command: 'npm', args: ['run', 'serve:api'] },
+    ])
+    const draft = {
+      version: '2.0.0',
+      tasks: [
+        { label: 'web', command: 'npm', args: ['run', 'dev:web'] },
+        { label: '一键运行', dependsOn: ['web'], group: { kind: 'build', isDefault: true }, detail: '启动前端' },
+      ],
+    }
+    const result = await handlers.get('ipc:workspace.tasks.save')!({ cwd: root, content: `${JSON.stringify(draft)}\n` })
+    expect(result.ok).toBe(true)
+    const tasks = readTasks(root)
+    const userTask = tasks.find((task) => task.label === 'api')
+    // 名字撞上不等于同一个任务：用户那份必须原样活着，只有 (AI) 副本被删
+    expect(userTask?.args).toEqual(['run', 'dev:api'])
+    expect(tasks.map((task) => String(task.label))).not.toContain('api (AI)')
+  })
+
   it('never removes a hand-made group while cleaning legacy "(AI)" duplicates', async () => {
     const root = project([
       // 用户自己建的组合（管理对话框写入时带 pi-app-exact 标记）

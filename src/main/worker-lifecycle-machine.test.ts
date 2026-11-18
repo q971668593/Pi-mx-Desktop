@@ -85,12 +85,10 @@ describe('worker lifecycle machine', () => {
     }
   })
 
-  it('marks failed turns as orphans before releasing the ledger', () => {
+  it('a failed turn is a known outcome, so it releases the ledger instead of keeping an orphan', () => {
     const result = transition(state('busy', '/s.jsonl', 1), { type: 'turn.end', outcome: 'failed' })
-    expect(result.commands).toEqual([
-      { type: 'run.mark-orphan', reason: 'turn-failed' },
-      { type: 'run.release' },
-    ])
+    // 只有「进程没了、不知道这轮怎么了」才留孤儿；run 事件到了就是终态已知。
+    expect(result.commands).toEqual([{ type: 'run.release' }])
   })
 
   it('never recycles a busy slot on idle timeout', () => {
@@ -132,8 +130,8 @@ describe('worker lifecycle machine', () => {
     expect(result.state.phase).toBe('dead')
     expect(result.commands).toEqual([
       { type: 'notify.fatal', message: 'Worker 已退出（code 1）' },
+      // 孤儿记录必须留下来才能被下次启动的 sweep 看到；这里**不能**再带 run.release
       { type: 'run.mark-orphan', reason: 'worker-exit:1' },
-      { type: 'run.release' },
     ])
   })
 
@@ -180,10 +178,9 @@ describe('worker lifecycle machine', () => {
     expect(derivePhase({ stopping: false, agentTurnActive: false })).toBe('ready')
   })
 
-  it('exitLedgerCommands: crash during a turn orphans + releases', () => {
+  it('exitLedgerCommands: crash during a turn orphans and keeps the record', () => {
     expect(exitLedgerCommands('busy', 1)).toEqual([
       { type: 'run.mark-orphan', reason: 'worker-exit:1' },
-      { type: 'run.release' },
     ])
   })
 
@@ -207,10 +204,7 @@ describe('worker lifecycle machine', () => {
   it('turnEndCommands only settles a tracked turn', () => {
     expect(turnEndCommands('busy', 'idle')).toEqual([{ type: 'run.release' }])
     expect(turnEndCommands('busy', 'cancelled')).toEqual([{ type: 'run.release' }])
-    expect(turnEndCommands('busy', 'failed')).toEqual([
-      { type: 'run.mark-orphan', reason: 'turn-failed' },
-      { type: 'run.release' },
-    ])
+    expect(turnEndCommands('busy', 'failed')).toEqual([{ type: 'run.release' }])
     expect(turnEndCommands('ready', 'idle')).toEqual([])
   })
 

@@ -25,10 +25,14 @@ test.describe('capability switches keep the prompt cache', () => {
         await expect.poll(() => seen.length, { timeout: 30_000 }).toBe(count)
         await expect(agent.win.getByText(`re ${text}`)).toBeVisible()
       }
+      // 默认就带内置浏览器（DEFAULT_CAPABILITIES 含 browser），所以先关再开：
+      // 关闭/开启都必须只追加 section 更新，而不是重写缓存前缀。
       await turn('one', 1)
-      await agent.enableBrowserControl()
-      await turn('two', 2)
+
       await agent.disableBrowserControl()
+      await turn('two', 2)
+
+      await agent.enableBrowserControl()
       await turn('three', 3)
 
       const head = (s: Seen) => s.messages[0]
@@ -36,13 +40,13 @@ test.describe('capability switches keep the prompt cache', () => {
       // The leading system message (the cached prefix) never changes.
       expect(head(seen[1]).text).toBe(head(seen[0]).text)
       expect(head(seen[2]).text).toBe(head(seen[0]).text)
-      expect(head(seen[0]).text).not.toContain('Built-in browser')
+      // 首轮默认带内置浏览器段；关掉之后它必须从「增量 section」里消失
+      expect(head(seen[0]).text).toContain('# Built-in browser')
 
       const updates = (s: Seen) => s.messages.slice(1).filter((m) => m.role === 'system' || m.role === 'developer').map((m) => m.text).join('\n')
-      expect(updates(seen[1])).toContain('Updated system prompt section "desktop_browser"')
-      expect(updates(seen[1])).toContain('# Built-in browser')
-      expect(updates(seen[2])).toContain('Removed system prompt section "desktop_browser".')
-      // Switching off keeps the declared tools (removing them would resend the whole tool list).
+      expect(updates(seen[1])).toContain('Removed system prompt section "desktop_browser".')
+      expect(updates(seen[2])).toContain('Updated system prompt section "desktop_browser"')
+      // Switching back keeps the declared tools (removing them would resend the whole tool list).
       expect(seen[2].tools).toEqual(seen[1].tools)
       // Earlier turns stay byte-identical in later requests, so the provider can reuse them.
       expect(seen[2].messages.slice(0, seen[1].messages.length).map((m) => m.text)).toEqual(seen[1].messages.map((m) => m.text))

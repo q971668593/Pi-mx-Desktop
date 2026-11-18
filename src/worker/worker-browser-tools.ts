@@ -29,11 +29,18 @@ let addedToolSearch = false
  * tools plus tool_search; the rest stay registered as `deferred` and tool_search declares them on
  * demand (pi keeps loaded tools active on that branch).
  */
-export function nextActiveTools(current: readonly string[], on: boolean, defer = false): string[] {
+/**
+ * `keepLoaded`：这些非 core 的 browser_* 是否真的由 tool_search 加载过。
+ * 只有上一轮已经是 `deferred` 才算——否则「tool_search 还不可用时被迫全部直declare」
+ * 会被当成「已经加载过」，那 16 个工具定义从此一直留在每次请求里。
+ */
+export function nextActiveTools(current: readonly string[], on: boolean, defer = false, keepLoaded = true): string[] {
   const rest = current.filter((n) => !BROWSER_TOOL_NAMES.includes(n))
   if (!on) return addedToolSearch ? rest.filter((n) => n !== TOOL_SEARCH) : rest
   if (!defer) return [...rest, ...BROWSER_TOOL_NAMES]
-  const loaded = current.filter((n) => BROWSER_TOOL_NAMES.includes(n) && !BROWSER_CORE_TOOLS.includes(n))
+  const loaded = keepLoaded
+    ? current.filter((n) => BROWSER_TOOL_NAMES.includes(n) && !BROWSER_CORE_TOOLS.includes(n))
+    : []
   return [...rest, ...(rest.includes(TOOL_SEARCH) ? [] : [TOOL_SEARCH]), ...BROWSER_CORE_TOOLS, ...loaded]
 }
 
@@ -95,13 +102,15 @@ function apply(): void {
     const declared = current.some((n) => BROWSER_TOOL_NAMES.includes(n))
     if (!enabled && keepToolsWhenOff && declared) return
     const mode = !defer ? 'all-direct' : enabled ? 'deferred' : 'hidden'
+    // 上一轮的模式：只有它本来就是 deferred，当前激活的非 core 工具才算「tool_search 加载过」。
+    const previousMode = registeredMode
     if (mode !== registeredMode) {
       // Core tools keep one definition in every mode, so only the others are re-registered.
       registerTools(api, mode, true)
       registeredMode = mode
     }
     if (enabled && defer && !current.includes(TOOL_SEARCH)) addedToolSearch = true
-    const next = nextActiveTools(current, enabled, defer)
+    const next = nextActiveTools(current, enabled, defer, previousMode === 'deferred')
     if (!enabled) addedToolSearch = false
     // Only touch the set when it changes: pi records the change and declares it from the next request.
     if (next.length === current.length && next.every((n, i) => n === current[i])) return

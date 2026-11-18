@@ -4,6 +4,7 @@
     "set": "设定目标",
     "edit": "编辑目标",
     "clear": "清除目标",
+    "clearConfirm": "确认清除",
     "remaining": "还剩 {{count}} 项未达成",
     "done": "目标已达成",
     "criteriaHint": "验收项（每行一条，事后可勾选）",

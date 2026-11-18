@@ -49,7 +49,7 @@ export function readPiFilePathDrop(
   return null
 }
 
-/** `file:///C:/a/b.png` / `file:///home/u/a.png` → 本地路径。 */
+/** `file:///C:/a/b.png` / `file:///home/u/a.png` / `file://server/share/a.png` → 本地路径。 */
 function decodeFileUri(uri: string): string {
   const raw = uri.slice('file://'.length)
   let decoded = raw
@@ -60,5 +60,9 @@ function decodeFileUri(uri: string): string {
   }
   // Windows: `/C:/a` → `C:/a`
   if (/^\/[A-Za-z]:/.test(decoded)) return decoded.slice(1)
+  // 已经是盘符形式（某些客户端会去掉一个斜杠）：原样返回
+  if (/^[A-Za-z]:[\\/]/.test(decoded)) return decoded
+  // UNC：`file://server/share/a` 去掉 file:// 后没有前导斜杠，共享前缀要补回来
+  if (decoded && !decoded.startsWith('/')) return `//${decoded}`
   return decoded
 }

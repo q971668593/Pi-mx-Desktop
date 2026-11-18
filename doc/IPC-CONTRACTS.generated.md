@@ -7,6 +7,10 @@
 - invoke 通道：**273** 个（唯一）
 - main → renderer 事件通道：**12** 个（唯一）
 - 非字面量注册：**0** 处
+- 动态事件通道（通道名非常量，未收录）：**7** 处
+
+> 事件表只收录字面量发送。`webContents.send(channel, …)` 这类包装器的通道名在运行时才确定，
+> 因此**不能**把下面的数字当成「主进程一共只发这么多事件」；新增包装器请同步登记到 `doc/IPC-CONTRACTS.md`。
 
 ## 通道数量（按域）
 
@@ -591,10 +595,20 @@
 | `ipc:extension-ui-dismiss` | `src/main/worker-manager-pool.ts` |
 | `ipc:extension-ui-request` | `src/main/worker-manager-pool.ts` |
 | `ipc:git-workspace-changed` | `src/main/git-workspace-watch.ts`<br>`src/main/ipc/handlers/git-branches.ts` |
-| `ipc:model-catalog-changed` | `src/main/index.ts` |
+| `ipc:model-catalog-changed` | `src/main/index.ts`<br>`src/main/worker-manager.ts` |
 | `ipc:notification-open-session` | `src/main/completion-notification-delivery.ts` |
 | `ipc:worker-exit` | `src/main/worker-manager.ts` |
 | `ipc:worker-fatal` | `src/main/worker-manager.ts` |
 | `notification:focus` | `src/main/completion-notification-delivery.ts` |
 | `notification:sound` | `src/main/completion-notification-delivery.ts` |
 | `notification:update` | `src/main/completion-notification-delivery.ts` |
+
+## 动态事件通道（未收录，仅登记位置）
+
+- `src/main/app-update-download.ts`：`APP_UPDATE_DOWNLOAD_PROGRESS_CHANNEL`
+- `src/main/browser/browser-host.ts`：`BROWSER_EVENT_CHANNEL`
+- `src/main/browser/chrome/index.ts`：`BROWSER_EVENT_CHANNEL`
+- `src/main/remote-host-electron.ts`：`channel`
+- `src/main/terminal/terminal-service.ts`：`channel`
+- `src/main/terminal/terminal-tool-bridge.ts`：`channel`
+- `src/main/updater.ts`：`APP_UPDATE_AVAILABLE_CHANNEL`
