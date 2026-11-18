@@ -1,8 +1,9 @@
-import { BrowserWindow, shell } from 'electron'
+import { BrowserWindow, dialog, shell } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { resolveAppIcon } from './app-icon'
 import { decideWindowNavigation, isSafeExternalUrl } from './window-navigation'
+import { MAX_CRASH_RELOADS, planCrashReload } from './renderer-crash-recovery'
 
 const isMac = process.platform === 'darwin'
 const isLinux = process.platform === 'linux'
@@ -60,7 +61,8 @@ function attachWindowBoundsPersistence(win: BrowserWindow): void {
 }
 
 let mainWindow: BrowserWindow | null = null
-let rendererReloadAfterCrash = false
+/** Pending renderer crash reloads inside the rolling window (see renderer-crash-recovery). */
+let rendererCrashHistory: number[] = []
 
 /** Renderer sandbox on by default (FMSM iter14). Set `PI_RENDERER_SANDBOX=0` to disable for local debug. */
 export function readRendererSandboxEnabled(): boolean {
@@ -128,9 +130,16 @@ export function createWindow(closeToTray = false): BrowserWindow {
     console.error(`[Renderer] Process gone: ${details.reason} exitCode=${details.exitCode}`)
     if (details.reason === 'crashed' || details.reason === 'killed' || details.reason === 'oom') {
       void workerManager.stop()
-      if (!rendererReloadAfterCrash && mainWindow && !mainWindow.isDestroyed()) {
-        rendererReloadAfterCrash = true
-        console.error('[Renderer] Reloading once after crash')
+      const plan = planCrashReload(rendererCrashHistory, Date.now())
+      rendererCrashHistory = plan.history
+      if (!plan.reload) {
+        console.error(`[Renderer] ${MAX_CRASH_RELOADS} crashes inside the reload window; not reloading again`)
+        dialog.showErrorBox(
+          'Pi mx — 渲染进程反复崩溃',
+          '窗口已连续崩溃多次，已停止自动重载以避免崩溃循环。请结束多余的 Pi mx 进程后重新启动应用；若仍崩溃，请附上日志反馈。',
+        )
+      } else if (mainWindow && !mainWindow.isDestroyed()) {
+        console.error(`[Renderer] Reloading after crash (${plan.history.length}/${MAX_CRASH_RELOADS})`)
         mainWindow.webContents.reload()
       }
     }

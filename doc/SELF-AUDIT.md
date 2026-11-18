@@ -31,6 +31,7 @@
 | S4 | IPC 入参校验覆盖率无人看守 | 155 个 `registerHandler` 注册点中 **99 个拿请求但不校验**（另有 56 个无入参，属合理豁免）；preload 白名单只校验通道名 | 新增 `scripts/tests/ipc-schema-coverage.test.mjs`：预算 99，只降不升；失败时打印全部未校验通道与文件（已注入探针验证能红） |
 | S5 | 门禁要一条条敲，容易漏 | — | 新增 `npm run selfcheck`（typecheck→lint→build→契约→单测，按 CI 顺序，失败即列出全部红项）与 `selfcheck:quick` |
 | S6 | 满载下 5 个 git 套件整片红（`STACK_TRACE_ERROR`） | 单跑必绿；并行跑 build/另一套测试时超时——vitest 默认 `testTimeout 5s` / `hookTimeout 10s` 不够真实 git 子进程 | `vitest.config.ts` 提到 `testTimeout 20s` / `hookTimeout 30s`；复测 429 文件 2531 例全绿且总时长从 178s 降到 153s（超时不再拖住 worker） |
+| S7 | 渲染层崩溃只给一次自愈，第二次白屏 | `rendererReloadAfterCrash` 置 true 后永不复位，第二次 `render-process-gone` 只打日志 | `renderer-crash-recovery.ts` 滑动窗口限流（5 分钟内最多重载 2 次），超限弹原生错误框而不是静默白屏；5 例单测覆盖窗口过期/超限/未来时间戳 |
 
 新增单测 40 例（路径越界、大小写、尾随点/空格、`javascript:`/`data:`、`.app` 目录、UNC/WSL 路径），`lint` 5 条 warning 清零。
 
@@ -41,7 +42,6 @@
 | P1 | **worker-manager 拆分（T5）** | `src/main/worker-manager.ts` 1326 行，同时承担池路由、生命周期、run 账本、目标续跑、事件转发；`worker-lifecycle-machine.ts` 已有转移表雏形 | 抽 `worker-machine.ts` 纯函数状态机（idle/spawning/ready/busy/draining/dead），manager 只执行 commands；验收：转移全覆单测 + `worker-manager-lifecycle-hardening.test.ts` 保持绿 + 主文件降到 <900 行 |
 | P1 | **i18n 键对齐门禁** | 全仓无 parity 检查；实测 `common/settings` 在复数后缀归一化后 0 差异，但 `team.json` 已有 zh-only `roles.unassigned`（英文用户会看到原始 key） | `scripts/check-i18n-parity.mjs`：扁平化 + 去掉 `_zero/_one/_two/_few/_many/_other` 后比对，缺键即红；接进 `test:scripts`。**先修掉现存缺键再开** |
 | P2 | **死通道清理** | `ipc:desktop.whichPi` 只存在于注册点、生成白名单、生成文档，全仓 0 调用方；通道白名单是渲染层（含扩展 UI）可达接口 | 删 handler + `ipc-contract` 条目，跑 `gen:ipc`；验收：生成文件幂等、契约测试绿。**注意：当前并行改动正在重生成这两个文件，需等其提交后再动** |
-| P2 | **渲染层崩溃恢复只给一次** | `window.ts` 的 `rendererReloadAfterCrash` 置 true 后永不复位：第二次 renderer 崩溃只打日志，窗口停在白屏 | `did-finish-load` 后按时间窗重置（如 5 分钟内最多 2 次），避免崩溃循环又能自愈；验收：注入两次 `webContents.forcefullyCrashRenderer()` 的 e2e |
 | P2 | **CSP 缺失** | `src/renderer/index.html` 无 `Content-Security-Policy`，且主题引导是内联 `<script>` + 内联 `<style>` | 不能直接加 `script-src 'self'`（会打断内联引导）。方案：给引导脚本算 sha256 写进 CSP，`style-src 'self' 'unsafe-inline'`（shiki/KaTeX/custom CSS 依赖内联样式），`img-src 'self' data: blob:`；验收：`test:e2e` 全绿 + 主题/公式/图表/自定义 CSS 手工冒烟 |
 | P3 | **CI 单测跑两份串行** | `quality.yml` 的 `unit-test` 与 `unit-test-win` 各跑 433 文件；本机 178s，CI 更慢，且 job 内先 build 再测 | `vitest run --shard=N/2` + matrix（ubuntu×2、windows×2）；验收：两侧都绿、总时长下降 |
 | P3 | 文档与实际不符 | `README.md` 与 `README.zh-CN.md` **字节相同且 0 中文字符**（`README.en.md` 另有英文版）；`doc/README.zh-CN.md` 同样 0 中文 | 要么补中文版，要么删掉 `zh-CN` 文件避免误导；先定产品口径 |
