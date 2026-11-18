@@ -81,8 +81,9 @@ export function ChatImageGeneratingCard({ prompt }: { prompt?: string }) {
   )
 }
 
-export function ChatImageGallery({ text }: { text: string }) {
-  const images = useMemo(() => findChatImageRefs(text), [text])
+export function ChatImageGallery({ text, refs }: { text?: string; refs?: ChatImageRef[] }) {
+  const scanned = useMemo(() => (text ? findChatImageRefs(text) : []), [text])
+  const images = refs ?? scanned
   if (!images.length) return null
   return <div className="mt-2 flex flex-wrap gap-2">{images.map((image) => <ChatImageCard key={image.path} image={image} />)}</div>
 }

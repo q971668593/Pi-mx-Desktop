@@ -9,11 +9,12 @@ describe('notification host page', () => {
     expect(html).toContain("stack.querySelector('.card:last-child .open')?.focus()")
   })
 
-  it('plays sound once per notification id across stack re-renders', () => {
+  it('plays the preset alert sound on its own channel, so sound-only mode has no card', () => {
     const html = notificationHostPageHtml()
 
-    expect(html).toContain('const playedSoundIds = new Set()')
-    expect(html).toContain("if (card.sound && !playedSoundIds.has(card.notificationId))")
-    expect(html).toContain('playedSoundIds.add(card.notificationId)')
+    expect(html).toContain('api.onSound((preset) => play(preset))')
+    expect(html).toContain('function play(preset)')
+    // The main process decides when to sound (card or sound-only), so a render must stay silent.
+    expect(html).not.toContain('playedSoundIds')
   })
 })

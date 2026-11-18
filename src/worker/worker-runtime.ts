@@ -25,7 +25,9 @@ import { errorMessage } from '@shared/error-message'
 import { sendToMain } from './worker-transport.js'
 import { translateEventPaths } from './worker-path-bridge.js'
 import { prepareAdapterCatalog, installAdapterCatalog } from '../extension-compat/adapter-loader.js'
-import { capabilitiesExtension } from './worker-capabilities.js'
+import { capabilitiesExtension, resetCapabilities } from './worker-capabilities.js'
+import { goalExtension, setGoalSection } from './worker-goal.js'
+import { runtimeBudgetExtension } from './worker-budget.js'
 import { modelRoutersExtension } from './worker-model-routers.js'
 import { browserToolsExtension } from './worker-browser-tools.js'
 import { terminalToolsExtension } from './worker-terminal-tools.js'
@@ -131,6 +133,9 @@ function detachSessionSubscription(): void {
 
 /** After Runtime replaces the AgentSession: resubscribe + rebind desktop extensions. */
 export async function rebindAfterRuntimeReplace(session: AgentSession): Promise<void> {
+  // A worker can switch sessions: the pinned goal belongs to the session it came from.
+  // Main re-sends it before the next prompt.
+  setGoalSection(null)
   detachSessionSubscription()
   resetSessionEventTracking()
   resetCompletionTurnTracking()
@@ -226,7 +231,7 @@ function buildRuntimeFactory(): CreateAgentSessionRuntimeFactory {
       agentDir,
       resourceLoaderOptions: {
         eventBus: st.sharedEventBus!,
-        extensionFactories: [...piBuiltinExtensions(sdk), capabilitiesExtension, browserToolsExtension, terminalToolsExtension, modelRoutersExtension(agentDir)],
+        extensionFactories: [...piBuiltinExtensions(sdk), capabilitiesExtension, goalExtension, runtimeBudgetExtension, browserToolsExtension, terminalToolsExtension, modelRoutersExtension(agentDir)],
         extensionsOverride: (result) => guardExtensionCapabilityTools(decorateQuestionnaireTools(result, cwd)),
         skillsOverride: applySkillsOverride as never,
       },
@@ -348,6 +353,8 @@ export async function switchOrLoadSession(
     wireRuntimeCallbacks(runtime)
     await rebindAfterRuntimeReplace(runtime.session)
     noteModelFallbackFromRuntime()
+    // Switches belong to the session, not this process: the previous one's must not leak in.
+    resetCapabilities()
     return
   }
 
@@ -355,6 +362,7 @@ export async function switchOrLoadSession(
   if (result.cancelled) {
     throw new Error('SESSION_SWITCH_CANCELLED')
   }
+  resetCapabilities()
   // rebindSession already ran; apply leaf tip if requested
   if (leafOverride !== undefined && st.session) {
     try {
@@ -373,9 +381,11 @@ export async function switchOrLoadSession(
 export async function runtimeNewSession(): Promise<{ cancelled: boolean }> {
   if (!st.runtime) {
     await initSession(st.currentCwd || process.cwd())
+    resetCapabilities()
     return { cancelled: false }
   }
   const result = await st.runtime.newSession()
+  if (!result.cancelled) resetCapabilities()
   return { cancelled: result.cancelled }
 }
 
@@ -388,7 +398,9 @@ export async function runtimeFork(
   options?: { position?: 'before' | 'at' },
 ): Promise<{ cancelled: boolean; selectedText?: string }> {
   if (!st.runtime) throw new Error('No runtime')
-  return st.runtime.fork(entryId, { position: options?.position ?? 'before' })
+  const result = await st.runtime.fork(entryId, { position: options?.position ?? 'before' })
+  resetCapabilities()
+  return result
 }
 
 function buildCommandContextActions(sess: AgentSession) {

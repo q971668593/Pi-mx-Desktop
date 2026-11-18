@@ -58,6 +58,8 @@ export type TaskLaunch = {
   args: string[]
   cwd: string
   background: boolean
+  /** AI（或用户）给的一句话说明；只用于界面展示，不参与启动。 */
+  detail?: string
 }
 
 export type TaskGroup = {
@@ -74,6 +76,7 @@ type RawTask = {
   dependsOn?: unknown
   isBackground?: unknown
   group?: unknown
+  detail?: unknown
   options?: { cwd?: unknown } | null
   presentation?: { group?: unknown } | null
 }
@@ -100,6 +103,7 @@ function buildTask(raw: RawTask, label: string, root: string): TaskLaunch | null
     args,
     cwd: resolveTaskCwd(raw.options?.cwd, root),
     background: raw.isBackground === true,
+    ...(typeof raw.detail === 'string' && raw.detail.trim() ? { detail: raw.detail.trim() } : {}),
   }
 }
 
@@ -262,4 +266,137 @@ export function parseJsonDocument(text: string): unknown {
     emit(char)
   }
   return JSON.parse(out + held)
+}
+
+export type TaskDefinition = {
+  label: string
+  dependsOn: string[]
+  /** 一句话中文说明：AI 写的 `detail` 优先，缺失时按命令推断。 */
+  detail: string
+}
+
+const SCRIPT_VERBS: Array<{ pattern: RegExp; verb: string }> = [
+  { pattern: /publish|release|deploy|发布|打包|上传/i, verb: '发布' },
+  { pattern: /^(?:dev|serve|start)(?:$|[:.\-_])/i, verb: '运行开发服务' },
+  { pattern: /build|compile|构建|编译/i, verb: '构建' },
+  { pattern: /test|spec|测试/i, verb: '运行测试' },
+  { pattern: /lint|typecheck|tsc|check|检查/i, verb: '代码检查' },
+  { pattern: /migrate|seed|db|数据库/i, verb: '数据库脚本' },
+]
+
+const COMMAND_VERBS: Array<{ pattern: RegExp; verb: string }> = [
+  { pattern: /^dotnet$/i, verb: '运行 .NET' },
+  { pattern: /^(?:go|air)$/i, verb: '运行 Go' },
+  { pattern: /^cargo$/i, verb: '运行 Rust' },
+  { pattern: /^(?:python|python3|py|uv|poetry|pipenv)$/i, verb: '运行 Python' },
+  { pattern: /^(?:php|composer)$/i, verb: '运行 PHP' },
+  { pattern: /^(?:node|tsx|ts-node|nodemon|deno|bun)$/i, verb: '运行 Node 脚本' },
+  { pattern: /^(?:java|mvn|gradle|gradlew)$/i, verb: '运行 Java' },
+  { pattern: /^(?:docker|docker-compose)$/i, verb: '容器' },
+]
+
+/**
+ * 界面右侧那句话：让用户不必读命令就知道这行干什么。
+ * 优先级：任务自带的 `detail`（AI 生成时要求写中文一句话）→ 脚本名里的动词 → 命令本身。
+ */
+export function describeTask(raw: Record<string, unknown>): string {
+  const detail = typeof raw.detail === 'string' ? raw.detail.trim() : ''
+  if (detail) return detail
+
+  const dependsOn = dependencies(raw as RawTask)
+  if (dependsOn.length) {
+    const label = typeof raw.label === 'string' ? raw.label : ''
+    if (/publish|release|deploy|发布/i.test(label)) return `发布：依次执行 ${dependsOn.length} 个任务`
+    return `同时启动 ${dependsOn.length} 个任务`
+  }
+
+  const command = typeof raw.command === 'string' ? raw.command.trim() : ''
+  const args = Array.isArray(raw.args) ? raw.args.filter((item): item is string => typeof item === 'string') : []
+  const joined = [command, ...args].join(' ')
+  const script = /^(?:npm|pnpm|yarn|bun)(?:\.cmd)?\s+(?:run\s+)?([\w:.\-@/]+)/i.exec(joined)?.[1] ?? ''
+  if (script) {
+    const target = script.trim()
+    for (const { pattern, verb } of SCRIPT_VERBS) if (pattern.test(target)) return `${verb}（${target}）`
+    return `执行脚本（${target}）`
+  }
+
+  const executable = command.replace(/^(?:npx|bunx)\s+/i, '').split(/[\/]/).pop() || command
+  for (const { pattern, verb } of COMMAND_VERBS) {
+    if (!pattern.test(executable)) continue
+    const sub = args.find((arg) => !arg.startsWith('-'))
+    return sub ? `${verb}（${sub}）` : verb
+  }
+  const label = typeof raw.label === 'string' ? raw.label.trim() : ''
+  return label ? `执行 ${label}` : `执行 ${command}`
+}
+
+/** 底部「选择要一起运行的任务或组合」列表的数据源（含一句话说明）。 */
+export function taskDefinitions(parsed: unknown): TaskDefinition[] {
+  return tasksOf(parsed)
+    .filter((task) => typeof task.label === 'string' && String(task.label).trim())
+    .map((task) => ({
+      label: String(task.label),
+      dependsOn: dependencies(task as RawTask),
+      detail: describeTask(task),
+    }))
+}
+
+/**
+ * 从 tasks.json 文本里删掉若干任务。
+ *
+ * 删组合时顺手清掉「只为它服务」的叶子任务：既没有被任何剩余任务 dependsOn、自身又没声明
+ * `group`（声明了的就是能单独运行的独立任务，不删）。这样删一次就真的从列表里消失，
+ * 而不是留下永远没人用的残渣。
+ */
+export function removeTasks(existing: string, labels: readonly string[]): { output: string; removed: string[] } {
+  const target = new Set(labels.filter((label) => typeof label === 'string' && label.trim()))
+  if (!target.size) return { output: existing, removed: [] }
+  const parsed = parseJsonDocument(existing.replace(/^\uFEFF/, ''))
+  const tasks = tasksOf(parsed)
+  const removed: string[] = []
+  const groupsByLabel = new Map(tasks.filter((task) => typeof task.label === 'string').map((task) => [String(task.label), task]))
+
+  const doomed = new Set<string>()
+  for (const label of target) {
+    if (!groupsByLabel.has(label)) continue
+    doomed.add(label)
+    removed.push(label)
+  }
+  if (!doomed.size) return { output: existing, removed: [] }
+
+  const referencedByRemaining = (): Set<string> => {
+    const used = new Set<string>()
+    for (const task of tasks) {
+      const label = typeof task.label === 'string' ? task.label : ''
+      if (!label || doomed.has(label)) continue
+      for (const dependency of dependencies(task as RawTask)) used.add(dependency)
+    }
+    return used
+  }
+
+  for (let round = 0; round < 5; round++) {
+    const stillUsed = referencedByRemaining()
+    let changed = false
+    for (const task of tasks) {
+      const label = typeof task.label === 'string' ? task.label : ''
+      if (!label || doomed.has(label)) continue
+      // 独立任务（声明了 group）永远保留；没有依赖关系的叶子只在无人引用时清理，
+      // 且必须原本是某个被删组合的依赖，避免误删用户自己的孤立任务。
+      if (task.group != null) continue
+      if (stillUsed.has(label)) continue
+      const wasDependency = [...doomed].some((gone) => dependencies(groupsByLabel.get(gone) as RawTask).includes(label))
+      if (!wasDependency) continue
+      doomed.add(label)
+      removed.push(label)
+      changed = true
+    }
+    if (!changed) break
+  }
+
+  const kept = tasks.filter((task) => !(typeof task.label === 'string' && doomed.has(task.label)))
+  const output = applyEdits(
+    existing,
+    modify(existing.replace(/^\uFEFF/, ''), ['tasks'], kept, { formattingOptions: { insertSpaces: true, tabSize: 2 } }),
+  )
+  return { output, removed }
 }

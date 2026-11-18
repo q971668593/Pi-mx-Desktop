@@ -1,6 +1,13 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import i18n from '@renderer/lib/i18n'
 import { useUIStore } from '@renderer/stores/ui-store'
+
+// The assertions below use the English copy; the app ships Chinese by default.
+beforeAll(async () => {
+  if (i18n.language !== 'en') await i18n.changeLanguage('en')
+})
+
 import type { ToolTimelineItem } from '@renderer/stores/ui-store-types'
 import { ToolCallRow } from './tool-call-row'
 

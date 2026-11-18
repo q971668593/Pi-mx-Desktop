@@ -1,7 +1,8 @@
 import { app, BrowserWindow } from 'electron'
 import { configStore } from './config-store'
 import { traceAudio } from './audio-trace'
-import { presentCompletionCard } from './completion-notification-delivery'
+import { playAlertSound, presentCompletionCard } from './completion-notification-delivery'
+import { normalizeAlertSoundPreset } from '@shared/alert-sound'
 import { buildCompletionNotificationCopy } from '@shared/completion-preview'
 
 export type DesktopAlertKind = 'extension_ui' | 'run_idle'
@@ -62,6 +63,18 @@ export function deliverDesktopAlert(win: BrowserWindow | null, payload: DesktopA
 
   ensureNotificationIdentity()
   const language = configStore.get('language') === 'en' ? 'en' : 'zh'
+  const soundPreset = normalizeAlertSoundPreset(configStore.get('alertSoundPreset'))
+  if (!doNotify) {
+    // Popups off: the alert is only a sound (and the taskbar flash below).
+    if (doSound) void playAlertSound(soundPreset)
+    if (win && !win.isDestroyed()) {
+      win.flashFrame(true)
+      setTimeout(() => {
+        if (win && !win.isDestroyed()) win.flashFrame(false)
+      }, 2800)
+    }
+    return
+  }
   const copy = buildCompletionNotificationCopy({
     language,
     outcome: 'success',
@@ -76,6 +89,7 @@ export function deliverDesktopAlert(win: BrowserWindow | null, payload: DesktopA
       outcome: 'success',
       timeoutMs: 15_000,
       sound: doSound,
+      soundPreset,
       copy: {
         ...copy,
         title: payload.title || copy.title,
@@ -84,13 +98,6 @@ export function deliverDesktopAlert(win: BrowserWindow | null, payload: DesktopA
         openLabel: language === 'zh' ? '返回应用' : 'Back to app',
       },
     },
-    doNotify ? 'auto' : 'custom',
+    'auto',
   )
-
-  if (!doNotify && win && !win.isDestroyed()) {
-    win.flashFrame(true)
-    setTimeout(() => {
-      if (win && !win.isDestroyed()) win.flashFrame(false)
-    }, 2800)
-  }
 }

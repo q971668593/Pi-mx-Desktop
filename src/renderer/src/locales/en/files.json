@@ -78,6 +78,7 @@
   },
   "menu": {
     "preview": "Preview",
+    "addToChat": "Add to conversation",
     "attach": "Add to chat",
     "copyPath": "Copy path",
     "copyRel": "Copy relative path",

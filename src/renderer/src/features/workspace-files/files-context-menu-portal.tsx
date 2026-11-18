@@ -20,6 +20,7 @@ type Props = {
   menu: FilesCtxTarget | null
   onClose: () => void
   onPreview: () => void
+  /** 文件或文件夹都支持：文件夹作为 @路径 引用进输入框，agent 自己去 ls/read。 */
   onAttach: () => void
   onCopyPath: () => void
   onCopyRel?: () => void
@@ -84,6 +85,17 @@ export function FilesContextMenuPortal({
       role="menu"
       onPointerDown={stop}
     >
+      <button
+        type="button"
+        className={item}
+        onPointerDown={stop}
+        onClick={() => {
+          onAttach()
+          onClose()
+        }}
+      >
+        {t('menu.addToChat')}
+      </button>
       {!menu.isDirectory ? (
         <button
           type="button"
@@ -108,19 +120,6 @@ export function FilesContextMenuPortal({
           }}
         >
           {t('menu.openInNewTab')}
-        </button>
-      ) : null}
-      {!menu.isDirectory ? (
-        <button
-          type="button"
-          className={item}
-          onPointerDown={stop}
-          onClick={() => {
-            onAttach()
-            onClose()
-          }}
-        >
-          {t('menu.attach')}
         </button>
       ) : null}
       <button

@@ -170,7 +170,8 @@ Release 说明：**[doc/RELEASE.md](https://github.com/justhil/pi-app/blob/v0.4.
   })
 
   it('IPC allowlist includes pending update + download channels', () => {
-    const channels = readFileSync(join(root, 'packages/shared/ipc-channels.ts'), 'utf8')
+    // 白名单本体由 scripts/generate-ipc-channels.mjs 从 src/main 注册点生成
+    const channels = readFileSync(join(root, 'packages/shared/ipc-channels.generated.ts'), 'utf8')
     assert.match(channels, /ipc:app\.getPendingUpdate/)
     assert.match(channels, /ipc:app\.dismissUpdatePrompt/)
     assert.match(channels, /ipc:app\.downloadUpdate/)

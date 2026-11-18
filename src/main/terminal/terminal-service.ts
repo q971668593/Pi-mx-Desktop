@@ -8,6 +8,10 @@ import { detectProfiles, type ShellProfile } from './shell-profiles'
 
 export const TERMINAL_DATA_CHANNEL = 'ipc:terminal-data'
 export const TERMINAL_EXIT_CHANNEL = 'ipc:terminal-exit'
+/** The tool closed a terminal: the sidebar removes the pane (an exit alone keeps the output). */
+export const TERMINAL_CLOSED_CHANNEL = 'ipc:terminal-closed'
+/** The tool typed into an existing terminal: focus it instead of opening another tab. */
+export const TERMINAL_REVEAL_CHANNEL = 'ipc:terminal-reveal'
 
 let manager: PtyManager | null = null
 let profiles: ShellProfile[] | null = null
@@ -44,7 +48,7 @@ export function terminals(): PtyManager {
   if (!manager) {
     // Loaded lazily: the native module is only needed once a terminal opens.
     const pty = createRequire(import.meta.url)('@lydell/node-pty') as { spawn: SpawnPty }
-    manager = new PtyManager(pty.spawn, { data: (id, data) => send(TERMINAL_DATA_CHANNEL, { id, data }), exit: (id, code) => send(TERMINAL_EXIT_CHANNEL, { id, code }) }, shellEnv)
+    manager = new PtyManager(pty.spawn, { data: (id, data) => send(TERMINAL_DATA_CHANNEL, { id, data }), exit: (id, code) => send(TERMINAL_EXIT_CHANNEL, { id, code }), closed: (id) => send(TERMINAL_CLOSED_CHANNEL, { id }) }, shellEnv)
   }
   return manager
 }

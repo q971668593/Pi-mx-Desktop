@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { normalizeFontName } from '../../../packages/shared/custom-theme.ts'
+import { MAX_GOAL_CRITERIA, MAX_GOAL_CRITERION_LENGTH, MAX_GOAL_LENGTH } from '../../../packages/shared/session-goal.ts'
 import { ICON_THEMES } from '../../../packages/shared/icon-theme.ts'
 import { BROWSER_SEARCH_ENGINE_IDS, type BrowserSearchEngine } from '../../../packages/shared/browser-types.ts'
 import { CAPABILITY_IDS } from '../../../packages/shared/capabilities.ts'
@@ -119,6 +120,48 @@ export const sessionPrepareSchema = z.object({
   bind: z.boolean().optional(),
 })
 
+/** 目标条：按会话（sessionFile）读写的 app 私有状态。 */
+const goalSessionFileSchema = z.string().trim().min(1).max(4096)
+
+export const sessionGoalGetSchema = z
+  .object({
+    sessionFile: goalSessionFileSchema,
+  })
+  .strict()
+
+export const sessionGoalSetSchema = z
+  .object({
+    sessionFile: goalSessionFileSchema,
+    goal: z.string().trim().min(1).max(MAX_GOAL_LENGTH),
+    /** 省略 = 保留现有验收项（只改目标文本）。 */
+    criteria: z
+      .array(z.string().max(MAX_GOAL_CRITERION_LENGTH))
+      .max(MAX_GOAL_CRITERIA * 2)
+      .optional(),
+  })
+  .strict()
+
+export const sessionGoalToggleCriterionSchema = z
+  .object({
+    sessionFile: goalSessionFileSchema,
+    index: z.number().int().min(0).max(MAX_GOAL_CRITERIA - 1),
+  })
+  .strict()
+
+export const sessionGoalMarkDoneSchema = z
+  .object({
+    sessionFile: goalSessionFileSchema,
+    /** 1 起的验收项序号，与 `GOAL-PROGRESS: 1,3` 的约定一致。 */
+    indices: z.array(z.number().int().min(1).max(MAX_GOAL_CRITERIA)).max(MAX_GOAL_CRITERIA),
+  })
+  .strict()
+
+export const sessionGoalClearSchema = z
+  .object({
+    sessionFile: goalSessionFileSchema,
+  })
+  .strict()
+
 export const contextPreviewSchema = z
   .object({
     sessionFile: z.string().trim().min(1),
@@ -138,8 +181,14 @@ export const workspaceSandboxDeleteSchema = z.object({
 export const promptTextSchema = z.object({
   text: z.string(),
   sessionFile: z.string().optional(),
-  /** Session capabilities switched on in the composer; omitted = leave the worker's set unchanged. */
+  /** Session capabilities switched on in the composer; omitted = the session's stored switches. */
   capabilities: z.array(z.enum(CAPABILITY_IDS)).max(8).optional(),
+})
+
+/** A Tools-menu switch: push the new set to the session's live worker right away. */
+export const capabilityApplySchema = z.object({
+  sessionFile: z.string().optional(),
+  capabilities: z.array(z.enum(CAPABILITY_IDS)).max(8),
 })
 
 const CLIPBOARD_IMAGE_MAX_BYTES = 8 * 1024 * 1024
@@ -274,6 +323,7 @@ const settingsValueSchemas: Record<string, z.ZodTypeAny> = {
   includePrereleaseUpdates: z.boolean(),
   ignoredUpdateVersion: z.string(),
   alertSoundEnabled: z.boolean(),
+  alertSoundPreset: z.enum(['chime', 'drop', 'double', 'rise', 'soft', 'none']),
   alertNotificationEnabled: z.boolean(),
   alertOnExtensionUi: z.boolean(),
   alertOnRunIdle: z.boolean(),

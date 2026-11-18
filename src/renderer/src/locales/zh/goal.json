@@ -1,0 +1,16 @@
+{
+  "bar": {
+    "placeholder": "这个会话要达成什么？（一句话）",
+    "set": "设定目标",
+    "edit": "编辑目标",
+    "clear": "清除目标",
+    "remaining": "还剩 {{count}} 项未达成",
+    "done": "目标已达成",
+    "criteriaHint": "验收项（每行一条，事后可勾选）",
+    "toggle": "切换完成状态",
+    "copy": "复制目标与验收项",
+    "copied": "已复制",
+    "loopStalled": "自动循环已暂停：连续几轮没有进展，还剩 {{count}} 项未达成",
+    "loopCapped": "自动循环已到轮数上限，还剩 {{count}} 项未达成"
+  }
+}

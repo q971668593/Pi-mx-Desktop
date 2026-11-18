@@ -9,6 +9,16 @@ export type GraphRow<T extends GraphCommit> = {
   fromAbove: boolean
 }
 
+/** Compact commit date: MM-DD for the current year, YYYY-MM-DD otherwise. */
+export function formatCommitDate(time: number, now: Date = new Date()): string {
+  if (!time) return ''
+  const date = new Date(time * 1000)
+  if (Number.isNaN(date.getTime())) return ''
+  const pad = (value: number) => String(value).padStart(2, '0')
+  const monthDay = `${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+  return date.getFullYear() === now.getFullYear() ? monthDay : `${date.getFullYear()}-${monthDay}`
+}
+
 export function layoutCommitGraph<T extends GraphCommit>(commits: T[]): Array<GraphRow<T>> {
   let active: string[] = []
   const rows = commits.map((commit) => {

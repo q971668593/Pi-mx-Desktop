@@ -361,7 +361,22 @@ export function handleSessionEvent(event: AgentSessionEvent, deps: SessionEventD
       break
     }
     case 'compaction_start': {
-      deps.emit({ ...base, type: 'compaction', phase: 'start' } as AppEvent)
+      // Record the window pi is holding right now. Compaction firing at 36% of the *real* window
+      // means the runtime's model snapshot is stale (models.json edited outside pi.models.set,
+      // which is the only path that reloads live workers) — without this number the case is
+      // indistinguishable from a genuine upstream overflow.
+      const usage = session?.getContextUsage?.()
+      if (usage) {
+        console.warn(
+          `[compaction] start: tokens=${usage.tokens ?? 'unknown'} window=${usage.contextWindow} percent=${usage.percent ?? 'unknown'}`,
+        )
+      }
+      deps.emit({
+        ...base,
+        type: 'compaction',
+        phase: 'start',
+        ...(usage ? { contextWindow: usage.contextWindow, contextTokens: usage.tokens ?? undefined } : {}),
+      } as AppEvent)
       sendToMain({ type: 'extension-ui-dismiss-all', reason: 'compaction' })
       break
     }

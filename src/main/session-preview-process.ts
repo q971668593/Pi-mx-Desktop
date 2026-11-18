@@ -193,7 +193,12 @@ export class SessionPreviewProcess {
   async listSessions(workspaceId: string): Promise<SessionOnDiskRow[]> {
     const rows = await this.request<SessionOnDiskRow[]>('session.list', { workspaceId, cwd: workspaceId })
     // The WSL runner speaks JSON over stdio, turning Dates into strings; restore them for callers.
-    return rows.map((row) => ({ ...row, created: asDate(row.created), modified: asDate(row.modified) }))
+    return rows.map((row) => ({
+      ...row,
+      created: asDate(row.created),
+      modified: asDate(row.modified),
+      lastUserMessageAt: asDate(row.lastUserMessageAt),
+    }))
   }
 
   async invalidateListSessions(workspaceId?: string): Promise<void> {

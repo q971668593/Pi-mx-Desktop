@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { symlinksSupported } from './symlink-support'
 
 const mocks = vi.hoisted(() => ({
   statCalls: [] as string[],
@@ -92,7 +93,7 @@ describe('R8 session header metadata', () => {
 })
 
 describe('R8 workspace file operations', () => {
-  it('should_resolve_and_reject_paths_asynchronously_when_sync_fs_is_blocked', async () => {
+  it.skipIf(!symlinksSupported)('should_resolve_and_reject_paths_asynchronously_when_sync_fs_is_blocked', async () => {
     await mkdir(join(root, 'out'))
     const ws = join(root, 'ws')
     await mkdir(ws)

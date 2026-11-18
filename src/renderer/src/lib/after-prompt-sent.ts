@@ -25,4 +25,9 @@ export async function afterPromptSent(bind?: PromptBindResult): Promise<void> {
   else clearSessionHistoryCache()
   await ipcClient.invoke('session.setPendingBind', { sessionFile: null }).catch(() => {})
   if (file) void refreshSessionTree(file)
+  // 侧栏的项目内顺序与「N 分钟前」都以「用户按下发送的时间」为准：发完立刻刷新一次，
+  // 刚发出消息的会话才能马上回到顶部（旧数据要等下个项目切换才更新）。
+  void import('@renderer/lib/refresh-workspace-session-lists').then((m) =>
+    m.refreshWorkspaceSessionLists(),
+  )
 }

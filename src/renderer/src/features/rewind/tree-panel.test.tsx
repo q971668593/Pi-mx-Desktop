@@ -55,38 +55,23 @@ describe('TreePanel refresh behaviour', () => {
 })
 
 describe('TreePanel user-only filter', () => {
-  it('single click on a user row requests a non-destructive view jump', () => {
+  it('shows the user-only filter as a selected radio and filters out replies', () => {
     render(<TreePanel />)
-    fireEvent.click(screen.getByText('仅用户'))
-    vi.useFakeTimers()
-
-    fireEvent.click(screen.getByRole('button', { name: /第一条用户消息/i }))
-
-    expect(requestTimelineViewEntry).not.toHaveBeenCalled()
-    act(() => vi.advanceTimersByTime(250))
-    expect(requestTimelineViewEntry).toHaveBeenCalledOnce()
-    expect(requestTimelineViewEntry).toHaveBeenCalledWith('u1')
-  })
-
-  it('double click on a user row rewinds instead of viewing', () => {
-    render(<TreePanel />)
-    fireEvent.click(screen.getByText('仅用户'))
-    vi.useFakeTimers()
-
-    fireEvent.click(screen.getByRole('button', { name: /第一条用户消息/i }))
-    fireEvent.doubleClick(screen.getByRole('button', { name: /第一条用户消息/i }))
-
-    act(() => vi.advanceTimersByTime(250))
-    expect(requestTimelineViewEntry).not.toHaveBeenCalled()
-    expect(navigateSessionToEntry).toHaveBeenCalledOnce()
-    expect(navigateSessionToEntry).toHaveBeenCalledWith('u1')
-  })
-
-  it('only user rows are shown in the user-only tab', () => {
-    render(<TreePanel />)
-    fireEvent.click(screen.getByText('仅用户'))
+    const chip = screen.getByRole('radio', { name: '提问轮次' })
+    expect(chip).toHaveAttribute('aria-checked', 'true')
 
     expect(screen.getByRole('button', { name: /第一条用户消息/i })).toBeTruthy()
     expect(screen.queryByRole('button', { name: /第一条回复/i })).toBeNull()
+  })
+
+  // The tree used to jump the timeline on a single click and rewind on a double click; it now
+  // opens the node detail dialog, where Continue / Ask again / Fork are explicit choices.
+  it('clicking a user row opens the node detail instead of moving the conversation', () => {
+    render(<TreePanel />)
+    fireEvent.click(screen.getByRole('button', { name: /第一条用户消息/i }))
+
+    expect(document.querySelector('[data-session-node-detail]')).not.toBeNull()
+    expect(requestTimelineViewEntry).not.toHaveBeenCalled()
+    expect(navigateSessionToEntry).not.toHaveBeenCalled()
   })
 })

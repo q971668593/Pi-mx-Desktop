@@ -9,8 +9,12 @@ describe('IPC capability boundaries', () => {
   it('readImagePreview requires workspace containment', () => {
     const ws = readFileSync(join(root, 'src/main/ipc/handlers/workspace-fs.ts'), 'utf8')
     assert.match(ws, /shellReadImagePreviewSchema/)
-    assert.match(ws, /resolvePathUnderWorkspace/)
+    // 处理器委派给统一图像解析器，边界校验收敛在下面这一层
+    assert.match(ws, /resolveActionableImage/)
     assert.doesNotMatch(ws, /return pathInput/)
+
+    const imageAccess = readFileSync(join(root, 'src/main/image-file-access.ts'), 'utf8')
+    assert.match(imageAccess, /resolvePathUnderWorkspace/, '图像预览必须经工作区边界校验')
   })
 
   it('review mutations gate cwd against trusted workspace', () => {

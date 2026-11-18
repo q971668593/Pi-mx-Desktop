@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ipcClient } from '@renderer/lib/ipc-client'
+import i18n from '@renderer/lib/i18n'
 import {
   commitAllSettingsSlices,
   getDirtySettingsSlices,
@@ -8,6 +9,11 @@ import {
 import { ModelsSettingsPanel } from './models-settings-panel'
 
 const appEventListeners = new Set<(event: { type: string }) => void>()
+
+// The assertions below use the English copy; the app ships Chinese by default.
+beforeAll(async () => {
+  if (i18n.language !== 'en') await i18n.changeLanguage('en')
+})
 
 vi.mock('@renderer/lib/ipc-client', () => ({
   ipcClient: { invoke: vi.fn() },
@@ -111,10 +117,10 @@ describe('ModelsSettingsPanel save', () => {
 
     const userSection = await screen.findByTestId('user-provider-section')
     const sdkSection = screen.getByTestId('sdk-provider-section')
-    expect(userSection).toHaveTextContent(/User-configured providers/i)
+    expect(userSection).toHaveTextContent(/Configured providers/i)
     expect(userSection).toHaveTextContent(/Original provider/i)
     expect(userSection).toContainElement(screen.getByRole('button', { name: /Add Provider/i }))
-    expect(sdkSection).toHaveTextContent(/Active Pi SDK providers/i)
+    expect(sdkSection).toHaveTextContent(/Pi SDK provider catalog/i)
     expect(sdkSection).toHaveTextContent('store-only')
     expect(sdkSection).not.toContainElement(screen.getByRole('button', { name: /Add Provider/i }))
   })

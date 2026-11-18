@@ -17,6 +17,7 @@ import {
   subscribeModelThinkingBindings,
 } from '@renderer/lib/model-thinking-bindings'
 
+import { ensureAvailableModels } from '@renderer/lib/available-models-cache'
 import { THINKING_LEVELS, applyThinkingLevel } from './thinking-level-actions'
 import { nearestUsableStop, stepUsableStop } from './thinking-slider-math'
 
@@ -49,6 +50,31 @@ export function ThinkingPicker() {
     void loadModelThinkingBindings(true).then(() => setBound(boundThinkingLevelFor(model)))
     return subscribeModelThinkingBindings(() => setBound(boundThinkingLevelFor(model)))
   }, [open, model])
+
+  useEffect(() => {
+    if (!open) return
+    // 新建会话 / 没用过的模型：这时还没跑过一轮，runState 里没有该模型的思考程度。
+    // 从模型目录补一次，别让用户看到的只有 Off（旧实现丢掉了 reasoning/thinkingLevelMap，
+    // 每个模型都被当成不可推理，直到第一轮 run 事件才恢复）。
+    if (!model || (available?.length ?? 0) > 0) return
+    let cancelled = false
+    void ensureAvailableModels().then((models) => {
+      if (cancelled) return
+      const row = models.find((m) => `${m.provider}/${m.id}` === model)
+      const levels = row?.availableThinkingLevels
+      if (!levels?.length) return
+      const now = useUIStore.getState()
+      if (now.runState.model !== model || (now.runState.availableThinkingLevels?.length ?? 0) > 0) return
+      const current = now.runState.thinkingLevel
+      now.setRunState({
+        availableThinkingLevels: levels,
+        ...(current && levels.includes(current) ? {} : { thinkingLevel: levels[0] }),
+      })
+    }).catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [open, model, available])
 
   useEffect(() => {
     if (!open) return

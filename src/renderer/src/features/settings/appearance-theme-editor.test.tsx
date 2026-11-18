@@ -45,6 +45,7 @@ function baseDraft(): SettingsDraft {
     autoCheckRegistryUpdates: true,
     includePrereleaseUpdates: false,
     alertSoundEnabled: true,
+    alertSoundPreset: 'chime',
     alertNotificationEnabled: true,
     alertOnExtensionUi: true,
     alertOnRunIdle: true,

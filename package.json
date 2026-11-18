@@ -22,6 +22,7 @@
     "preview": "electron-vite preview",
     "start": "electron-vite preview",
     "test:scripts": "node scripts/run-contract-tests.mjs",
+    "gen:ipc": "node scripts/generate-ipc-channels.mjs",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
     "typecheck": "tsc -p tsconfig.web.json --noEmit && tsc -p tsconfig.node.json --noEmit",

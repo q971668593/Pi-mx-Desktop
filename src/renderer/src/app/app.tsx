@@ -6,6 +6,8 @@ import { Sidebar, SidebarContent, SidebarItem, RightPanel } from '@renderer/comp
 import { ProjectSidebar } from '@renderer/features/workspace/project-sidebar'
 import { MainColRightPanelToggle } from '@renderer/components/app/main-col-right-panel-toggle'
 import { MainColumnWithTimelineScroll } from '@renderer/components/app/main-column-with-timeline-scroll'
+import { GoalBar } from '@renderer/features/goal/goal-bar'
+import { installGoalAutoLoop } from '@renderer/features/goal/goal-auto-loop'
 import { ComposerDock } from '@renderer/components/app/composer-dock'
 import { TimelineScrubber } from '@renderer/features/timeline/timeline-scrubber'
 import { SplitView } from '@renderer/features/split/split-view'
@@ -106,6 +108,16 @@ export default function App() {
   const rightPanelPrefs = useUIStore((s) => s.rightPanelPrefs)
   const rightPanelOrder = useUIStore((s) => s.rightPanelOrder)
   const applyRightPanelRuntime = useUIStore((s) => s.applyRightPanelRuntime)
+  // 目标自动循环：一轮结束后若目标还有未达成项就续一轮，连亏 3 轮自动停（见 goal-auto-loop.ts）。
+  useEffect(() => installGoalAutoLoop(), [])
+  // models.json 被外部改动时丢掉模型快照，聊天框的模型/思考程度不再等到重启才更新。
+  useEffect(() => {
+    let off = () => {}
+    void import('@renderer/lib/model-catalog-sync')
+      .then((m) => { off = m.initModelCatalogSync() })
+      .catch(() => {})
+    return () => off()
+  }, [])
   const browserPanelEnabled = !!rightPanelPrefs.browser
   useBrowserHelpAttention(browserPanelEnabled)
   const browserWasEnabled = useRef(browserPanelEnabled)
@@ -419,6 +431,7 @@ export default function App() {
           center={
             <SplitView>
             <MainColumnWithTimelineScroll className="h-full">
+              {!showHome ? <GoalBar /> : null}
               {showHome ? (
                 <Suspense fallback={<ShellSuspenseFallback label={t('common:loading')} />}>
                   <ProjectHomeView

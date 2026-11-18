@@ -123,6 +123,13 @@ export function handleRun(event: RunEvent, api: StoreApi): boolean {
     state.clearPendingQueue()
     state.pruneEmptyAssistantBubbles()
     void import('@renderer/lib/extension-ui-tool-sync').then((m) => m.reconcileAllStaleInteractiveToolRows())
+    // run 结束后刷新会话列表：侧栏的「N 分钟前」是用户最后发送时间，不随 AI 继续输出而跳动，
+    // 而磁盘写入发生在 run 期间，所以结算后补一次刷新才能拿到真实值。
+    void import('@renderer/lib/refresh-workspace-session-lists').then((m) =>
+      m.refreshWorkspaceSessionLists(
+        event.workspaceId ? { workspaceIds: [String(event.workspaceId)] } : undefined,
+      ),
+    )
     if (event.phase === 'idle' && wasActive && rs.startTime && durationMs != null && durationMs >= 800) {
       alertTrace('run_idle visible settle', { durationMs })
     }

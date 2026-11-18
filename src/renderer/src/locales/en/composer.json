@@ -51,6 +51,7 @@
     "tree": "Open session tree panel"
   },
   "toast": {
+      "compactingWait": "The context is being compacted. Your text is kept — send it again in a moment.",
     "sendFailed": "Send failed",
     "completeExtensionFirst": "Complete the extension dialog first, or click \"Answer later\" in the top right",
     "pasteScreenshotNeedWorkspace": "Open a workspace before pasting screenshots",
@@ -204,8 +205,8 @@
     "toolCount": "{{count}} tools",
     "toolCountDeferred": "{{count}} tools ({{core}} always loaded, rest on demand)",
     "tokens": "~{{n}} more tokens per request",
-    "note": "Applies from your next message; turning off removes it at once. New chats start with everything off.",
-    "noteRunning": "The current turn is unaffected; changes apply from your next message.",
+    "note": "Applies from your next message; turning off takes effect at once. New chats start with the built-in browser on.",
+    "noteRunning": "The prompt of the running turn stays; tools you turn off stop at once.",
     "items": {
       "pi-ui": {
         "name": "pi-ui visuals",

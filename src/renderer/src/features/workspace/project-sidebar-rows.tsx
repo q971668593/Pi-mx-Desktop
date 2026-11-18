@@ -19,19 +19,28 @@ import { selectSessionAttention } from '@renderer/lib/session-attention'
 import type { SandboxEntry, SessionItem } from './project-sidebar-types'
 import type { SessionMenuFork, SessionMenuTarget } from './session-context-menu-types'
 
-import { moveSidebarItem, readSidebarOrder, saveSidebarOrder, useSidebarReorder } from './sidebar-reorder'
+import type { useSidebarReorder } from './sidebar-reorder'
 
 const NO_CHILDREN: SubagentSessionChild[] = []
+
+/**
+ * Sidebar order inside a project is always "newest user message first". Manual drag ordering is a
+ * *project* feature only — a conversation the user just replied to must jump to the top even when
+ * projects are pinned in a hand-picked order.
+ */
+function sessionActivityAt(session: SessionItem): number {
+  return session.lastUserMessageAt ?? session.updatedAt
+}
 
 /**
  * Sidebar rows show only "how long ago" (5 天 / 3 小时 / 12 分钟); the exact timestamp
  * lives in the row's tooltip so a long date string never eats the title width.
  */
 function relativeSessionTime(
-  updatedAt: number,
+  sentAt: number,
   t: (key: string, options?: Record<string, unknown>) => string,
 ): string {
-  const minutes = Math.max(0, Math.round((Date.now() - updatedAt) / 60_000))
+  const minutes = Math.max(0, Math.round((Date.now() - sentAt) / 60_000))
   if (minutes < 1) return t('common:sidebar.timeNow')
   if (minutes < 60) return t('common:sidebar.timeMinutes', { count: minutes })
   const hours = Math.floor(minutes / 60)
@@ -92,17 +101,7 @@ export function ProjectSessionTree({
     }
     return buildSessionTree(projectSessions, groups)
   }, [currentWorkspace, historySessionFile, liveChildren, projectSessions, subagentSessionGroup, workspacePath])
-  const storageKey = `pi-desktop:session-order:${workspacePathKey(workspacePath)}`
-  const [manualOrder, setManualOrder] = useState(() => readSidebarOrder(storageKey))
-  const rank = useMemo(() => new Map(manualOrder.map((key, index) => [key, index])), [manualOrder])
-  const sortNodes = (nodes: SessionNode[]) => [...nodes].sort((a, b) => (rank.get(a.key) ?? Infinity) - (rank.get(b.key) ?? Infinity))
-  const sessionDrag = useSidebarReorder((source, target, after) => {
-    const order = sortNodes([...tree.byKey.values()]).map((node) => node.key)
-    const next = moveSidebarItem(order, source, target, after)
-    if (next === order) return
-    setManualOrder(next)
-    saveSidebarOrder(storageKey, next)
-  })
+  const sortNodes = (nodes: SessionNode[]) => [...nodes].sort((a, b) => sessionActivityAt(b.session) - sessionActivityAt(a.session) || a.key.localeCompare(b.key))
   const visibleRoots = useMemo(() => filterSessionTree(tree.roots, searchQuery), [tree, searchQuery])
   const { sessionsByFile, forksBySource } = useMemo(() => {
     const byFile = new Map<string, SessionItem>()
@@ -169,8 +168,6 @@ export function ProjectSessionTree({
     const s = node.session
     // Child sessions (subagents) render one step down: compact single line, quieter text.
     const isChild = depth > 0
-    const sortScope = node.parentKey || 'roots'
-    const sortable = !!node.session.sessionFile && !node.liveChild && !searchQuery.trim()
     const sessionFile = s.sessionFile
     const { children, liveChildren: transientChildren } = node
     const childCount = children.length + transientChildren.length
@@ -189,18 +186,15 @@ export function ProjectSessionTree({
       <div
         key={node.key}
         className="mb-1"
-        onDragEnd={sessionDrag.end}
         data-session-file={sessionFile}
         draggable={!!sessionFile && !node.liveChild}
         onDragStart={(e) => {
           if (!sessionFile) return
-          if (sortable) sessionDrag.start(e, node.key, sortScope)
           e.stopPropagation()
           startSessionDrag(e, { sessionId: s.sessionId, sessionFile, workspace: workspacePath, title: s.title || s.firstMessage || '' })
         }}
       >
         <div
-          {...(sortable ? sessionDrag.target(node.key, sortScope) : {})}
           onContextMenu={(event) =>
             onSessionContextMenu(event, {
               sessionId: s.sessionId,
@@ -253,9 +247,9 @@ export function ProjectSessionTree({
                 {isChild ? null : (
                   <span
                     className="ml-auto shrink-0 pl-1.5 text-[11px] leading-[16px] tabular-nums text-foreground-secondary/70"
-                    title={new Date(s.updatedAt).toLocaleString()}
+                    title={new Date(sessionActivityAt(s)).toLocaleString()}
                   >
-                    {relativeSessionTime(s.updatedAt, t)}
+                    {relativeSessionTime(sessionActivityAt(s), t)}
                   </span>
                 )}
               </div>

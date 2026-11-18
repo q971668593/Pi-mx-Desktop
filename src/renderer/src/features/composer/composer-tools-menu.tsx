@@ -7,6 +7,7 @@ import { ipcClient } from '@renderer/lib/ipc-client'
 import { useBrowserStore } from '@renderer/features/browser/browser-store'
 import {
   capabilityKey,
+  DEFAULT_CAPABILITIES,
   loadSessionCapabilities,
   onCapabilityKeyChange,
   setSessionCapability,
@@ -18,7 +19,6 @@ import { useUIStore } from '@renderer/stores/ui-store'
 import { ComposerPopover } from './composer-popover'
 
 const ICONS: Record<CapabilityId, AppIconComponent> = { 'pi-ui': Sparkles, browser: Globe, chrome: Monitor, 'web-search': Search, computer: Monitor }
-const EMPTY: CapabilityId[] = []
 
 let catalogCache: CapabilityInfo[] | null = null
 
@@ -54,7 +54,7 @@ function CacheWarmingRow() {
   }
   return (
     <div className="border-t border-border/50 pt-1" data-cache-warming={mode ?? ''}>
-      <div className="px-3 pb-0.5 text-[10.5px] text-muted-foreground/65">{t('composer:tools.cacheWarming.group')}</div>
+      <div className="px-3 pb-0.5 text-[11px] text-muted-foreground/65">{t('composer:tools.cacheWarming.group')}</div>
       <div className="flex items-start gap-2 px-3 py-1.5" title={t('composer:tools.cacheWarming.desc')}>
         <Clock className="mt-[3px] h-3.5 w-3.5 shrink-0 text-foreground-secondary" />
         <div className="min-w-0 flex-1">
@@ -73,7 +73,7 @@ function CacheWarmingRow() {
                 disabled={mode === null}
                 onClick={() => choose(m)}
                 className={cn(
-                  'flex-1 whitespace-nowrap rounded-[5px] px-1.5 py-0.5 text-[10.5px] text-muted-foreground transition-colors hover:text-foreground',
+                  'flex-1 whitespace-nowrap rounded-[5px] px-1 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground',
                   mode === m && 'bg-background text-foreground shadow-[0_0_0_0.5px_var(--border)] dark:bg-[#46474d]',
                 )}
               >
@@ -92,8 +92,9 @@ function formatTokens(n: number): string {
 }
 
 /**
- * Composer "Tools" menu: per-session capability switches (all off for a new session). An enabled
- * capability adds its instructions/tools from the next message on; switching it off removes them.
+ * Composer "Tools" menu: per-session capability switches (the built-in browser is on for a new chat,
+ * everything else is opt-in). An enabled capability adds its instructions/tools from the next message
+ * on; switching it off revokes its tools at once.
  */
 type BrowserMode = 'off' | 'builtin' | 'chrome'
 
@@ -120,16 +121,20 @@ function BrowserModeRow({ builtin, chrome, enabled, sessionFile }: { builtin: Ca
         .filter(Boolean)
         .join(' · ')
     : ''
-  // What the current choice costs rides on the label line; the descriptions live in the tooltip.
+  // The line stays a label only: cost and descriptions live in the tooltip, so a long cost string
+  // can never crowd out the label or push the menu into horizontal scrolling.
   const hint = [t(`composer:tools.browserMode.desc.${mode}`), cost].filter(Boolean).join(' · ')
   return (
-    <div className="px-3 py-1.5">
-      <div className="flex items-center gap-2" title={hint}>
+    <div className="min-w-0 px-3 py-1.5">
+      <div className="flex min-w-0 items-center gap-2" title={hint}>
         <Globe className="h-3.5 w-3.5 shrink-0 text-foreground-secondary" />
         <span className="min-w-0 flex-1 truncate text-[12px] text-foreground">{t('composer:tools.browserMode.label')}</span>
-        {cost ? <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/55">{cost}</span> : null}
       </div>
-      <div role="radiogroup" aria-label={t('composer:tools.browserMode.label')} className="mt-1 flex rounded-md border border-border/60 p-0.5">
+      <div
+        role="radiogroup"
+        aria-label={t('composer:tools.browserMode.label')}
+        className="mt-1 flex min-w-0 rounded-md border border-border/60 p-0.5"
+      >
         {options.map((o) => {
           const disabled = !!o.info && !o.info.available
           return (
@@ -142,7 +147,7 @@ function BrowserModeRow({ builtin, chrome, enabled, sessionFile }: { builtin: Ca
               title={disabled && o.info?.reason ? t(`composer:tools.reasons.${o.info.reason}`) : t(`composer:tools.browserMode.desc.${o.id}`)}
               onClick={() => pick(o.id)}
               className={cn(
-                'flex-1 rounded px-1.5 py-1 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-40',
+                'min-w-0 flex-1 truncate whitespace-nowrap rounded px-1 py-1 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-40',
                 mode === o.id ? 'bg-primary text-primary-foreground' : 'text-foreground-secondary hover:bg-[var(--bg-hover)]',
               )}
             >
@@ -159,10 +164,10 @@ export function ComposerToolsMenu({ disabled, running }: { disabled?: boolean; r
   const { t } = useTranslation()
   const sessionFile = useUIStore((s) => s.historySessionFile)
   const key = capabilityKey(sessionFile)
-  const storedEnabled = useSessionCapabilitiesStore((s) => s.byKey[key]) ?? EMPTY
+  const storedEnabled = useSessionCapabilitiesStore((s) => s.byKey[key])
   // Subscribe to browser tabs so auto-mounted browser capability reflects in the badge and menu.
   useBrowserStore((s) => s.tabs)
-  const enabled = withAutoBrowserCapability(storedEnabled, key)
+  const enabled = withAutoBrowserCapability(storedEnabled ?? DEFAULT_CAPABILITIES, key)
   const [open, setOpen] = useState(false)
   const [catalog, setCatalog] = useState<CapabilityInfo[] | null>(catalogCache)
   const prevKey = useRef(key)
@@ -229,10 +234,10 @@ export function ComposerToolsMenu({ disabled, running }: { disabled?: boolean; r
           label={t('composer:tools.title')}
           onClose={() => setOpen(false)}
         >
-          <div className="px-3 pb-0.5 pt-2 text-[10.5px] text-muted-foreground/65">{t('composer:tools.title')}</div>
-          <div className="min-h-0 flex-1 overflow-y-auto pb-1">
+          <div className="px-3 pb-0.5 pt-2 text-[11px] text-muted-foreground/65">{t('composer:tools.title')}</div>
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-1">
             {all.length > 0 && visible.length === 0 ? (
-              <div className="px-3 py-1.5 text-[10.5px] leading-4 text-muted-foreground/70">{t('composer:tools.noneAvailable')}</div>
+              <div className="px-3 py-1.5 text-[11px] leading-4 text-muted-foreground/70">{t('composer:tools.noneAvailable')}</div>
             ) : null}
             {all
               // One browser row: off / built-in / my Chrome (the two capabilities are exclusive).
@@ -252,11 +257,10 @@ export function ComposerToolsMenu({ disabled, running }: { disabled?: boolean; r
                   <label
                     key={cap.id}
                     title={[t(`composer:tools.items.${cap.id}.desc`), cost].filter(Boolean).join(' · ')}
-                    className="flex cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-[var(--bg-hover)]"
+                    className="flex min-w-0 cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-[var(--bg-hover)]"
                   >
                     <Icon className="h-3.5 w-3.5 shrink-0 text-foreground-secondary" />
                     <span className="min-w-0 flex-1 truncate text-[12px] text-foreground">{label(cap.id)}</span>
-                    {on && cost ? <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/55">{cost}</span> : null}
                     <Switch
                       checked={on}
                       aria-label={label(cap.id)}
@@ -271,7 +275,7 @@ export function ComposerToolsMenu({ disabled, running }: { disabled?: boolean; r
               })}
             <CacheWarmingRow />
           </div>
-          <div className="border-t border-border/50 px-3 py-1.5 text-[10px] leading-4 text-muted-foreground/60">
+          <div className="border-t border-border/50 px-3 py-1.5 text-[10.5px] leading-4 text-muted-foreground/60">
             {running ? t('composer:tools.noteRunning') : t('composer:tools.note')}
           </div>
         </ComposerPopover>

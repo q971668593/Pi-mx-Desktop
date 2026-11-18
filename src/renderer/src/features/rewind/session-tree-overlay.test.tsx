@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SessionTreeOverlay } from './session-tree-overlay'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { navigateSessionToEntry } from '@renderer/lib/session-rewind'
-import { requestTimelineViewEntry } from '@renderer/features/timeline/timeline-view-jump'
 
 vi.mock('@renderer/lib/session-rewind', () => ({ navigateSessionToEntry: vi.fn(async () => true) }))
 vi.mock('@renderer/lib/session-fork', () => ({ forkSessionFromEntry: vi.fn(async () => true) }))
@@ -21,7 +20,6 @@ const nodes = [
 const rAF = () => new Promise((r) => requestAnimationFrame(() => r(null)))
 
 beforeEach(() => {
-  vi.mocked(requestTimelineViewEntry).mockClear()
   useUIStore.setState({
     currentWorkspace: '/tmp/proj',
     historySessionFile: '/tmp/proj/session.jsonl',
@@ -37,37 +35,33 @@ afterEach(() => {
 })
 
 describe('SessionTreeOverlay interaction', () => {
-  it('Enter views the selected node and closes the overlay', async () => {
+  it('Escape closes the overlay', () => {
     const onClose = vi.fn()
     render(<SessionTreeOverlay open onClose={onClose} />)
 
-    // Default selection prefers the last non-leaf node (u1 here).
-    fireEvent.keyDown(window, { key: 'Enter' })
-    await rAF()
+    fireEvent.keyDown(window, { key: 'Escape' })
 
-    expect(requestTimelineViewEntry).toHaveBeenCalledWith('u1')
     expect(onClose).toHaveBeenCalled()
   })
 
-  it('Enter on the current leaf is a no-op that keeps the overlay open', async () => {
+  it('clicking a node opens the node detail, and Escape closes the detail before the overlay', () => {
     const onClose = vi.fn()
     render(<SessionTreeOverlay open onClose={onClose} />)
 
-    fireEvent.keyDown(window, { key: 'ArrowDown' })
-    fireEvent.keyDown(window, { key: 'ArrowDown' })
-    fireEvent.keyDown(window, { key: 'Enter' })
-    await rAF()
+    fireEvent.click(screen.getByRole('button', { name: /第一条用户消息/i }))
+    expect(document.querySelector('[data-session-node-detail]')).not.toBeNull()
 
-    expect(requestTimelineViewEntry).not.toHaveBeenCalled()
-    expect(navigateSessionToEntry).not.toHaveBeenCalled()
+    // The dialog owns Escape while it is open, so the overlay behind it stays put.
+    fireEvent.keyDown(window, { key: 'Escape' })
     expect(onClose).not.toHaveBeenCalled()
   })
 
-  it('double click rewinds and closes the overlay', async () => {
+  it('the node detail offers an explicit continue action instead of a click gesture', async () => {
     const onClose = vi.fn()
     render(<SessionTreeOverlay open onClose={onClose} />)
 
-    fireEvent.doubleClick(screen.getByRole('button', { name: /第一条用户消息/i }))
+    fireEvent.click(screen.getByRole('button', { name: /第一条用户消息/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Ask again|重新提问/i }))
     await rAF()
 
     expect(navigateSessionToEntry).toHaveBeenCalledWith('u1')

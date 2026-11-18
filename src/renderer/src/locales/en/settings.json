@@ -53,6 +53,25 @@
     "alertSoundDesc": "",
     "alertNotification": "System notification",
     "alertNotificationDesc": "Use the system notification center.",
+    "alertMode": "How to alert you",
+    "alertModeDesc": "Pick \"Sound only\" to hear a chime without any popup.",
+    "alertModeOptions": {
+      "both": "Popup + sound",
+      "sound": "Sound only",
+      "popup": "Popup only",
+      "off": "Off"
+    },
+    "alertSoundPreset": "Alert sound",
+    "alertSoundPresetDesc": "Click to preview; applied when you save.",
+    "alertSoundPreview": "Preview",
+    "alertSounds": {
+      "chime": "Chime",
+      "drop": "Drop",
+      "double": "Double beep",
+      "rise": "Rise",
+      "soft": "Soft",
+      "none": "Silent"
+    },
     "alertOnExtensionUi": "Extension dialogs",
     "alertOnExtensionUiDesc": "When the agent pauses for your answer.",
     "aiGlow": "AI activity indicator",

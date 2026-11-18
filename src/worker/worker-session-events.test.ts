@@ -105,6 +105,37 @@ describe('worker session event lifecycle', () => {
     ])
   })
 
+  it('should_carry_the_effective_window_when_compaction_starts', () => {
+    const harness = createSessionEventHarness()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    // 现场：窗口被旧快照压到 400k，于是 380k（真实窗口的 36%）就触发压缩
+    harness.dependencies.getSession = () =>
+      ({
+        sessionManager: { getLeafId: () => 'leaf' },
+        getContextUsage: () => ({ tokens: 380625, contextWindow: 400000, percent: 95.2 }),
+      }) as never
+
+    handleSessionEvent({ type: 'compaction_start' } as AgentSessionEvent, harness.dependencies)
+
+    expect(harness.emittedEvents.find((event) => event.type === 'compaction')).toMatchObject({
+      phase: 'start',
+      contextWindow: 400000,
+      contextTokens: 380625,
+    })
+    expect(warn.mock.calls.at(-1)?.[0]).toContain('window=400000')
+    warn.mockRestore()
+  })
+
+  it('should_still_emit_compaction_start_when_usage_is_unavailable', () => {
+    const harness = createSessionEventHarness()
+
+    handleSessionEvent({ type: 'compaction_start' } as AgentSessionEvent, harness.dependencies)
+
+    const event = harness.emittedEvents.find((entry) => entry.type === 'compaction')
+    expect(event).toMatchObject({ phase: 'start' })
+    expect(event).not.toHaveProperty('contextWindow')
+  })
+
   it('should_publish_fresh_run_identity_when_agent_starts', () => {
     const harness = createSessionEventHarness()
 

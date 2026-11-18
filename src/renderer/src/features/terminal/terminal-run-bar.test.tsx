@@ -41,3 +41,45 @@ it('allows AI task detection with existing tasks and runs only the selected draf
   fireEvent.click(screen.getByRole('button', { name: 'common:terminal.saveAndRun' }))
   await waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('terminal.runTasks', expect.objectContaining({ tasks: [mocks.groups[1].tasks[0]] })))
 })
+
+it('lists tasks with a one-line description and can delete a group', async () => {
+  mocks.invoke.mockClear()
+  render(<TerminalRunBar />)
+  // 等本次挂载真的发过 get（上一轮的调用记录不能算数，否则事件还没挂上）
+  await waitFor(() =>
+    expect(mocks.invoke.mock.calls.some(([method]) => method === 'workspace.tasks.get')).toBe(true),
+  )
+
+  // 下一次 workspace.tasks.get 返回带 description 的完整列表（管理对话框用）
+  mocks.invoke.mockImplementation(async (method: string) => {
+    if (method === 'workspace.tasks.get') {
+      return {
+        ok: true,
+        groups: [mocks.groups[0]],
+        labels: ['dev:api', 'Run'],
+        definitions: [
+          { label: 'dev:api', dependsOn: [], detail: '运行开发服务（dev:api）' },
+          { label: 'Run', dependsOn: ['dev:api'], detail: '同时启动 1 个任务' },
+        ],
+      }
+    }
+    if (method === 'workspace.tasks.delete') return { ok: true, groups: [], removed: ['Run'], definitions: [] }
+    return { ok: false }
+  })
+  act(() => window.dispatchEvent(new Event('pi-desktop:terminal-manage-tasks')))
+
+  const dialog = await screen.findByRole('dialog')
+  // 右侧那句中文说明
+  expect(await screen.findByText('运行开发服务（dev:api）')).toBeTruthy()
+  expect(screen.getByText('同时启动 1 个任务')).toBeTruthy()
+
+  // 两段式删除：第一次点只是进入确认态，第二次才真的调用
+  const del = screen.getByRole('button', { name: 'common:terminal.deleteGroupNamed' })
+  fireEvent.click(del)
+  expect(mocks.invoke).not.toHaveBeenCalledWith('workspace.tasks.delete', expect.anything())
+  fireEvent.click(del)
+  await waitFor(() =>
+    expect(mocks.invoke).toHaveBeenCalledWith('workspace.tasks.delete', { cwd: 'C:/project', label: 'Run' }),
+  )
+  expect(dialog).toBeTruthy()
+})

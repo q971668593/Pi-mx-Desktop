@@ -359,8 +359,9 @@ export function WorkspaceFilesPanel() {
   )
 
   const attachToComposer = useCallback(
-    (abs: string, name: string) => {
-      const kind = getAttachmentKind(name)
+    (abs: string, name: string, isDirectory = false) => {
+      // 文件夹按「@路径 引用」进输入框（和拖拽一致），agent 自己 ls/read 里面的内容
+      const kind = isDirectory ? 'dir' : getAttachmentKind(name)
       window.dispatchEvent(
         new CustomEvent('pi-desktop:composer-attach-files', {
           detail: { files: [{ path: abs, name, kind }] },
@@ -539,7 +540,7 @@ export function WorkspaceFilesPanel() {
         }}
         onAttach={() => {
           if (!menu) return
-          attachToComposer(menu.abs, menu.name)
+          attachToComposer(menu.abs, menu.name, menu.isDirectory)
         }}
         onCopyPath={() => {
           if (!menu) return

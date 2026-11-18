@@ -105,5 +105,26 @@ composer 曾对纯文本粘贴 `preventDefault` 后手动插 DOM——实测（�
 - **全局默认模型（global default model）**：pi 配置里 `defaultProvider` / `defaultModel`，决定新会话的初始模型；**只由设置页修改**。
 
 ### 决策记录：会话内切模型不写全局默认（2026）
-
 pi SDK 的 `AgentSession.setModel()` 会**双写**：会话模型（`agent.state.model` + `appendModelChange`）与全局默认（`settingsManager.setDefaultModelAndProvider`）。上游 pi CLI 的 `/model` 就是这语义（模型选择器代码里注释过「上游语义」），但桌面端有独立的设置页默认模型选择器——静默改写全局默认是意外副作用（在会话 A 切模型 → 新会话 B 莫名继承、设置页默认被改）。定案：**worker `handleSetmodel` 在 `setModel` 前后快照/还原全局默认**（还原前先比较，无变化不写盘；失败路径同样还原，覆盖 SDK 写默认后抛错的场景）。会话 JSONL 已按会话持久化模型，还原不影响会话自身。**`handleSetthinkinglevel` 同理**：SDK 的 `setThinkingLevel` 也会写 `defaultThinkingLevel`，同样快照/还原（无配置时不写）。
+
+## 决策记录：工程门禁（IPC 契约单一事实源 + 运行账本，2026-11）
+
+参考 opencode（`anomalyco/opencode`）的工程手法，把「靠人肉维护的一致性」换成「靠生成 + 门禁」：
+
+- **IPC 白名单是生成物**：唯一事实源是 `src/main` 里的 `registerHandler` / `registerHandlerWithSchema` 调用；`packages/shared/ipc-channels.generated.ts` 与 `doc/IPC-CONTRACTS.generated.md` 由 `npm run gen:ipc` 生成，`scripts/tests/ipc-channels-generated.test.mjs` 检查漂移。**不要在 `ipc-channels.ts` 里手写通道**（该文件只是薄壳，`ipc-channel-sync.test.mjs` 会拦）。上线当次就抓到真实缺陷：`ipc:gitBoard.checkoutCommit` 已注册、渲染层在调用，却从未进白名单。
+- **结构边界可执行**：`scripts/tests/structure-boundaries.test.mjs` 守 renderer↛electron/main、`ipcRenderer` 仅限 preload、main↛renderer、shared↛electron。
+- **契约测试不再「失败即止」**：`scripts/run-contract-tests.mjs` 跑完全部批次再统一列出失败文件（旧行为会让后面批次根本没跑，例如 `structure-boundaries`）。
+- **运行账本**：`src/main/run-ledger.ts` 记录「哪个会话正在跑」（write-ahead claim 的收敛版）；worker 异常退出标孤儿并在 `ipc:worker-fatal` 带出数量，启动时 sweep 遗留记录。只做诊断与归因，不改 pi 的会话数据。
+- **特性开关注册表**：`packages/shared/feature-flags.ts`（登记 + `PI_FLAGS` 解析 + 别名 + 退场纪律）。目前尚无读取点，第一个接入点留给 G2 `plugin_manager`。
+- **主题 token 契约**：`packages/shared/theme-tokens.ts` 定义「深浅都必须有」的语义 token 与「允许只有深色」清单，`scripts/tests/theme-token-contract.test.mjs` 用真实 `globals.css` 做门禁。新增/改色时不允许只改 `.dark`。
+- 方案与任务看板：根目录 `PI-MX-OPTIMIZATION-PLAN.md` / `PI-MX-OPTIMIZATION-TASKS.md`。
+
+## 决策记录：会话目标条与自动循环（2026-11）
+
+「这个会话要达成什么」是 pi 没有的一等公民，但**不能靠改 pi 的数据结构实现**。定案：
+
+- **目标只存 app 私有状态**：`userData/session-goals.json`（按 sessionFile），不进 pi 的 JSONL，也不进与终端版共用的 `~/.pi/agent/settings.json`。理由同 T7：共享配置塞 app 私有状态会互相污染。
+- **注入走 system prompt section，不走消息前缀**：每次 turn 前 `workerManager.pushGoalBeforeTurn` 把目标渲染成 `<goal>…</goal>`（`src/worker/worker-goal.ts`，与 `desktop_*` 能力段同一机制）。section 变化由 pi 自己以 system message 同步，历史消息里只有用户真正说过的话；「pinned 前缀」若塞进用户消息，会把每轮都写进 JSONL 并污染可读性。
+- **进度由模型声明、主进程落盘**：注入文本约定回复末尾输出 `GOAL-PROGRESS: 1,3`（1 起算，`none` 表示无新增）；渲染层解析后走 `ipc:sessionGoal.markDone`，不做「文本里出现完成就自动打勾」的模糊推断，也不给模型直接改目标状态的能力。
+- **自动循环在渲染层、必须带刹车**：run 回到 idle 且还有未达成项才续一轮；连续 3 轮 `remaining` 不下降即停（另有 20 轮上限），跑着/刚按停/压缩中/扩展弹窗挡着输入时不续。刹车是纯函数 `decideGoalLoop`，`scripts/tests/session-goal-contract.test.mjs` 守住「3 轮」「走刹车表」「停下要提示」三条。
+- **不为改目标拉起 worker**：写入只在有活 worker 时补推，否则等下一次 `prompt.send`；`pushGoalBeforeTurn` 放在 `sendPrompt/steer/followUp` 上，远端宿主也吃到同一注入。

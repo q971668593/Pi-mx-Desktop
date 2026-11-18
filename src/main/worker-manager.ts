@@ -31,6 +31,7 @@ import {
 } from './worker-manager-pool'
 import type { WorkerInitResult, WorkerSlot } from './worker-manager-types'
 import { normalizeSessionKey, workspacePoolKey } from './worker-session-key'
+import { getSessionGoalStore } from './session-goals-instance'
 import { isWslWindowsPath } from '@shared/wsl-path'
 import { getAgentRuntimeConfig, isWslRuntimeActive } from './wsl/runtime-config'
 import { normalizeWorkspaceCwd } from './wsl/workspace-path'
@@ -48,6 +49,8 @@ import {
 import { observeAppEventForCompletion, observeWorkerExitForCompletion } from './completion-notification-events'
 import { observeAiActivityGlow } from './ai-activity-glow'
 import { remoteTap } from './remote/tap'
+import { getRunLedger } from './run-ledger-instance'
+import { derivePhase, exitLedgerCommands, turnEndCommands, turnStartCommands } from './worker-lifecycle-machine'
 
 interface InitResult extends WorkerInitResult {}
 
@@ -57,6 +60,12 @@ export class WorkerManager {
   private pool = new Map<string, WorkerSlot>()
   private foregroundPoolKey: string | null = null
   private lifecycleChain: Promise<unknown> = Promise.resolve()
+
+  /** 启动后只扫一次上次进程遗留的 run 记录。 */
+  private orphanSwept = false
+
+  /** 已记账「正在跑」的会话（转移表之外的去重器，进程内有效）。 */
+  private readonly activeRuns = new Set<string>()
   private idleTimer: ReturnType<typeof setInterval> | null = null
 
   setMainWindow(win: BrowserWindow): void {
@@ -79,6 +88,7 @@ export class WorkerManager {
   }
 
   async start(cwd: string): Promise<InitResult> {
+    this.sweepOrphanedRunsOnce()
     const run = this.lifecycleChain.then(() => this.startWorkspaceUnlocked(cwd))
     this.lifecycleChain = run.then(
       () => undefined,
@@ -335,9 +345,75 @@ export class WorkerManager {
     observeAppEventForCompletion(enriched)
     observeAiActivityGlow(enriched)
     remoteTap.appEvent(enriched)
+    this.releaseRunOnTerminalEvent(sessionFile, enriched)
     if (!this.mainWindow || this.mainWindow.isDestroyed()) return
     this.mainWindow.webContents.send('ipc:events', enriched)
     void agentTurnActive
+  }
+
+  /**
+   * Run 账本：记录「哪个会话正在跑」。参考 opencode 的 write-ahead execution claim，
+   * 只做诊断与崩溃归因，不改变 pi 的会话数据（不另造内核）。
+   */
+  private trackRunStart(sessionFile: string | null | undefined): void {
+    const key = normalizeSessionKey(sessionFile || this.foregroundSlot()?.sessionFile || '')
+    if (!key) return
+    const slot = this.pool.get(key) ?? this.foregroundSlot()
+    const phase = derivePhase({
+      stopping: slot?.stopping ?? false,
+      agentTurnActive: Boolean(slot?.agentTurnActive) || this.activeRuns.has(key),
+    })
+    // 是否记账由转移表决定：已在跑（busy）时不重复 begin
+    if (!turnStartCommands(phase).some((command) => command.type === 'run.begin')) return
+    this.activeRuns.add(key)
+    try {
+      getRunLedger().beginRun({ sessionFile: key, cwd: slot?.cwd ?? '' })
+    } catch (error) {
+      console.warn('[RunLedger] 记录执行开始失败（忽略）:', error)
+    }
+  }
+
+  private releaseRunOnTerminalEvent(sessionFile: string | null, event: AppEvent): void {
+    if (event.type !== 'run') return
+    const settled = event.settled === true || event.phase === 'idle' || event.phase === 'failed' || event.phase === 'cancelled'
+    if (!settled) return
+    const key = normalizeSessionKey(sessionFile || event.sessionFile || '')
+    if (!key) return
+    const outcome = event.phase === 'failed' ? 'failed' : event.phase === 'cancelled' ? 'cancelled' : 'idle'
+    const commands = turnEndCommands(this.activeRuns.has(key) ? 'busy' : 'ready', outcome)
+    this.activeRuns.delete(key)
+    try {
+      for (const command of commands) {
+        if (command.type === 'run.mark-orphan') getRunLedger().markOrphaned(key, { reason: command.reason })
+        else if (command.type === 'run.release') getRunLedger().releaseRun(key)
+      }
+    } catch (error) {
+      console.warn('[RunLedger] 结算执行记录失败（忽略）:', error)
+    }
+  }
+
+  private sweepOrphanedRunsOnce(): void {
+    if (this.orphanSwept) return
+    this.orphanSwept = true
+    try {
+      const { orphans } = getRunLedger().sweep('app-boot')
+      if (orphans.length > 0) {
+        console.warn(
+          `[RunLedger] 上次退出时有 ${orphans.length} 个执行未收尾：`,
+          orphans.map((row) => row.sessionFile),
+        )
+      }
+    } catch (error) {
+      console.warn('[RunLedger] 启动清理失败（忽略）:', error)
+    }
+  }
+
+  private orphanedRunCount(): number {
+    try {
+      return getRunLedger().listOrphans().length
+    } catch {
+      return 0
+    }
   }
 
   private handleSlotExit(slot: WorkerSlot, code: number): void {
@@ -363,6 +439,24 @@ export class WorkerManager {
       observeWorkerExitForCompletion({ cwd: slot.cwd, sessionFile: slot.sessionFile })
     }
 
+    // T5 接线点 1：退出时的运行账本处置交给纯转移表（draining / 正常退出 / 崩溃三分支），
+    // manager 只负责执行命令；`notify.fatal` 仍按 autoRestartEnabled 等策略决定。
+    if (slot.sessionFile) {
+      this.activeRuns.delete(normalizeSessionKey(slot.sessionFile))
+      const phase = derivePhase({ stopping: slot.stopping, agentTurnActive: slot.agentTurnActive })
+      for (const command of exitLedgerCommands(phase, code)) {
+        try {
+          if (command.type === 'run.mark-orphan') {
+            getRunLedger().markOrphaned(slot.sessionFile, { reason: command.reason })
+          } else if (command.type === 'run.release') {
+            getRunLedger().releaseRun(slot.sessionFile)
+          }
+        } catch (error) {
+          console.warn('[RunLedger] 退出结算失败（忽略）:', error)
+        }
+      }
+    }
+
     if (slot.stopping || code === 0 || !slot.autoRestartEnabled) return
 
     try {
@@ -377,6 +471,7 @@ export class WorkerManager {
         code,
         cwd: slot.cwd,
         sessionFile: slot.sessionFile,
+        orphanedRuns: this.orphanedRunCount(),
         message: 'Worker 已退出。请重新打开工作区；若界面空白请先结束任务管理器里多余的 pi Desktop 进程。',
       })
     }
@@ -482,8 +577,50 @@ export class WorkerManager {
     await this.request('setCapabilities', { sections, tools, sessionFile })
   }
 
+  /**
+   * Same, but only onto a worker that is already live for this session. A Tools-menu switch must
+   * not spawn or load a process just to tell it something: the next prompt carries the set anyway.
+   */
+  async setCapabilitiesLive(sections: Record<string, string>, tools: string[], sessionFile?: string): Promise<boolean> {
+    const sk = sessionFile ? normalizeSessionKey(sessionFile) : null
+    const slot = sk ? this.pool.get(sk) : null
+    if (!slot || slot.stopping) return false
+    if (sk && slot.sessionFile && normalizeSessionKey(slot.sessionFile) !== sk) return false
+    await this.requestOnSlot(slot, 'setCapabilities', { sections, tools, sessionFile: sk ?? undefined })
+    return true
+  }
+
+  /**
+   * Push the session's rendered goal section into its *live* worker.
+   *
+   * Never spawns a worker just to carry a goal (that would fork a process for a settings edit):
+   * a missing slot means the next prompt binds one and sendGoalWithPrompt re-sends it.
+   */
+  async setGoal(section: string | null, sessionFile?: string): Promise<void> {
+    const sk = sessionFile ? normalizeSessionKey(sessionFile) : null
+    const slot = sk ? this.pool.get(sk) : this.foregroundSlot()
+    if (!slot || slot.stopping) return
+    if (sk && slot.sessionFile && normalizeSessionKey(slot.sessionFile) !== sk) return
+    await this.requestOnSlot(slot, 'setGoal', { goal: section, sessionFile: sk ?? undefined })
+  }
+
   async sendPrompt(text: string, sessionFile?: string): Promise<void> {
+    await this.pushGoalBeforeTurn(sessionFile)
     await this.request('prompt', { text, sessionFile })
+    this.trackRunStart(sessionFile)
+  }
+
+  /**
+   * Every turn starts with the session's current goal in the worker's system prompt section.
+   * Doing it here (not in the IPC handler) covers the remote host and queued steering too.
+   */
+  private async pushGoalBeforeTurn(sessionFile?: string): Promise<void> {
+    if (!sessionFile) return
+    try {
+      await this.setGoal(getSessionGoalStore().promptSection(sessionFile), sessionFile)
+    } catch (error) {
+      console.warn('[WorkerManager] goal push before prompt failed:', error)
+    }
   }
   /**
    * Abort agent turn on the session's existing worker only.
@@ -499,10 +636,13 @@ export class WorkerManager {
     await this.requestOnSlot(slot, 'abort', { sessionFile: sk })
   }
   async steer(text: string, sessionFile?: string): Promise<void> {
+    await this.pushGoalBeforeTurn(sessionFile)
     await this.request('steer', { text, sessionFile })
   }
   async followUp(text: string, sessionFile?: string): Promise<void> {
+    await this.pushGoalBeforeTurn(sessionFile)
     await this.request('followUp', { text, sessionFile })
+    this.trackRunStart(sessionFile)
   }
   async clearPromptQueue(sessionFile?: string): Promise<{ steering: string[]; followUp: string[] }> {
     const r = await this.request('clearQueue', sessionFile ? { sessionFile } : {})
@@ -881,7 +1021,9 @@ export class WorkerManager {
   }
   async reloadModels(): Promise<void> {
     if (!this.isRunning) return
-    await this.request('reloadModels')
+    // 每个活着的 worker 各持一份模型注册表：新加/改过的 provider 必须落到所有 slot，
+    // 否则谁应答 model.list 谁就决定列表新旧（多会话时表现为「只有重启才更新」）。
+    await this.broadcast('reloadModels')
   }
   async getPiSettings(): Promise<Record<string, unknown>> {
     return ((await this.request('getPiSettings')).settings as Record<string, unknown>) || {}

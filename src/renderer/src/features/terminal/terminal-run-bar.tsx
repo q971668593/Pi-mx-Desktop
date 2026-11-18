@@ -9,7 +9,7 @@ import { spawnPane } from './terminal-bridge'
 import { terminalActions, useTerminalStore, type ShellProfile } from './terminal-store'
 import { workspacePathsEqual } from '@shared/workspace-path'
 
-type TaskLaunch = { label: string; command: string; args: string[]; cwd: string; background?: boolean }
+type TaskLaunch = { label: string; command: string; args: string[]; cwd: string; background?: boolean; detail?: string }
 type TaskGroup = { kind: string; label: string; isDefault: boolean; tasks: TaskLaunch[] }
 type Draft = { content: string; groups: TaskGroup[] }
 
@@ -57,9 +57,11 @@ export function TerminalRunBar() {
   const [taskLabels, setTaskLabels] = useState<string[] | null>(null)
   const [groupName, setGroupName] = useState('')
   const [groupTasks, setGroupTasks] = useState<Set<string>>(new Set())
-  const [taskDefinitions, setTaskDefinitions] = useState<Array<{ label: string; dependsOn: string[] }>>([])
+  const [taskDefinitions, setTaskDefinitions] = useState<Array<{ label: string; dependsOn: string[]; detail?: string }>>([])
   const [editingGroup, setEditingGroup] = useState<string | null>(null)
   const [hiddenGroups, setHiddenGroups] = useState<string[]>([])
+  /** 两段式删除：点一次变成“确认删除”，避免一次误点就把组合从 tasks.json 里抹掉。 */
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
   useEffect(() => {
     try { const stored = JSON.parse(localStorage.getItem(`pi-desktop:terminal-hidden-groups:${workspace || ''}`) || '[]'); setHiddenGroups(Array.isArray(stored) ? stored.filter((item): item is string => typeof item === 'string') : []) } catch { setHiddenGroups([]) }
@@ -148,6 +150,7 @@ export function TerminalRunBar() {
         setEditingGroup(null)
         setGroupName('')
         setGroupTasks(new Set())
+        setConfirmDelete(null)
       }).catch((error) => toast.error(error instanceof Error ? error.message : String(error))).finally(() => setBusy(false))
     }
     window.addEventListener('pi-desktop:terminal-detect-tasks', onDetect)
@@ -156,6 +159,54 @@ export function TerminalRunBar() {
   })
 
   const labelFor = (group: TaskGroup) => group.isDefault && !/\(AI(?: \d+)?\)$/.test(group.label) ? t('common:terminal.run') : group.label
+  /** 底部列表右侧那句中文说明：label → detail（AI 写的优先，主进程缺失时按命令推断）。 */
+  const detailByLabel = new Map(taskDefinitions.map((item) => [item.label, item.detail]))
+  const startEdit = (group: TaskGroup) => {
+    setConfirmDelete(null)
+    setEditingGroup(group.label)
+    setGroupName(group.label)
+    setGroupTasks(new Set(taskDefinitions.find((item) => item.label === group.label)?.dependsOn || []))
+  }
+  /** 删掉一个组合：主进程会连带清理只为它服务、且无人引用的叶子任务。 */
+  const deleteGroup = async (label: string) => {
+    if (!workspace || busy) return
+    if (confirmDelete !== label) {
+      setConfirmDelete(label)
+      return
+    }
+    setBusy(true)
+    try {
+      const result = await ipcClient.invoke('workspace.tasks.delete', { cwd: workspace, label }) as {
+        ok?: boolean
+        groups?: TaskGroup[]
+        removed?: string[]
+        definitions?: Array<{ label: string; dependsOn: string[]; detail?: string }>
+        error?: string
+      }
+      if (!result?.ok) throw new Error(result?.error || 'delete_failed')
+      const removed = result.removed || []
+      setGroups(result.groups || [])
+      if (result.definitions) setTaskDefinitions(result.definitions)
+      setConfirmDelete(null)
+      if (editingGroup && removed.includes(editingGroup)) {
+        setEditingGroup(null)
+        setGroupName('')
+        setGroupTasks(new Set())
+      }
+      // 被删掉的任务也不要留在隐藏名单里（否则以后同名重建会默认不显示）
+      const nextHidden = hiddenGroups.filter((item) => !removed.includes(item))
+      if (nextHidden.length !== hiddenGroups.length) {
+        setHiddenGroups(nextHidden)
+        try { localStorage.setItem(`pi-desktop:terminal-hidden-groups:${workspace}`, JSON.stringify(nextHidden)) } catch { void 0 }
+      }
+      window.dispatchEvent(new CustomEvent('pi-desktop:workspace-tasks-changed', { detail: workspace }))
+      toast.success(t('common:terminal.groupDeleted', { count: removed.length }))
+    } catch (error) {
+      toast.error(t('common:terminal.deleteFailed', { error: error instanceof Error ? error.message : String(error) }))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const saveGroup = async () => {
     if (!workspace || !groupName.trim() || !groupTasks.size || busy) return
@@ -189,11 +240,63 @@ export function TerminalRunBar() {
       {taskLabels && createPortal(<div role="dialog" aria-modal="true" aria-label={t('common:terminal.manageTasks')} className="fixed inset-0 z-[600] flex items-center justify-center bg-black/40 p-4" onPointerDown={(event) => { if (event.target === event.currentTarget) setTaskLabels(null) }} onKeyDown={(event) => { if (event.key === 'Escape') setTaskLabels(null) }}>
         <div className="w-full max-w-lg rounded-lg border border-border bg-popover p-4 text-popover-foreground shadow-xl">
           <h2 className="mb-2 font-semibold">{t('common:terminal.manageTasks')}</h2>
-          {groups.length > 0 && <div><p className="mb-1 text-[12px] text-foreground-secondary">{t('common:terminal.visibleGroups')}</p><div className="mb-3 max-h-36 space-y-1 overflow-auto rounded border border-border p-2">{groups.map((group) => <div key={group.label} className="flex items-center gap-2 text-[12px]"><label className="flex min-w-0 flex-1 items-center gap-2"><input type="checkbox" checked={!hiddenGroups.includes(group.label)} onChange={(event) => { const next = event.target.checked ? hiddenGroups.filter((item) => item !== group.label) : [...hiddenGroups, group.label]; setHiddenGroups(next); try { localStorage.setItem(`pi-desktop:terminal-hidden-groups:${workspace || ''}`, JSON.stringify(next)) } catch { void 0 } }} /><span className="truncate">{labelFor(group)}</span></label><button type="button" className="rounded px-2 py-1 hover:bg-muted" onClick={() => { setEditingGroup(group.label); setGroupName(group.label); setGroupTasks(new Set(taskDefinitions.find((item) => item.label === group.label)?.dependsOn || [])) }}>{t('common:terminal.editGroup')}</button></div>)}</div></div>}
+          {groups.length > 0 && (
+            <div>
+              <p className="mb-1 text-[12px] text-foreground-secondary">{t('common:terminal.visibleGroups')}</p>
+              <div className="mb-3 max-h-36 space-y-1 overflow-auto rounded border border-border p-2">
+                {groups.map((group) => (
+                  <div key={group.label} className="flex items-center gap-2 text-[12px]">
+                    <label className="flex min-w-0 flex-1 items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={!hiddenGroups.includes(group.label)}
+                        onChange={(event) => {
+                          const next = event.target.checked
+                            ? hiddenGroups.filter((item) => item !== group.label)
+                            : [...hiddenGroups, group.label]
+                          setHiddenGroups(next)
+                          try { localStorage.setItem(`pi-desktop:terminal-hidden-groups:${workspace || ''}`, JSON.stringify(next)) } catch { void 0 }
+                        }}
+                      />
+                      <span className="truncate">{labelFor(group)}</span>
+                      <span className="shrink-0 text-[11px] text-foreground-tertiary">
+                        {t('common:terminal.tasksCount', { count: group.tasks.length })}
+                      </span>
+                    </label>
+                    <button type="button" className="rounded px-2 py-1 hover:bg-muted" onClick={() => startEdit(group)}>
+                      {t('common:terminal.editGroup')}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      aria-label={t('common:terminal.deleteGroupNamed', { name: labelFor(group) })}
+                      className={`rounded px-2 py-1 hover:bg-muted disabled:opacity-50 ${confirmDelete === group.label ? 'text-red-500' : ''}`}
+                      onClick={() => void deleteGroup(group.label)}
+                    >
+                      {confirmDelete === group.label ? t('common:terminal.confirmDelete') : t('common:terminal.deleteGroup')}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {editingGroup && <button type="button" className="mb-2 text-[12px] text-accent hover:underline" onClick={() => { setEditingGroup(null); setGroupName(''); setGroupTasks(new Set()) }}>{t('common:terminal.newGroup')}</button>}
           <label className="block text-[12px]">{t('common:terminal.groupName')}<input value={groupName} disabled={!!editingGroup} onChange={(event) => setGroupName(event.target.value)} className="mt-1 w-full rounded border bg-transparent px-2 py-1.5 disabled:opacity-60" /></label>
           <p className="mt-3 text-[12px] text-foreground-secondary">{t('common:terminal.groupHelp')}</p>
-          <div className="mt-2 max-h-48 overflow-auto">{taskLabels.filter((label) => label !== editingGroup).map((label) => <label key={label} className="flex items-center gap-2 rounded px-2 py-1.5 text-[12px] hover:bg-muted"><input type="checkbox" checked={groupTasks.has(label)} onChange={(event) => setGroupTasks((current) => { const next = new Set(current); if (event.target.checked) next.add(label); else next.delete(label); return next })} />{label}</label>)}{!taskLabels.length && <p className="py-2 text-[12px] text-foreground-secondary">{t('common:terminal.noTasks')}</p>}</div>
+          <div className="mt-2 max-h-48 overflow-auto">
+            {taskLabels.filter((label) => label !== editingGroup).map((label) => (
+              <label key={label} className="flex items-center gap-2 rounded px-2 py-1.5 text-[12px] hover:bg-muted">
+                <input type="checkbox" checked={groupTasks.has(label)} onChange={(event) => setGroupTasks((current) => { const next = new Set(current); if (event.target.checked) next.add(label); else next.delete(label); return next })} />
+                <span className="min-w-0 flex-1 truncate">{label}</span>
+                {detailByLabel.get(label) ? (
+                  <span className="max-w-[55%] shrink-0 truncate text-right text-[11px] text-foreground-tertiary" title={detailByLabel.get(label)}>
+                    {detailByLabel.get(label)}
+                  </span>
+                ) : null}
+              </label>
+            ))}
+            {!taskLabels.length && <p className="py-2 text-[12px] text-foreground-secondary">{t('common:terminal.noTasks')}</p>}
+          </div>
           <div className="mt-4 flex justify-end gap-2"><button type="button" className="rounded px-3 py-1.5 hover:bg-muted" onClick={() => setTaskLabels(null)}>{t('common:cancel')}</button><button type="button" disabled={busy || !groupName.trim() || !groupTasks.size} className="rounded bg-primary px-3 py-1.5 text-primary-foreground disabled:opacity-50" onClick={() => void saveGroup()}>{t('common:terminal.saveGroup')}</button></div>
         </div>
       </div>, document.body)}
@@ -203,7 +306,7 @@ export function TerminalRunBar() {
           <p className="mb-2 text-[12px] text-foreground-secondary">{t('common:terminal.draftHelp')}</p>
           <div className="max-h-80 space-y-3 overflow-auto">{draft.groups.map((group, groupIndex) => <section key={`${group.kind}:${groupIndex}`}><h3 className="mb-1 text-[12px] font-medium">{labelFor(group)}</h3>{group.tasks.map((task, taskIndex) => {
             const key = `${groupIndex}:${taskIndex}`
-            return <label key={key} className="flex items-start gap-2 rounded p-1 text-[12px] hover:bg-muted"><input type="checkbox" checked={selectedTasks.has(key)} onChange={(event) => setSelectedTasks((current) => { const next = new Set(current); if (event.target.checked) next.add(key); else next.delete(key); return next })} /><span className="min-w-0"><span className="block">{task.label}</span><code className="block break-all text-foreground-tertiary">{task.command} {task.args.join(' ')}</code></span></label>
+            return <label key={key} className="flex items-start gap-2 rounded p-1 text-[12px] hover:bg-muted"><input type="checkbox" checked={selectedTasks.has(key)} onChange={(event) => setSelectedTasks((current) => { const next = new Set(current); if (event.target.checked) next.add(key); else next.delete(key); return next })} /><span className="min-w-0"><span className="block">{task.label}</span>{task.detail ? <span className="block text-[11px] text-foreground-secondary">{task.detail}</span> : null}<code className="block break-all text-foreground-tertiary">{task.command} {task.args.join(' ')}</code></span></label>
           })}</section>)}</div>
           <div className="mt-4 flex justify-end gap-2"><button type="button" className="rounded px-3 py-1.5 hover:bg-muted" onClick={() => setDraft(null)}>{t('common:cancel')}</button><button type="button" disabled={busy} className="rounded border px-3 py-1.5 disabled:opacity-50" onClick={() => void acceptDraft(false)}>{t('common:terminal.saveOnly')}</button><button type="button" disabled={busy || !selectedTasks.size} className="rounded bg-primary px-3 py-1.5 text-primary-foreground disabled:opacity-50" onClick={() => void acceptDraft(true)}>{t('common:terminal.saveAndRun')}</button></div>
         </div>

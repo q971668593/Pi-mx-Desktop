@@ -4,7 +4,8 @@ import { z } from 'zod'
 import { applyEdits, modify } from 'jsonc-parser'
 import { authorizeProjectCwd } from '../../trusted-workspace'
 import { completeWithPluginModel } from '../../plugin-model'
-import { inferRunTasks, mergeTaskDocument, parseJsonDocument, parseTaskGroups, tasksOf } from '../../workspace-tasks'
+import { inferRunTasks, mergeTaskDocument, parseJsonDocument, parseTaskGroups, removeTasks, taskDefinitions, tasksOf } from '../../workspace-tasks'
+import { getRunTaskAiManifest } from '../../run-task-ai-manifest-instance'
 import { registerHandlerWithSchema } from '../registry'
 
 const TASK_PROMPT = `你是项目启动助手。根据项目文件判断怎样本地运行和发布，只输出一个 VS Code tasks.json 对象，不要 Markdown。
@@ -14,13 +15,15 @@ const TASK_PROMPT = `你是项目启动助手。根据项目文件判断怎样�
 3. 一键运行使用 label 为“运行”、dependsOn 为需要同时启动的任务、group 为 {"kind":"build","isDefault":true}。
 4. 能发布时，一键发布使用 label 为“发布”、dependsOn 为发布任务、group 为 "publish"。不能可靠判断就不要编造发布任务。
 5. 多端项目用 options.cwd 指向对应子目录，并用 presentation.group 标记 build 或 publish。
-6. 不要包含注释、密钥、绝对用户路径或未在项目中出现的命令。`
+6. 不要包含注释、密钥、绝对用户路径或未在项目中出现的命令。
+7. 每个任务（含一键运行/发布组合）都必须有 detail：一句中文说明它在做什么，例如“运行后端 API”“发布全部子包”“同时启动 3 个服务”，不超过 20 字。`
 
 const cwdSchema = z.object({ cwd: z.string().min(1) }).strict()
 const draftSchema = z.object({
   cwd: z.string().min(1),
   files: z.array(z.object({ path: z.string(), content: z.string().max(20_000) }).strict()).max(40),
 }).strict()
+const deleteSchema = z.object({ cwd: z.string().min(1), label: z.string().trim().min(1).max(200) }).strict()
 const saveSchema = z.object({ cwd: z.string().min(1), content: z.string().min(2).max(500_000).optional(), group: z.object({ label: z.string().trim().min(1).max(200), dependsOn: z.array(z.string().min(1).max(200)).min(1).max(100), originalLabel: z.string().min(1).max(200).optional() }).strict().optional() }).strict().refine((value) => !!value.content !== !!value.group)
 
 async function tasksDocument(cwd: string): Promise<{ groups: ReturnType<typeof parseTaskGroups>; raw: string | null }> {
@@ -48,9 +51,30 @@ export function registerWorkspaceTaskHandlers(): void {
     const authorized = authorizeProjectCwd(cwd)
     if (!authorized.ok) return { ok: false, error: authorized.error, groups: [] }
     const document = await tasksDocument(authorized.cwd)
-    let definitions: Array<{ label: string; dependsOn: string[] }> = []
-    if (document.raw) try { definitions = tasksOf(parseJsonDocument(document.raw)).filter((task) => typeof task.label === 'string').map((task) => ({ label: String(task.label), dependsOn: Array.isArray(task.dependsOn) ? task.dependsOn.filter((item): item is string => typeof item === 'string') : typeof task.dependsOn === 'string' ? [task.dependsOn] : [] })) } catch { void 0 }
+    let definitions: ReturnType<typeof taskDefinitions> = []
+    if (document.raw) try { definitions = taskDefinitions(parseJsonDocument(document.raw)) } catch { void 0 }
     return { ok: true, groups: document.groups, labels: definitions.map((task) => task.label), definitions, hasFile: document.raw != null }
+  })
+
+  registerHandlerWithSchema('ipc:workspace.tasks.delete', deleteSchema, async ({ cwd, label }) => {
+    const authorized = authorizeProjectCwd(cwd)
+    if (!authorized.ok) return { ok: false, error: authorized.error }
+    const path = join(authorized.cwd, '.vscode', 'tasks.json')
+    const existing = await readFile(path, 'utf8').catch(() => null)
+    if (!existing) return { ok: false, error: 'no_tasks_file' }
+    let result: ReturnType<typeof removeTasks>
+    try {
+      result = removeTasks(existing, [label])
+    } catch {
+      return { ok: false, error: 'invalid_json' }
+    }
+    if (!result.removed.length) return { ok: false, error: 'not_found' }
+    const parsed = parseJsonDocument(result.output.replace(/^\uFEFF/, ''))
+    const groups = parseTaskGroups(authorized.cwd, parsed)
+    await writeFile(path, result.output.endsWith('\n') ? result.output : `${result.output}\n`, 'utf8')
+    const manifest = getRunTaskAiManifest()
+    manifest.set(authorized.cwd, manifest.get(authorized.cwd).filter((item) => !result.removed.includes(item)))
+    return { ok: true, groups, removed: result.removed, definitions: taskDefinitions(parsed) }
   })
 
   registerHandlerWithSchema('ipc:workspace.tasks.draft', draftSchema, async ({ cwd, files }) => {
@@ -121,7 +145,46 @@ export function registerWorkspaceTaskHandlers(): void {
         output = applyEdits(existing, modify(existing, ['tasks', index, 'dependsOn'], group.dependsOn, { formattingOptions: { insertSpaces: true, tabSize: 2 } }))
       } else {
         if (group && labels.has(group.label)) return { ok: false, error: 'invalid_task_group' }
-        output = mergeTaskDocument(existing, incoming)
+        // AI 检测是「快照」不是增量：先删掉上一轮 AI 写进去的任务再合并，
+        // 否则每检测一次就多一套（一键运行 (AI) / 早已失效的 dev:api…），底部列表只增不减。
+        const manifest = getRunTaskAiManifest()
+        // 旧版本没有账本：`mergeTaskDocument` 撞名时会在 label 后面加 ` (AI)` / ` (AI 2)`，
+        // 这类名字只可能是我们自己写的。连同它对应的原件一起清掉（否则新草稿又会撞名成 (AI)）；
+        // 但用户在「管理运行组合」里手建的组合有 `presentation.group = pi-app-exact` 标记，绝不能动。
+        const rawByLabel = new Map(
+          currentTasks
+            .filter((task) => typeof task.label === 'string')
+            .map((task) => [String(task.label), task] as const),
+        )
+        const legacy = [...labels].filter((label) => / \(AI(?: \d+)?\)$/.test(label))
+        const legacyBases = legacy
+          .map((label) => label.replace(/ \(AI(?: \d+)?\)$/, ''))
+          .filter((base) => {
+            const raw = rawByLabel.get(base) as { presentation?: { group?: unknown } } | undefined
+            if (!raw) return false
+            const marker = raw.presentation?.group
+            return !(typeof marker === 'string' && marker === 'pi-app-exact')
+          })
+        const previous = existing
+          ? [
+              ...new Set([
+                ...manifest.get(authorized.cwd).filter((label) => labels.has(label)),
+                ...legacy,
+                ...legacyBases,
+              ]),
+            ]
+          : []
+        const base = previous.length && existing ? removeTasks(existing, previous).output : existing
+        const baseLabels = new Set(
+          tasksOf(base ? parseJsonDocument(base.replace(/^\uFEFF/, '')) : { tasks: [] })
+            .map((task) => task.label)
+            .filter((label): label is string => typeof label === 'string'),
+        )
+        output = mergeTaskDocument(base, incoming)
+        const added = tasksOf(parseJsonDocument(output.replace(/^\uFEFF/, '')))
+          .map((task) => task.label)
+          .filter((label): label is string => typeof label === 'string' && !baseLabels.has(label))
+        manifest.set(authorized.cwd, added)
       }
       parsed = parseJsonDocument(output.replace(/^\uFEFF/, ''))
     } catch { return { ok: false, error: 'invalid_json' } }

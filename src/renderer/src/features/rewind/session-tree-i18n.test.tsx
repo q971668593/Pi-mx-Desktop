@@ -50,19 +50,18 @@ describe('session tree and line references are localized', () => {
   it('should_render_tree_panel_without_chinese_when_language_is_english', async () => {
     await i18n.changeLanguage('en')
     const { container } = render(<TreePanel />)
-    expect(screen.getByText('User only')).toBeInTheDocument()
-    expect(screen.getAllByText('Assistant').length).toBeGreaterThan(0)
-    expect(screen.getByText('Compaction')).toBeInTheDocument()
-    expect(screen.getAllByTitle('Fork into a new session').length).toBeGreaterThan(0)
+    // The filter chips and the panel hint are the always-visible copy of this panel.
+    expect(screen.getByRole('radio', { name: 'Questions' })).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'All entries' })).toBeInTheDocument()
     expect(uiText(container)).not.toMatch(HAN)
   })
 
   it('should_keep_chinese_labels_when_language_is_chinese', async () => {
     await i18n.changeLanguage('zh')
-    render(<TreePanel />)
-    expect(screen.getByText('仅用户')).toBeInTheDocument()
-    expect(screen.getAllByText('助手').length).toBeGreaterThan(0)
-    expect(screen.getAllByTitle('Fork 到新会话').length).toBeGreaterThan(0)
+    const { container } = render(<TreePanel />)
+    expect(screen.getByRole('radio', { name: '提问轮次' })).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: '全部记录' })).toBeInTheDocument()
+    expect(uiText(container)).toMatch(HAN)
   })
 
   it('should_render_tree_overlay_without_chinese_when_language_is_english', async () => {
@@ -70,7 +69,7 @@ describe('session tree and line references are localized', () => {
     render(<SessionTreeOverlay open onClose={() => {}} />)
     const dialog = screen.getByRole('dialog', { name: 'Session tree' })
     expect(screen.getByText('Session tree')).toBeInTheDocument()
-    expect(screen.getByText('Current')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Questions' })).toBeInTheDocument()
     expect(uiText(dialog)).not.toMatch(HAN)
   })
 

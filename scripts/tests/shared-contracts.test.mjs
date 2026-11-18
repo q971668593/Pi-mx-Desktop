@@ -7,10 +7,11 @@ const root = process.cwd()
 
 describe('shared IPC / AppEvent contracts', () => {
   it('ipc-channels list is non-empty and includes session.list', () => {
-    const src = readFileSync(join(root, 'packages/shared/ipc-channels.ts'), 'utf8')
-    assert.match(src, /export const IPC_INVOKE_CHANNELS/)
-    assert.match(src, /ipc:session\.list/)
-    assert.match(src, /isAllowedIpcChannel/)
+    const generated = readFileSync(join(root, 'packages/shared/ipc-channels.generated.ts'), 'utf8')
+    assert.match(generated, /export const IPC_INVOKE_CHANNELS/)
+    assert.match(generated, /ipc:session\.list/)
+    const shell = readFileSync(join(root, 'packages/shared/ipc-channels.ts'), 'utf8')
+    assert.match(shell, /isAllowedIpcChannel/)
   })
 
   it('app-event-session guards sdk-install-progress', () => {

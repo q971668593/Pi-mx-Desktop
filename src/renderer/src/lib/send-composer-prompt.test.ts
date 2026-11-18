@@ -57,8 +57,8 @@ describe('sendComposerPrompt', () => {
       sessionId: 's1',
       sessionFile: '/tmp/a.jsonl',
       text: '请按这些行评修改',
-      // New sessions start with every capability off.
-      capabilities: [],
+      // A new conversation runs the built-in browser; every other capability is opt-in.
+      capabilities: ['browser'],
     })
     expect(afterPromptSent).toHaveBeenCalled()
   })
@@ -77,7 +77,7 @@ describe('sendComposerPrompt', () => {
       sessionId: '',
       sessionFile: '/tmp/new.jsonl',
       text: '请按这些行评修改',
-      capabilities: [],
+      capabilities: ['browser'],
     })
   })
 

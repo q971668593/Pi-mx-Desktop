@@ -1,5 +1,6 @@
 import type { i18n as I18n } from 'i18next'
 import { normalizeBackground, type BackgroundSettings } from '@shared/background'
+import { normalizeAlertSoundPreset, type AlertSoundPreset } from '@shared/alert-sound'
 import { applyBackground } from '@renderer/lib/theme/background-layer'
 import { ipcClient } from '@renderer/lib/ipc-client'
 import { applyIconTheme } from '@renderer/components/icons'
@@ -47,6 +48,7 @@ export type SettingsDraft = {
   autoCheckRegistryUpdates: boolean
   includePrereleaseUpdates: boolean
   alertSoundEnabled: boolean
+  alertSoundPreset: AlertSoundPreset
   alertNotificationEnabled: boolean
   alertOnExtensionUi: boolean
   alertOnRunIdle: boolean
@@ -135,6 +137,7 @@ export function draftSignature(d: SettingsDraft): string {
     autoCheckRegistryUpdates: d.autoCheckRegistryUpdates,
     includePrereleaseUpdates: d.includePrereleaseUpdates,
     alertSoundEnabled: d.alertSoundEnabled,
+    alertSoundPreset: d.alertSoundPreset,
     alertNotificationEnabled: d.alertNotificationEnabled,
     alertOnExtensionUi: d.alertOnExtensionUi,
     alertOnRunIdle: d.alertOnRunIdle,
@@ -180,6 +183,7 @@ export async function loadSettingsDraftFromDisk(i18nLanguage: string): Promise<S
     autoCheckRegistryUpdates: s.autoCheckRegistryUpdates !== false,
     includePrereleaseUpdates: s.includePrereleaseUpdates === true,
     alertSoundEnabled: s.alertSoundEnabled !== false,
+    alertSoundPreset: normalizeAlertSoundPreset(s.alertSoundPreset),
     alertNotificationEnabled: s.alertNotificationEnabled !== false,
     alertOnExtensionUi: s.alertOnExtensionUi !== false,
     alertOnRunIdle: s.alertOnRunIdle !== false,
@@ -301,6 +305,7 @@ export async function commitSettingsDraft(draft: SettingsDraft, i18n: I18n): Pro
   await ipcClient.invoke('settings.set', { key: 'autoCheckRegistryUpdates', value: draft.autoCheckRegistryUpdates })
   await ipcClient.invoke('settings.set', { key: 'includePrereleaseUpdates', value: draft.includePrereleaseUpdates })
   await ipcClient.invoke('settings.set', { key: 'alertSoundEnabled', value: draft.alertSoundEnabled })
+  await ipcClient.invoke('settings.set', { key: 'alertSoundPreset', value: draft.alertSoundPreset })
   await ipcClient.invoke('settings.set', { key: 'alertNotificationEnabled', value: draft.alertNotificationEnabled })
   await ipcClient.invoke('settings.set', { key: 'alertOnExtensionUi', value: draft.alertOnExtensionUi })
   await ipcClient.invoke('settings.set', { key: 'alertOnRunIdle', value: draft.alertOnRunIdle })

@@ -12,6 +12,8 @@ export type SessionOnDiskRow = {
   firstMessage?: string
   created?: Date
   modified?: Date
+  /** Newest user message (send time); absent for rows from the SDK fallback. */
+  lastUserMessageAt?: Date
   messageCount?: number
 }
 
@@ -38,6 +40,7 @@ export function toSessionOnDiskRows(rows: unknown[]): SessionOnDiskRow[] {
       firstMessage: typeof row.firstMessage === 'string' ? row.firstMessage : undefined,
       created: toDate(row.created),
       modified: toDate(row.modified),
+      lastUserMessageAt: toDate(row.lastUserMessageTime),
       messageCount: typeof row.messageCount === 'number' ? row.messageCount : undefined,
     }))
 }

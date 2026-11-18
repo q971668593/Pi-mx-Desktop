@@ -20,6 +20,12 @@ const api = {
     ipcRenderer.on('notification:update', handler)
     return () => ipcRenderer.off('notification:update', handler)
   },
+  /** Play one alert sound; used both for "sound only" mode and together with a card. */
+  onSound(callback: (preset: string) => void): () => void {
+    const handler = (_event: unknown, payload: { preset?: string }): void => callback(String(payload?.preset || ''))
+    ipcRenderer.on('notification:sound', handler)
+    return () => ipcRenderer.off('notification:sound', handler)
+  },
 }
 
 if (process.contextIsolated) {

@@ -12,6 +12,7 @@ import {
   extractImagePrompt,
   isImageGenerationTool,
 } from './chat-image'
+import { findChatImageRefs } from '@shared/chat-image-paths'
 import { resolveAdapterToolCardTemplate, resolveToolCardTemplate } from './tool-card-registry'
 import { tryRenderAdapterToolCard } from '@extension-compat/renderer/render-adapter-tool-card'
 import { parseCodemodeCalls, stripCodemodeOutputHeader, summarizeCodemodeCalls } from '@shared/tool-call-detail'
@@ -39,10 +40,8 @@ function ToolOutputExpanded({ item }: { item: ToolTimelineItem }) {
     if (native) return <>{native}</>
   }
   const template = resolveToolCardTemplate(item.toolName)
-  return <>
-    <ChatImageGallery text={imageText} />
-    {renderToolCard(item, template)}
-  </>
+  // 图片由行本身统一渲染（折叠时也要能看见），这里不再重复扫描。
+  return <>{renderToolCard(item, template)}</>
 }
 
 function toolArgSummary(item: ToolTimelineItem): string {
@@ -121,6 +120,19 @@ function ToolCallRowImpl({
   const skillContext = resolveSkillContextActivity(item.toolName || '', item.toolArgs, item.toolDetail)
   const liveStatus = isRunning && item.toolStatusLine ? String(item.toolStatusLine) : null
   const diffStats = useMemo(() => countToolDiffStats(item), [item])
+  // 图片行内预览：`read` 一张 png、或生图工具返回文件时，折叠状态下也要看到缩略图，
+  // 否则时间线里只剩一句「读了 generated-images/xxx.png」，没法看效果。
+  // 只对 read / 生图工具扫 args+details：edit/write 的 diff 里出现图片路径不该被当成产物。
+  const imageRefs = useMemo(() => {
+    const imageTool = isImageGenerationTool(item.toolName, item.toolArgs, item.toolDetails)
+    const includeMeta = item.toolName === 'read' || imageTool
+    const text = [
+      extractToolText(item.toolOutput || ''),
+      includeMeta ? JSON.stringify(item.toolArgs || '') : '',
+      includeMeta ? JSON.stringify(item.toolDetails || '') : '',
+    ].filter(Boolean).join('\n')
+    return findChatImageRefs(text)
+  }, [item.toolName, item.toolOutput, item.toolArgs, item.toolDetails])
 
   const primaryLabel = useMemo(() => {
     if (skillContext) {
@@ -217,6 +229,11 @@ function ToolCallRowImpl({
       {isGeneratingImage ? (
         <div className="ml-3.5 pl-1.5 pb-1">
           <ChatImageGeneratingCard prompt={extractImagePrompt(item.toolArgs)} />
+        </div>
+      ) : null}
+      {!isGeneratingImage && imageRefs.length ? (
+        <div className="ml-3.5 pl-1.5 pb-1">
+          <ChatImageGallery refs={imageRefs} />
         </div>
       ) : null}
       {expanded && hasToolBody ? (

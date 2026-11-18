@@ -9,6 +9,7 @@ import {
 function settings(partial: Partial<CompletionNotificationSettings> = {}): CompletionNotificationSettings {
   return {
     soundEnabled: true,
+    soundPreset: 'chime',
     notificationEnabled: true,
     alertOnRunIdle: true,
     alertOnBackgroundRunIdle: true,

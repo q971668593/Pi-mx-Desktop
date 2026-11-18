@@ -10,7 +10,8 @@ import {
   createCompletionNotificationController,
   type CompletionNotificationController,
 } from './completion-notification-controller'
-import { disposeCompletionDelivery, presentCompletionCard } from './completion-notification-delivery'
+import { disposeCompletionDelivery, playAlertSound, presentCompletionCard } from './completion-notification-delivery'
+import { DEFAULT_ALERT_SOUND_PRESET } from '@shared/alert-sound'
 import { readCompletionNotificationSettings } from './completion-notification-settings'
 
 let controller: CompletionNotificationController | null = null
@@ -41,7 +42,13 @@ function getController(): CompletionNotificationController {
       getVisibleSessionFile: () => currentVisibleSessionFile() ?? getPendingWorkerSessionFile(),
       projectLabel,
       deliver: (card) => {
-        void presentCompletionCard(card, readCompletionNotificationSettings().delivery)
+        const settings = readCompletionNotificationSettings()
+        // The user asked for sound without the popup: keep the card out of the way entirely.
+        if (card.popup === false) {
+          if (card.sound) void playAlertSound(card.soundPreset ?? settings.soundPreset ?? DEFAULT_ALERT_SOUND_PRESET)
+          return
+        }
+        void presentCompletionCard(card, settings.delivery)
       },
     })
   }

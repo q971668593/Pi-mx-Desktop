@@ -4,14 +4,12 @@ import { normalizeSessionKey } from '../../worker-session-key'
 import { registerHandler, registerHandlerWithSchema } from '../registry'
 import { readRemoteAttachment, writeClipboardTempImage } from '../../clipboard-temp-images'
 import { readActionableImage, resolveActionableImage } from '../../image-file-access'
-import { capabilityCatalog, capabilitySectionMap, capabilityToolFamilies, setInstalledCapabilityTools } from '../../capabilities/catalog'
+import { capabilityCatalog, setInstalledCapabilityTools } from '../../capabilities/catalog'
+import { applySessionCapabilities } from '../../capabilities/session-apply'
 import { clipboard, nativeImage } from 'electron'
-import { clipboardReadTempImageSchema, clipboardWriteTempImageSchema, dialogSaveImageSchema, promptTextSchema } from '../schemas'
-import { peekBrowserHost } from '../../browser/browser-host'
-import { noteBrowserTarget } from '../../browser/targets'
+import { capabilityApplySchema, clipboardReadTempImageSchema, clipboardWriteTempImageSchema, dialogSaveImageSchema, promptTextSchema } from '../schemas'
 import { configStore } from '../../config-store'
-import { readSessionMetaFromFile } from '../../session-file-meta'
-import { projectBrowserSessionKey } from '@shared/browser-types'
+import { isComputerCapabilityTool, isWebSearchCapabilityTool } from '@shared/capabilities'
 
 /** Matches the composer's paste limit, so a re-read can never return more than was written. */
 const CLIPBOARD_READ_IMAGE_MAX_BYTES = 8 * 1024 * 1024
@@ -42,33 +40,11 @@ export function registerPromptHandlers(): void {
     return got === want
   }
 
-  /** Browser tabs are owned per project, so resolve this session's workspace key for auto-mount. */
-  const sessionBrowserKey = async (sessionFile?: string): Promise<string | null> => {
-    if (!sessionFile) return null
-    const st = await workerManager.getState(sessionFile).catch(() => null)
-    const cwd = String((st as { currentCwd?: string } | null)?.currentCwd || '')
-    const key = projectBrowserSessionKey(cwd)
-    if (key) return key
-    const meta = await readSessionMetaFromFile(sessionFile).catch(() => null)
-    return projectBrowserSessionKey(meta?.cwd) || null
-  }
-
   // Enabled capabilities travel with each message so drafts and restarted workers stay in sync.
-  // If this session already owns browser tabs (or pinned tabs exist), auto-mount built-in browser tools.
+  // A message that carries none (the goal loop) falls back to what the session stored, so a worker
+  // can never keep running with a capability the user already switched off.
   const applyCapabilities = async (req: { capabilities?: string[]; sessionFile?: string }) => {
-    if (req.capabilities === undefined) return
-    let caps = req.capabilities
-    const browserKey = await sessionBrowserKey(req.sessionFile)
-    if (
-      !caps.includes('browser') &&
-      !caps.includes('chrome') &&
-      configStore.get('rightPanelPrefs')?.browser &&
-      (browserKey ? peekBrowserHost()?.hasSessionTabs(browserKey) : peekBrowserHost()?.hasSessionTabs(req.sessionFile))
-    ) {
-      caps = [...caps, 'browser']
-    }
-    noteBrowserTarget(req.sessionFile, caps)
-    await workerManager.setCapabilities(capabilitySectionMap(caps), capabilityToolFamilies(caps), req.sessionFile)
+    await applySessionCapabilities(req.sessionFile, req.capabilities)
   }
 
   registerHandler('ipc:capabilities.catalog', async () => {
@@ -76,10 +52,20 @@ export function registerPromptHandlers(): void {
     const runtime = await workerManager.getExtensionCapabilities(cwd).catch(() => null)
     const names = runtime?.extensions.flatMap((extension) => extension.tools) ?? []
     setInstalledCapabilityTools({
-      computer: names.filter((name) => /^computer[_-]/i.test(name)).length,
-      'web-search': names.filter((name) => /^(search|docs_search|web_fetch|web_map|search_|context7_|plan_)/i.test(name)).length,
+      computer: names.filter(isComputerCapabilityTool).length,
+      'web-search': names.filter(isWebSearchCapabilityTool).length,
     })
     return { capabilities: capabilityCatalog() }
+  })
+
+  /**
+   * The Tools menu pushes a switch the moment it is clicked: turning something off has to revoke
+   * its tools on the running turn, not on the next message. Live worker only; a chat that has no
+   * worker yet carries its switches with its first prompt.
+   */
+  registerHandlerWithSchema('ipc:capabilities.apply', capabilityApplySchema, async (req) => {
+    const { applied, capabilities } = await applySessionCapabilities(req.sessionFile, req.capabilities, { liveOnly: true })
+    return { ok: true as const, applied, capabilities }
   })
 
   registerHandlerWithSchema('ipc:prompt.send', promptTextSchema, async (req) => {

@@ -22,8 +22,14 @@ describe('Windows tray icon packaging contract', () => {
     )
     assert.match(
       exporter,
-      /writeFile\(outIco,\s*pngToIco\(png256\)\)/,
-      'exporter must write the generated ICO bytes',
+      /const ICO_SIZES = \[[^\]]*16, 24, 32, 48, 64, 128, 256\]/
+        ,
+      'ICO must multi-size the taskbar sizes (1.0.2 起不再只缩一张 256)',
+    )
+    assert.match(
+      exporter,
+      /writeFile\(outIco,\s*pngToIco\(images\)\)/,
+      'exporter must write the generated multi-size ICO bytes',
     )
     assert.match(
       pkg.scripts['icon:export'],

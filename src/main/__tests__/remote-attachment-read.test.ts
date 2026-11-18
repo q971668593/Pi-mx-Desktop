@@ -2,6 +2,7 @@ import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
+import { symlinksSupported } from './symlink-support'
 
 const userData = mkdtempSync(join(tmpdir(), 'pi-remote-att-'))
 vi.mock('electron', () => ({ app: { getPath: () => userData } }))
@@ -22,8 +23,10 @@ describe('readRemoteAttachment', () => {
     const dir = join(userData, 'clipboard-images')
     mkdirSync(dir, { recursive: true })
     const link = join(dir, 'pi-clipboard-link.txt')
-    symlinkSync(outside, link)
-    expect(readRemoteAttachment(link)).toBeNull()
+    if (symlinksSupported) {
+      symlinkSync(outside, link)
+      expect(readRemoteAttachment(link)).toBeNull()
+    }
     writeFileSync(join(dir, 'other.png'), 'x')
     expect(readRemoteAttachment(join(dir, 'other.png'))).toBeNull()
     expect(readRemoteAttachment(join(dir, '..', 'secret.txt'))).toBeNull()

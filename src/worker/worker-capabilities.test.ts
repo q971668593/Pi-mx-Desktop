@@ -42,7 +42,7 @@ describe('worker capabilities', () => {
     const ext = capabilitiesExtension as { name: string; hidden?: boolean; factory: (api: unknown) => void }
     expect(ext.hidden).toBe(true)
     await ext.factory(pi)
-    expect(Object.keys(handlers)).toEqual(['before_agent_start'])
+    expect(Object.keys(handlers)).toEqual(['before_agent_start', 'tool_call'])
     setCapabilitySections({ 'pi-ui': '# pi-ui' })
     const on = event()
     handlers.before_agent_start(on)
@@ -51,5 +51,18 @@ describe('worker capabilities', () => {
     const off = event({ desktop_pi_ui: '# pi-ui' })
     handlers.before_agent_start(off)
     expect(off.systemPromptOptions.sections).toEqual({})
+  })
+
+  it('blocks a tool call whose capability is off, even for tools registered after load', () => {
+    const handlers: Record<string, (event: unknown) => unknown> = {}
+    const pi = { on: (name: string, fn: (event: unknown) => unknown) => (handlers[name] = fn) }
+    const ext = capabilitiesExtension as { factory: (api: unknown) => void }
+    ext.factory(pi)
+    const call = (toolName: string) => handlers.tool_call({ type: 'tool_call', toolCallId: 't1', toolName, input: {} }) as
+      | { block?: boolean; reason?: string }
+      | undefined
+    expect(call('computer')).toMatchObject({ block: true })
+    expect(call('computer_click')).toMatchObject({ block: true })
+    expect(call('browser_click')).toBeUndefined()
   })
 })

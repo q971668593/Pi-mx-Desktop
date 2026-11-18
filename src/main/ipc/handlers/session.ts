@@ -79,6 +79,8 @@ export function registerSessionHandlers(): void {
         firstMessage: preview.slice(0, 120),
         createdAt: timeMs(s.created),
         updatedAt: timeMs(s.modified),
+        // 用户最后按下发送的时间（侧栏"几分钟前"与项目内排序都以它为准）；SDK 回退行没有这个字段。
+        lastUserMessageAt: s.lastUserMessageAt ? timeMs(s.lastUserMessageAt) : undefined,
         messageCount: s.messageCount || 0,
         modelId: '',
         status: 'idle' as const,

@@ -51,6 +51,7 @@
     "tree": "打开会话树面板"
   },
   "toast": {
+      "compactingWait": "正在压缩上下文，输入内容已保留，稍后再发送即可。",
     "sendFailed": "发送失败",
     "completeExtensionFirst": "请先完成扩展弹窗，或点右上角稍后作答",
     "pasteScreenshotNeedWorkspace": "请先打开工作区再粘贴截图",
@@ -204,8 +205,8 @@
     "toolCount": "{{count}} 个工具",
     "toolCountDeferred": "{{count}} 个工具（{{core}} 个常驻，其余按需加载）",
     "tokens": "每次请求约 +{{n}} tokens",
-    "note": "从下一条消息起生效，关闭立即撤销。新会话默认全关。",
-    "noteRunning": "当前回合不受影响，从下一条消息起生效。",
+    "note": "下一条消息起对模型生效；关闭立即撤销。新对话默认开启内置浏览器。",
+    "noteRunning": "当前回合提示词不变；关闭的工具立刻失效。",
     "items": {
       "pi-ui": {
         "name": "pi-ui 可视化",

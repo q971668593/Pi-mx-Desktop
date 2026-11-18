@@ -12,7 +12,7 @@ import { ComposerPopover } from './composer-popover'
 import {
   isAvailableModelsPending,
   peekAvailableModels,
-  ensureAvailableModels,
+  refreshAvailableModels,
   subscribeAvailableModels,
 } from '@renderer/lib/available-models-cache'
 import { sessionFilesEqual } from '@renderer/lib/session-file-key'
@@ -66,7 +66,9 @@ export function ModelPicker() {
   const [loading, setLoading] = useState(() => isAvailableModelsPending())
 
   const reload = () => {
-    const request = ensureAvailableModels().catch(() => peekAvailableModels())
+    // Opening the picker refreshes the list; the cached rows are already on screen
+    // (initial state from peekAvailableModels), so the refresh never blocks the render.
+    const request = refreshAvailableModels().catch(() => peekAvailableModels())
     setLoading(isAvailableModelsPending())
     return request
   }
@@ -87,7 +89,9 @@ export function ModelPicker() {
     setExpanded({})
     setRecents(readRecentModels())
     setActiveIndex(0)
-    setPendingModel(pendingModelSwitch && sessionFilesEqual(pendingModelSwitch.sessionFile, sessionFile) ? pendingModelSwitch.requestedModel : null)
+    // A request from a previous mount must not freeze the rows: only this mount's own
+    // in-flight switch disables them (the module-level token still guards stale results).
+    setPendingModel(null)
     void loadModelThinkingBindings()
     void reload()
     const unsub = onAppEvent((event) => {
@@ -130,7 +134,8 @@ export function ModelPicker() {
     const token = ++modelSwitchToken
     pendingModelSwitch = { token, sessionFile: targetFile, requestedModel }
     setPendingModel(requestedModel)
-    setOpen(false)
+    // The popover stays open while the runtime confirms: the row shows a spinner and the
+    // other rows are disabled, so the click has visible feedback and cannot be double-fired.
     try {
       const response = await ipcClient.invoke('model.set', {
         sessionId: '',

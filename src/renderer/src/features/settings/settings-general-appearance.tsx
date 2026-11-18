@@ -12,6 +12,8 @@ import { RuntimeSettingsPanel } from '@renderer/features/settings/runtime-settin
 import { SettingsPageHeader } from '@renderer/features/settings/settings-shell'
 import { SettingRow, SettingsSection } from '@renderer/features/settings/settings-page-shared'
 import { btnOutline, numberInputCls } from '@renderer/features/settings/settings-controls'
+import { previewAlertSound } from '@renderer/lib/alert-sound'
+import { ALERT_SOUND_PRESETS } from '@shared/alert-sound'
 import { Switch } from '@renderer/components/ui/switch'
 import {
   Folder,
@@ -89,6 +91,7 @@ export function GeneralSettings() {
     setIncludePrereleaseUpdates,
     setLanguage,
     setAlertSoundEnabled,
+    setAlertSoundPreset,
     setAlertNotificationEnabled,
     setAlertOnExtensionUi,
     setAlertOnRunIdle,
@@ -114,6 +117,20 @@ export function GeneralSettings() {
   const [alertTestFeedback, setAlertTestFeedback] = useState<'sent' | 'failed' | null>(null)
   const updateCheckAttemptRef = useRef(0)
   const mountedRef = useRef(true)
+
+  /** One control instead of two switches: "popup + sound", "sound only", "popup only" or nothing. */
+  const alertMode: 'both' | 'sound' | 'popup' | 'off' =
+    draft.alertNotificationEnabled && draft.alertSoundEnabled
+      ? 'both'
+      : draft.alertNotificationEnabled
+        ? 'popup'
+        : draft.alertSoundEnabled
+          ? 'sound'
+          : 'off'
+  const setAlertMode = (mode: 'both' | 'sound' | 'popup' | 'off'): void => {
+    setAlertNotificationEnabled(mode === 'both' || mode === 'popup')
+    setAlertSoundEnabled(mode === 'both' || mode === 'sound')
+  }
 
   useEffect(() => {
     mountedRef.current = true
@@ -251,11 +268,57 @@ export function GeneralSettings() {
         title={t('settings:general.alert')}
         description={t('settings:general.alertSectionDesc')}
       >
-        <SettingRow label={t('settings:general.alertSound')} description={t('settings:general.alertSoundDesc')}>
-          <Switch checked={draft.alertSoundEnabled} onCheckedChange={setAlertSoundEnabled} />
+        <SettingRow label={t('settings:general.alertMode')} description={t('settings:general.alertModeDesc')}>
+          <div className="flex flex-wrap gap-1.5">
+            {(['both', 'sound', 'popup', 'off'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                aria-pressed={alertMode === mode}
+                onClick={() => setAlertMode(mode)}
+                className={cn(
+                  'settings-chip min-h-11 rounded-md border px-3 text-sm',
+                  alertMode === mode
+                    ? 'border-primary bg-primary/5 text-foreground'
+                    : 'border-border text-muted-foreground hover:bg-accent/50',
+                )}
+              >
+                {t(`settings:general.alertModeOptions.${mode}`)}
+              </button>
+            ))}
+          </div>
         </SettingRow>
-        <SettingRow label={t('settings:general.alertNotification')} description={t('settings:general.alertNotificationDesc')}>
-          <Switch checked={draft.alertNotificationEnabled} onCheckedChange={setAlertNotificationEnabled} />
+        <SettingRow label={t('settings:general.alertSoundPreset')} description={t('settings:general.alertSoundPresetDesc')}>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {ALERT_SOUND_PRESETS.map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                disabled={!draft.alertSoundEnabled}
+                aria-pressed={draft.alertSoundPreset === preset}
+                onClick={() => {
+                  setAlertSoundPreset(preset)
+                  previewAlertSound(preset)
+                }}
+                className={cn(
+                  'settings-chip min-h-11 rounded-md border px-3 text-sm disabled:opacity-50',
+                  draft.alertSoundPreset === preset
+                    ? 'border-primary bg-primary/5 text-foreground'
+                    : 'border-border text-muted-foreground hover:bg-accent/50',
+                )}
+              >
+                {t(`settings:general.alertSounds.${preset}`)}
+              </button>
+            ))}
+            <button
+              type="button"
+              disabled={!draft.alertSoundEnabled || draft.alertSoundPreset === 'none'}
+              onClick={() => previewAlertSound(draft.alertSoundPreset)}
+              className={cn(btnOutline, 'min-h-11')}
+            >
+              {t('settings:general.alertSoundPreview')}
+            </button>
+          </div>
         </SettingRow>
         {typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform) ? (
           <p className="px-1 pb-2 text-[11px] text-muted-foreground">{t('settings:general.macNotifyHint')}</p>

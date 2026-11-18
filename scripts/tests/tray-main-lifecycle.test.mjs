@@ -54,6 +54,7 @@ describe('Main tray lifecycle contract', () => {
       workerManager: { stop: () => { stopCalls += 1; return stopping } },
       sessionPreviewProcess: { stop() {} },
       disposeCompletionNotifications() {},
+      disposeAiActivityGlow() {},
       shutdownTerminals() {},
       setRunningTerminalsProbe() {},
       runningTerminalCount: () => 0,

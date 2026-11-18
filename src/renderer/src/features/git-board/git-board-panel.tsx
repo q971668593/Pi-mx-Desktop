@@ -10,12 +10,19 @@ import { useUIStore } from '@renderer/stores/ui-store'
 import { toast } from 'sonner'
 import { applyConflictChoices, parseConflicts, type ConflictChoice } from './conflict-editor'
 import { GitLane } from './git-lane'
-import { layoutCommitGraph } from './git-graph'
+import { formatCommitDate, layoutCommitGraph } from './git-graph'
 import { workspacePathKey } from '@shared/workspace-path'
 import { fileTreeIcon } from '@renderer/features/workspace-files/file-tree-icons'
 import './git-board.css'
 import { GitCommandHistory } from './git-command-history'
 import { GitChangesTree } from './git-changes-tree'
+
+function CommitDate({ time }: { time: number }) {
+  if (!time) return null
+  const date = new Date(time * 1000)
+  if (Number.isNaN(date.getTime())) return null
+  return <time dateTime={date.toISOString()} title={date.toLocaleString()} className="min-w-[46px] shrink-0 whitespace-nowrap text-right font-mono text-[10px] tabular-nums text-foreground-tertiary">{formatCommitDate(time)}</time>
+}
 
 function GitFileIcon({ path }: { path: string }) {
   const { Icon, className } = fileTreeIcon(path, false)
@@ -321,6 +328,8 @@ export function GitBoardPanel() {
   const visibleChanges = data.files
   const hasPendingChanges = visibleChanges.length > 0
   const hasCommitChanges = visibleChanges.length > 0
+  // Conflicts are left to the resolve/abort flow: "discard all" must not silently pick a side.
+  const discardableChanges = data.files.filter((file) => file.group !== 'conflict')
   const shouldShowPush = !hasCommitChanges && Boolean(data.status.branch) && (data.status.ahead > 0 || !data.status.upstream) && (Boolean(data.status.upstream) || data.remotes.length > 0)
   const localBranches = data.branches.filter((branch) => branch.kind === 'local')
   const remoteBranches = data.branches.filter((branch) => branch.kind === 'remote')
@@ -483,7 +492,7 @@ export function GitBoardPanel() {
       {data.operation ? <div className="flex gap-1 border-b px-2 py-1"><button type="button" className="rounded border px-2 py-1 text-[12px]" onClick={() => void run('gitBoard.operation', { operation: data.operation, action: 'continue' })}>{t('common:gitBoard.continue')}</button><button type="button" className="rounded border px-2 py-1 text-[12px]" onClick={() => void run('gitBoard.operation', { operation: data.operation, action: 'abort' })}>{t('common:gitBoard.abort')}</button></div> : null}
 
       {tab === 'changes' && <div className="git-changes flex min-h-0 flex-1 flex-col"><div className="min-h-0 flex-1 overflow-auto p-2">
-        <div className="mb-2 flex items-center justify-between gap-2 rounded-md bg-[var(--bg-1)] px-2 py-1.5">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-md bg-[var(--bg-1)] px-2 py-1.5">
           <div className="flex min-w-0 items-center gap-2">
             <span className="shrink-0 text-[12px] font-medium">{t('common:gitBoard.unstaged')}</span>
             <div role="group" aria-label={t('common:gitBoard.changeView')} className="inline-flex items-center gap-0.5 rounded-md border border-border/60 bg-[var(--bg-base)] p-0.5">
@@ -491,7 +500,10 @@ export function GitBoardPanel() {
               <button type="button" aria-label={t('common:gitBoard.treeView')} aria-pressed={changeView === 'tree'} className={cn('inline-flex items-center gap-1.5 rounded px-2 py-1 text-[11px] transition-colors hover:bg-muted', changeView === 'tree' && 'bg-muted text-foreground shadow-sm')} onClick={() => setChangeView('tree')}><FolderTree className="h-3.5 w-3.5" />{t('common:gitBoard.treeView')}</button>
             </div>
           </div>
-          <button type="button" disabled={!data.files.some((file) => file.group !== 'conflict' && file.group !== 'staged') || busy} className="shrink-0 text-[11px] text-foreground-secondary hover:text-foreground disabled:opacity-40" onClick={() => void run('gitBoard.stage', { paths: data.files.filter((file) => file.group !== 'conflict' && file.group !== 'staged').map((file) => file.path) })}>{t('common:gitBoard.stageAll')}</button>
+          <div className="ml-auto flex shrink-0 items-center gap-3">
+            <button type="button" disabled={!discardableChanges.length || busy} className="whitespace-nowrap text-[11px] text-foreground-secondary hover:text-red-600 disabled:opacity-40 dark:hover:text-red-400" onClick={() => discardFiles(discardableChanges, t('common:gitBoard.discardAll'), t('common:gitBoard.discardAllConfirm', { count: discardableChanges.length, untrackedCount: discardableChanges.filter((file) => file.group === 'untracked').length }))}>{t('common:gitBoard.discardAll')}</button>
+            <button type="button" disabled={!data.files.some((file) => file.group !== 'conflict' && file.group !== 'staged') || busy} className="whitespace-nowrap text-[11px] text-foreground-secondary hover:text-foreground disabled:opacity-40" onClick={() => void run('gitBoard.stage', { paths: data.files.filter((file) => file.group !== 'conflict' && file.group !== 'staged').map((file) => file.path) })}>{t('common:gitBoard.stageAll')}</button>
+          </div>
         </div>
         {groups.map((group) => {
           const files = data.files.filter((file) => group === 'unstaged' ? file.group === 'unstaged' || file.group === 'untracked' : file.group === group)
@@ -506,7 +518,7 @@ export function GitBoardPanel() {
 </> : shouldShowPush ? <button type="button" disabled={busy || (!data.status.upstream && !effectivePushRemote)} className="ml-auto rounded bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground disabled:opacity-50" onClick={() => void pushCurrentBranch()}>{t(data.status.upstream ? 'common:gitBoard.push' : 'common:gitBoard.publish')}</button> : hasPendingChanges ? <span className="ml-auto text-[11px] text-foreground-tertiary">{t('common:gitBoard.stageFilesBeforeCommit')}</span> : <span className="ml-auto text-[11px] text-foreground-tertiary">{data.status.behind > 0 ? t('common:gitBoard.behind', { n: data.status.behind }) : t('common:gitBoard.clean')}</span>}
 </div></div></div>}
 
-      {tab === 'graph' && <div className="flex min-h-0 flex-1 flex-col"><div className="flex gap-1 border-b p-2"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('common:gitBoard.refFilter')} className="h-7 min-w-0 flex-1 rounded border bg-transparent px-2 text-[12px]" /><input value={author} onChange={(event) => setAuthor(event.target.value)} placeholder={t('common:gitBoard.authorFilter')} className="h-7 w-28 rounded border bg-transparent px-2 text-[12px]" /><button type="button" className="rounded border px-2 text-[12px]" onClick={() => void load(false)}>{t('common:gitBoard.filter')}</button></div><div className="relative min-h-0 flex-1 overflow-auto">{rows.map((row) => <div key={row.commit.hash} role="button" tabIndex={0} className="flex h-7 cursor-pointer items-center gap-2 pr-2 text-[12px] hover:bg-muted/50 focus-visible:outline focus-visible:outline-1 focus-visible:outline-primary" onClick={() => void openCommitDetail(row.commit.hash)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void openCommitDetail(row.commit.hash) } }} onContextMenu={(event) => { event.preventDefault(); setMenu({ x: event.clientX, y: event.clientY, commit: row.commit }) }}><GitLane lane={row.lane} passes={row.passes} links={row.links} columns={row.columns} fromAbove={row.fromAbove} /><span className="w-14 font-mono text-[10px] text-foreground-tertiary">{row.commit.short}</span><GitCommitHorizontal className="h-3 w-3" /><span className="min-w-0 flex-1 truncate">{row.commit.subject}</span><span className="max-w-[35%] truncate text-[10px] text-sky-600">{row.commit.decorations}</span></div>)}{data.hasMore ? <button type="button" className="m-2 rounded border px-2 py-1 text-[12px]" onClick={() => void load(true)}>{t('common:gitBoard.more')}</button> : null}</div>{detail && <CommitDetailDialog detail={detail} diff={diff} onClose={() => { setDetail(null); setDiff('') }} onOpenDiff={(path) => void openDiff(path, { commit: detail.hash })} onCheckout={async () => { const result = await run('gitBoard.checkoutCommit', { ref: detail.hash }); if (!result?.ok) return false; setDiff(''); await load(false); return true }} />}</div>}
+      {tab === 'graph' && <div className="flex min-h-0 flex-1 flex-col"><div className="flex gap-1 border-b p-2"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('common:gitBoard.refFilter')} className="h-7 min-w-0 flex-1 rounded border bg-transparent px-2 text-[12px]" /><input value={author} onChange={(event) => setAuthor(event.target.value)} placeholder={t('common:gitBoard.authorFilter')} className="h-7 w-28 rounded border bg-transparent px-2 text-[12px]" /><button type="button" className="rounded border px-2 text-[12px]" onClick={() => void load(false)}>{t('common:gitBoard.filter')}</button></div><div className="relative min-h-0 flex-1 overflow-auto">{rows.map((row) => <div key={row.commit.hash} role="button" tabIndex={0} className="flex h-7 cursor-pointer items-center gap-2 pr-2 text-[12px] hover:bg-muted/50 focus-visible:outline focus-visible:outline-1 focus-visible:outline-primary" onClick={() => void openCommitDetail(row.commit.hash)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void openCommitDetail(row.commit.hash) } }} onContextMenu={(event) => { event.preventDefault(); setMenu({ x: event.clientX, y: event.clientY, commit: row.commit }) }}><GitLane lane={row.lane} passes={row.passes} links={row.links} columns={row.columns} fromAbove={row.fromAbove} /><CommitDate time={row.commit.time} /><span className="w-14 shrink-0 font-mono text-[10px] text-foreground-tertiary">{row.commit.short}</span><GitCommitHorizontal className="h-3 w-3" /><span className="min-w-0 flex-1 truncate">{row.commit.subject}</span><span className="max-w-[35%] truncate text-[10px] text-sky-600">{row.commit.decorations}</span></div>)}{data.hasMore ? <button type="button" className="m-2 rounded border px-2 py-1 text-[12px]" onClick={() => void load(true)}>{t('common:gitBoard.more')}</button> : null}</div>{detail && <CommitDetailDialog detail={detail} diff={diff} onClose={() => { setDetail(null); setDiff('') }} onOpenDiff={(path) => void openDiff(path, { commit: detail.hash })} onCheckout={async () => { const result = await run('gitBoard.checkoutCommit', { ref: detail.hash }); if (!result?.ok) return false; setDiff(''); await load(false); return true }} />}</div>}
 
       {tab === 'branches' && <div className="flex min-h-0 flex-1 flex-col text-[12px]">
         <form className="shrink-0 border-b border-border/60 p-3" onSubmit={(event) => { event.preventDefault(); if (name.trim()) void run('gitBoard.branch', { action: 'create', name, ...(selectedBranchBase ? { from: selectedBranchBase } : {}) }).then((result) => { if (result?.ok) setName('') }) }}>

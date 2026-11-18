@@ -76,6 +76,12 @@ export interface CompactionEvent extends AppEventBase {
   phase: 'start' | 'end'
   tokensBefore?: number
   tokensSaved?: number
+  /** Window pi was actually using at compaction time. A stale model snapshot shows up here as a
+   *  smaller window than the model really has — that is why a session compacts long before the
+   *  real limit, and why the model then keeps saying it is nearly out of context. */
+  contextWindow?: number
+  /** Estimated context tokens at compaction time (the number compared against the window). */
+  contextTokens?: number
   summary?: string
 }
 

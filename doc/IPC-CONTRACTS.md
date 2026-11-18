@@ -1,6 +1,11 @@
 # IPC 契约（Backend-API 边界）
 
-与 `packages/shared/ipc-channels.ts` 同步。Main 实现见 `src/main/ipc/handlers/`。
+> 本文件是**手写的语义说明**（为什么这样切、类型边界在哪）。
+> 「有哪些通道、分别在哪里注册」由代码生成，见 [IPC-CONTRACTS.generated.md](./IPC-CONTRACTS.generated.md)；
+> 改了 `src/main` 的注册点后跑 `npm run gen:ipc`，`npm run test:scripts` 会检查是否漂移。
+> 白名单本体在 `packages/shared/ipc-channels.generated.ts`（`ipc-channels.ts` 只是薄壳）。
+
+Main 实现见 `src/main/ipc/handlers/`。
 
 ## 类型边界
 
@@ -45,6 +50,22 @@ Main 在第一次 `tabs.open` 时才创建 `BrowserHost`；没有打开过标签
 Main → Renderer 的事件走 `ipc:browser-event`（`BrowserEvent`：`tab-updated` / `tab-closed` / `tab-focused` / `download` / `shortcut`）。
 
 Renderer 内部事件 `pi-desktop:composer-attach-files` 的 `detail` 为 `{ files?: {path,name,kind}[]; text?: string }`：`text` 插在附件之前，可以只带 `text`。浏览器的截图、页面正文、批注、日志都通过这个事件放进输入框，**不会自动发送**。
+
+## 会话目标（`ipc:sessionGoal.*`）
+
+会话级「目标 + 验收项」，**只存 app 私有状态**：`userData/session-goals.json`（`src/main/session-goals.ts`），不进 pi 的 JSONL，也不进与终端版共用的 `~/.pi/agent/settings.json`。
+
+| Channel | Request | Response |
+|---------|---------|----------|
+| `ipc:sessionGoal.get` | `{ sessionFile }` | `{ goal: SessionGoal \| null }` |
+| `ipc:sessionGoal.set` | `{ sessionFile; goal; criteria?: string[] }`（省略 criteria = 只改目标文本，已有勾选按文本保留） | `{ goal }` |
+| `ipc:sessionGoal.toggleCriterion` | `{ sessionFile; index }` | `{ goal }` |
+| `ipc:sessionGoal.markDone` | `{ sessionFile; indices: number[] }`（1 起算，对应模型汇报的 `GOAL-PROGRESS` 行） | `{ goal }` |
+| `ipc:sessionGoal.clear` | `{ sessionFile }` | `{ cleared: boolean }` |
+
+注入不走消息文本：每次 turn 前主进程把目标渲染成 pi 的 system prompt section（`<goal>…</goal>`，见 `src/worker/worker-goal.ts`），section 变化由 pi 自己以 system message 同步，历史里只有用户真正说过的话。写入后若该会话有活着的 worker 会立刻补推；没有就等下一次 `prompt.send`（`workerManager.pushGoalBeforeTurn`）。
+
+自动循环在渲染层（`src/renderer/src/features/goal/goal-auto-loop.ts`）：一轮 idle 后若还有未达成项就续一轮；**连续 3 轮 remaining 不下降即停**，并有轮数上限；跑着/刚按停/压缩中/扩展弹窗时不续。
 
 ## 回归
 

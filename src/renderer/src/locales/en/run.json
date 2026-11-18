@@ -2,6 +2,7 @@
   "title": "Run",
   "status": {
     "idle": "Idle",
+    "idleHint": "No run in progress; send a message and speed and usage appear here.",
     "running": "Running",
     "failed": "Failed",
     "thinking": "Thinking",
@@ -20,6 +21,10 @@
     "cache": "Cache"
   },
   "tokenError": "{{count}} tool errors",
+  "toolErrorsShow": "Details",
+  "toolErrorsHide": "Hide",
+  "toolErrorsUnavailable": "The error details are no longer in this session; check the failed call in the conversation.",
+  "toolErrorUnknown": "The tool failed without returning an error message.",
   "emptyHint": "Metrics appear after you send a message",
   "empty": "No data",
   "compacting": "Compacting…",

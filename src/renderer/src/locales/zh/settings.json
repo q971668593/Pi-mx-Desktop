@@ -53,6 +53,25 @@
     "alertSoundDesc": "",
     "alertNotification": "系统通知",
     "alertNotificationDesc": "使用系统通知中心。",
+    "alertMode": "提醒方式",
+    "alertModeDesc": "选「仅提示音」就只响一声、不再弹窗。",
+    "alertModeOptions": {
+      "both": "弹窗 + 提示音",
+      "sound": "仅提示音",
+      "popup": "仅弹窗",
+      "off": "全部关闭"
+    },
+    "alertSoundPreset": "提示音音色",
+    "alertSoundPresetDesc": "点一下就试听，保存后生效。",
+    "alertSoundPreview": "试听",
+    "alertSounds": {
+      "chime": "清铃",
+      "drop": "水滴",
+      "double": "双击",
+      "rise": "上扬",
+      "soft": "柔和",
+      "none": "静音"
+    },
     "alertOnExtensionUi": "扩展问答弹窗",
     "alertOnExtensionUiDesc": "Agent 暂停等你回答时。",
     "aiGlow": "AI 操作指示",

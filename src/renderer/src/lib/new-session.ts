@@ -107,6 +107,8 @@ function insertSessionRowOptimistically(
     sessionFile: created.sessionFile,
     title: created.title,
     updatedAt: Date.now(),
+    // 用户刚发出第一条消息：侧栏要靠这个立刻排到最上面
+    lastUserMessageAt: Date.now(),
     messageCount: 0,
     modelId: '',
   }
@@ -131,6 +133,7 @@ async function refreshNewSessionInList(
     sessionFile,
     title,
     updatedAt: Date.now(),
+    lastUserMessageAt: Date.now(),
     messageCount: 0,
     modelId: '',
   }

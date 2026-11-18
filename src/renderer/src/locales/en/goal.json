@@ -1,0 +1,16 @@
+{
+  "bar": {
+    "placeholder": "What should this session achieve? (one sentence)",
+    "set": "Set goal",
+    "edit": "Edit goal",
+    "clear": "Clear goal",
+    "remaining": "{{count}} criteria left",
+    "done": "Goal reached",
+    "criteriaHint": "Acceptance criteria (one per line, checkable later)",
+    "toggle": "Toggle completion",
+    "copy": "Copy goal and criteria",
+    "copied": "Copied",
+    "loopStalled": "Auto loop paused: no progress for several rounds, {{count}} criteria left",
+    "loopCapped": "Auto loop stopped at the round limit, {{count}} criteria left"
+  }
+}

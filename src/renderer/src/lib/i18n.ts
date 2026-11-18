@@ -12,6 +12,7 @@ import zhExtension from '../locales/zh/extension.json'
 import zhFiles from '../locales/zh/files.json'
 import zhUpdate from '../locales/zh/update.json'
 import zhBrowser from '../locales/zh/browser.json'
+import zhGoal from '../locales/zh/goal.json'
 import enCommon from '../locales/en/common.json'
 import enTimeline from '../locales/en/timeline.json'
 import enReview from '../locales/en/review.json'
@@ -24,6 +25,7 @@ import enExtension from '../locales/en/extension.json'
 import enFiles from '../locales/en/files.json'
 import enUpdate from '../locales/en/update.json'
 import enBrowser from '../locales/en/browser.json'
+import enGoal from '../locales/en/goal.json'
 import { ipcClient } from './ipc-client'
 
 type AppLanguage = 'zh' | 'en'
@@ -58,6 +60,7 @@ const i18nInitialization = i18n.use(initReactI18next).init({
       files: zhFiles,
       update: zhUpdate,
       browser: zhBrowser,
+      goal: zhGoal,
     },
     en: {
       common: enCommon,
@@ -72,6 +75,7 @@ const i18nInitialization = i18n.use(initReactI18next).init({
       files: enFiles,
       update: enUpdate,
       browser: enBrowser,
+      goal: enGoal,
     },
   },
   lng: detectInitialLanguage(),

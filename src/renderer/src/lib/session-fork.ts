@@ -71,6 +71,7 @@ async function refreshSidebarAndOpen(
             sessionFile,
             title: 'Fork',
             updatedAt: Date.now(),
+            lastUserMessageAt: Date.now(),
             messageCount: 0,
             modelId: '',
           } as SessionItem,

@@ -10,7 +10,7 @@ import type { BeforeAgentStartEvent, BeforeAgentStartEventResult, ExtensionAPI, 
 import type { WorkerIncomingMessage } from './worker-port-types.js'
 import type { WorkerReply } from './worker-handler-types.js'
 import { setBrowserToolsEnabled } from './worker-browser-tools.js'
-import { setExtensionCapabilityToolsEnabled } from './extension-capability-guard.js'
+import { blockedCapabilityTool, setExtensionCapabilityToolsEnabled } from './extension-capability-guard.js'
 
 const SECTION_PREFIX = 'desktop_'
 let sections: Record<string, string> = {}
@@ -56,6 +56,12 @@ export const capabilitiesExtension: InlineExtension = {
   hidden: true,
   factory: (pi: ExtensionAPI) => {
     pi.on('before_agent_start', (event) => withCapabilities(event))
+    // A capability package can register its tools long after load (pi-agent-computer-use does it in
+    // its own session_start), so the load-time wrapper alone leaves a hole: check every call here.
+    pi.on('tool_call', (event) => {
+      const reason = blockedCapabilityTool(event.toolName)
+      return reason ? { block: true, reason } : undefined
+    })
   },
 }
 
@@ -65,4 +71,15 @@ export async function handleSetCapabilities(msg: WorkerIncomingMessage, reply: W
   setBrowserToolsEnabled(tools.includes('browser'))
   setExtensionCapabilityToolsEnabled({ webSearch: tools.includes('web-search'), computer: tools.includes('computer') })
   reply({ ok: true, count: Object.keys(sections).length })
+}
+
+/**
+ * A worker can be handed a different session (loadSession / new / fork on the same process). The
+ * switches belong to the session, not the process: drop them until the next prompt pushes its own,
+ * so a session can never inherit computer control or browser tools from the previous one.
+ */
+export function resetCapabilities(): void {
+  sections = {}
+  setBrowserToolsEnabled(false)
+  setExtensionCapabilityToolsEnabled({ webSearch: false, computer: false })
 }

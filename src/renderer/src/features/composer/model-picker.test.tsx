@@ -256,8 +256,7 @@ describe('ModelPicker runtime confirmation', () => {
     expect(userActionToastMock.success).not.toHaveBeenCalled()
     // 新请求结算
     resolvers[1]?.({ modelId: 'openai/gpt-next' })
-    await waitFor(() =>
-      expect(userActionToastMock.success).toHaveBeenCalledWith(expect.stringContaining('openai/gpt-next')),
-    )
+    // The newer pick is the one that lands on the session.
+    await waitFor(() => expect(useUIStore.getState().runState.model).toBe('openai/gpt-next'))
   })
 })

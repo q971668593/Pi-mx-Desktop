@@ -22,6 +22,8 @@ export function completionNotificationWindowOptions(
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
+      // The host also plays alert sounds while hidden ("sound only" mode).
+      backgroundThrottling: false,
     },
   }
 }

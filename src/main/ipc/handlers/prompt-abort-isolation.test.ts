@@ -1,5 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+// electron-store 在非 Electron 环境会把 conf 初始化成 "Please specify the projectName option"，
+// 这个测试只需要模块能加载（config-store → browser-host 的导入链），不需要真实持久化。
+vi.mock('electron-store', () => ({
+  default: class {
+    get(_key: string, fallback?: unknown) {
+      return fallback
+    }
+    set() {}
+    has() {
+      return false
+    }
+    delete() {}
+    clear() {}
+    on() {}
+    get store() {
+      return {}
+    }
+  },
+}))
+
 const mocks = vi.hoisted(() => ({
   handlers: new Map<string, (request: Record<string, unknown>) => Promise<unknown>>(),
   abort: vi.fn(),

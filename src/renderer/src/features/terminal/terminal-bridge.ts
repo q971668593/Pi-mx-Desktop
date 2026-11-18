@@ -33,6 +33,24 @@ function wire(): void {
     else pending.set(id, [...(pending.get(id) ?? []), data])
   })
   window.piDesktop?.onTerminalExit?.(({ id, code }) => terminalActions.markExited(id, code))
+  // The AI closed a terminal it opened: remove the pane instead of keeping dead output.
+  window.piDesktop?.onTerminalClosed?.(({ id }) => {
+    writers.delete(id)
+    pending.delete(id)
+    void import('./terminal-pane').then(({ disposeTerminalInstance }) => disposeTerminalInstance(id))
+    terminalActions.closePane(id)
+  })
+  // The AI reused an existing terminal: show it, never open a second tab for the same pty.
+  window.piDesktop?.onTerminalReveal?.(({ id, workspace }) => {
+    const tab = useTerminalStore.getState().tabs.find((item) => item.panes.some((pane) => pane.ptyId === id))
+    if (!tab) return
+    terminalActions.focusTab(tab.id)
+    const ui = useUIStore.getState()
+    if (workspacePathsEqual(ui.currentWorkspace, workspace)) {
+      ui.setActivePanel('terminal')
+      ui.revealRightPanel()
+    }
+  })
 }
 
 export function initializeTerminalBridge(): void { wire() }

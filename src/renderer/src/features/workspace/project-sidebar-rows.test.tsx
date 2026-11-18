@@ -1,7 +1,13 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useUIStore } from '@renderer/stores/ui-store'
+import i18n from '@renderer/lib/i18n'
 import { ProjectSessionTree } from './project-sidebar-rows'
+
+// The assertions below use the English copy; the app ships Chinese by default.
+beforeAll(async () => {
+  if (i18n.language !== 'en') await i18n.changeLanguage('en')
+})
 
 /** Collapsed subagent children stay mounted for the height transition but are hidden from AT and focus. */
 function expectCollapsedChild(text: string): void {
@@ -441,5 +447,76 @@ describe('ProjectSessionTree subagent rows', () => {
     expect(mocks.openSubagentSessionPreview).toHaveBeenCalledWith(
       '/sessions/parent/run-1/session.jsonl',
     )
+  })
+})
+
+describe('ProjectSessionTree ordering', () => {
+  beforeEach(() => {
+    mocks.collectActiveSubagentSessionChildren.mockReset()
+    mocks.collectActiveSubagentSessionChildren.mockReturnValue([])
+    useUIStore.setState({
+      currentWorkspace: '/workspace',
+      currentSessionId: null,
+      historySessionFile: null,
+      timelineItems: [],
+      sessionRuntimeRunning: {},
+      subagentSessionGroup: null,
+    })
+    localStorage.clear()
+  })
+
+  it('orders by the user send time and ignores the stored manual session order', () => {
+    // 旧版本把会话拖拽顺序存在这里；现在项目内固定按时间排，这个键不能再起作用。
+    localStorage.setItem('pi-desktop:session-order:/workspace', JSON.stringify([
+      '/sessions/b.jsonl',
+      '/sessions/a.jsonl',
+    ]))
+    const now = Date.now()
+    const { container } = render(
+      <ProjectSessionTree
+        workspacePath="/workspace"
+        projectSessions={[
+          // 手动顺序把 b 排前面，但 a 的用户消息更新 → a 必须在上
+          { sessionId: 'a', sessionFile: '/sessions/a.jsonl', title: 'Alpha', updatedAt: now - 60_000, lastUserMessageAt: now - 120_000, modelId: '' },
+          { sessionId: 'b', sessionFile: '/sessions/b.jsonl', title: 'Beta', updatedAt: now - 600_000, lastUserMessageAt: now - 420_000, modelId: '' },
+        ]}
+        loading={false}
+        currentWorkspace="/workspace"
+        currentSessionId={null}
+        onSessionContextMenu={vi.fn()}
+      />,
+    )
+
+    const order = Array.from(container.querySelectorAll('[data-session-file]')).map((el) =>
+      el.getAttribute('data-session-file'),
+    )
+    expect(order).toEqual(['/sessions/a.jsonl', '/sessions/b.jsonl'])
+  })
+
+  it('shows the user send time, not the moment the agent stopped writing', () => {
+    const now = Date.now()
+    render(
+      <ProjectSessionTree
+        workspacePath="/workspace"
+        projectSessions={[
+          {
+            sessionId: 'a',
+            sessionFile: '/sessions/a.jsonl',
+            title: 'Alpha',
+            // AI 一分钟前刚写完，但用户是 5 分钟前发的消息 → 显示 5 分钟
+            updatedAt: now - 60_000,
+            lastUserMessageAt: now - 300_000,
+            modelId: '',
+          },
+        ]}
+        loading={false}
+        currentWorkspace="/workspace"
+        currentSessionId={null}
+        onSessionContextMenu={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('5 min')).toBeInTheDocument()
+    expect(screen.queryByText('1 min')).toBeNull()
   })
 })

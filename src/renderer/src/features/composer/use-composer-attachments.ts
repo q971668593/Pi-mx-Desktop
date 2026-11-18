@@ -22,6 +22,21 @@ import {
   normalizeClipboardImageMime,
 } from './clipboard-paste-image'
 
+/**
+ * 什么样的拖拽算「往里放文件」：系统文件（Files）、文件树内部拖拽（自定义 MIME）、
+ * 以及资源管理器/Finder 有时只给 uri-list 的情况。
+ * 刻意不认 text/plain —— 否则把一段选中文本拖进输入框会被拦掉，反而插不进去。
+ */
+function isDroppablePayload(dt: DataTransfer | null | undefined): boolean {
+  const types = dt?.types
+  if (!types) return false
+  return (
+    types.includes('Files') ||
+    types.includes('application/x-pi-file-path') ||
+    types.includes('text/uri-list')
+  )
+}
+
 export function useComposerAttachments(opts: {
   editorRef: React.RefObject<HTMLDivElement | null>
   updateFromEditor: () => void
@@ -270,7 +285,7 @@ export function useComposerAttachments(opts: {
   const handleDragEnter = useCallback(
     (e: React.DragEvent) => {
       const dt = e.dataTransfer
-      if (!dt?.types?.includes('Files') && !dt?.types?.includes('application/x-pi-file-path')) return
+      if (!isDroppablePayload(dt)) return
       e.preventDefault()
       dragDepth.current += 1
       setIsDragActive(true)
@@ -292,7 +307,14 @@ export function useComposerAttachments(opts: {
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     const dt = e.dataTransfer
-    if (dt?.types?.includes('Files') || dt?.types?.includes('application/x-pi-file-path')) e.preventDefault()
+    if (!isDroppablePayload(dt)) return
+    e.preventDefault()
+    // 不显式给 dropEffect，Chromium 可能判成 none（内部拖拽 effectAllowed=copy 时直接不落点）
+    try {
+      dt.dropEffect = 'copy'
+    } catch {
+      /* 只读平台 */
+    }
   }, [])
 
   const handleDrop = useCallback(

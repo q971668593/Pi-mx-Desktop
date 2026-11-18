@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { symlinksSupported } from './symlink-support'
 
 const mocks = vi.hoisted(() => ({
   active: 0,
@@ -132,7 +133,7 @@ describe('R10 asynchronous ordered hunk staging', () => {
     expect(stagedFile(dir)).toContain('edited 2')
   })
 
-  it('should_serialize_writes_when_paths_alias_the_same_index_and_recover_after_failure', async () => {
+  it.skipIf(!symlinksSupported)('should_serialize_writes_when_paths_alias_the_same_index_and_recover_after_failure', async () => {
     const dir = repo()
     const alias = `${dir}-alias`
     dirs.push(alias)

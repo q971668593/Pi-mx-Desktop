@@ -62,8 +62,9 @@ export function useComposerMetrics(options?: { enabled?: boolean }) {
     }
     const now = performance.now()
     if (!streamingId) {
+      // Keep the last measured rate so an idle panel still shows how fast the run went.
       streamRef.current = { id: null, start: 0, lastLen: 0, lastAt: 0 }
-      if (!isRunning) setTps(null)
+      if (isRunning) setTps(null)
       return
     }
     const streamState = streamRef.current
@@ -84,7 +85,6 @@ export function useComposerMetrics(options?: { enabled?: boolean }) {
       streamState.lastAt = now
     }
   }, [metricsEnabled, streamingId, streamLen, isRunning])
-
   const contextUsage = contextPreview?.contextUsage
   const contextWindow = contextUsage?.contextWindow ?? catalogContextWindow
   const estimatedContextTokens = contextUsage

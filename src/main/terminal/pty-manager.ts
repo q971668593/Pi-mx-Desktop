@@ -33,16 +33,23 @@ export PS1
   }
 }
 
+/** Who opened the terminal: the user (sidebar / a task button) or the AI through desktop_terminal. */
+export type TerminalOwner = 'user' | 'ai'
+/** `busy` while a command the tool typed still runs; its completion marker flips it back to `idle`. */
+export type TerminalState = 'idle' | 'busy'
+
 export type TerminalSink = {
   data(id: string, data: string): void
   exit(id: string, code: number): void
+  /** The tool closed the terminal: the sidebar drops the pane instead of keeping the dead output. */
+  closed?(id: string): void
 }
 
 /** Output is batched this long before it crosses IPC (a `cat` of a big file would otherwise send thousands of messages). */
 const FLUSH_MS = 16
 const MAX_BATCH = 256 * 1024
 
-type Entry = { pty: PtyProcess; profile: ShellProfile; cwd: string; workspace: string; command?: string; output: string; buf: string; timer: ReturnType<typeof setTimeout> | null; ready: boolean; resized: boolean; waitForResize: boolean; pending: string[]; readyTimer: ReturnType<typeof setTimeout> | null }
+type Entry = { pty: PtyProcess; profile: ShellProfile; cwd: string; workspace: string; command?: string; output: string; buf: string; timer: ReturnType<typeof setTimeout> | null; ready: boolean; resized: boolean; waitForResize: boolean; pending: string[]; readyTimer: ReturnType<typeof setTimeout> | null; owner: TerminalOwner; state: TerminalState; markers: string[] }
 
 export class PtyManager {
   private readonly ptys = new Map<string, Entry>()
@@ -58,12 +65,13 @@ export class PtyManager {
     return this.ptys.size
   }
 
-  create(profile: ShellProfile, opts: { cwd?: string; workspace?: string; command?: string; cols: number; rows: number }): { id: string; pid: number } {
+  create(profile: ShellProfile, opts: { cwd?: string; workspace?: string; command?: string; cols: number; rows: number; owner?: TerminalOwner; markers?: string[] }): { id: string; pid: number } {
     const cwd = opts.cwd && existsSync(opts.cwd) && statSync(opts.cwd).isDirectory() ? opts.cwd : homedir()
     const env = { ...this.baseEnv(), TERM: 'xterm-256color', COLORTERM: 'truecolor', TERM_PROGRAM: 'pi-desktop' }
     const pty = this.spawn(profile.path, interactiveShellArgs(profile), { name: 'xterm-256color', cols: clampDim(opts.cols, 80), rows: clampDim(opts.rows, 24), cwd, env })
     const id = `t${++this.seq}`
-    const entry: Entry = { pty, profile, cwd, workspace: opts.workspace || cwd, command: opts.command, output: '', buf: '', timer: null, ready: false, resized: false, waitForResize: false, pending: [], readyTimer: null }
+    const markers = [...(opts.markers ?? [])]
+    const entry: Entry = { pty, profile, cwd, workspace: opts.workspace || cwd, command: opts.command, output: '', buf: '', timer: null, ready: false, resized: false, waitForResize: false, pending: [], readyTimer: null, owner: opts.owner === 'ai' ? 'ai' : 'user', state: markers.length ? 'busy' : 'idle', markers }
     this.ptys.set(id, entry)
     pty.onData((d) => {
       this.markReady(id)
@@ -77,13 +85,32 @@ export class PtyManager {
     return { id, pid: pty.pid }
   }
 
-  list(workspace: string): Array<{ id: string; cwd: string; workspace: string; profile: ShellProfile; command?: string; output: string }> {
+  list(workspace: string): Array<{ id: string; cwd: string; workspace: string; profile: ShellProfile; command?: string; output: string; owner: TerminalOwner; state: TerminalState; markers: string[] }> {
     const normalized = (value: string) => process.platform === 'win32' ? value.replace(/\\/g, '/').replace(/\/$/, '').toLowerCase() : value.replace(/\/$/, '')
-    return [...this.ptys.entries()].filter(([, entry]) => normalized(entry.workspace) === normalized(workspace)).map(([id, entry]) => ({ id, cwd: entry.cwd, workspace: entry.workspace, profile: entry.profile, command: entry.command, output: entry.output }))
+    return [...this.ptys.entries()].filter(([, entry]) => normalized(entry.workspace) === normalized(workspace)).map(([id, entry]) => ({ id, cwd: entry.cwd, workspace: entry.workspace, profile: entry.profile, command: entry.command, output: entry.output, owner: entry.owner, state: entry.state, markers: [...entry.markers] }))
   }
 
   write(id: string, data: string): void {
     this.ptys.get(id)?.pty.write(data)
+  }
+
+  /**
+   * Type a command into a terminal that is already open (the tool reuses an idle one instead of
+   * opening another) and watch for its completion marker, which clears the marker from the output.
+   */
+  send(id: string, line: string, markers: string[] = [], timeoutMs = 5000): void {
+    const entry = this.ptys.get(id)
+    if (!entry) return
+    for (const marker of markers) if (!entry.markers.includes(marker)) entry.markers.push(marker)
+    if (markers.length) entry.state = 'busy'
+    this.writeWhenReady(id, line, timeoutMs)
+  }
+
+  /** Close from the tool side: the pane goes away instead of staying as a dead terminal. */
+  close(id: string): void {
+    if (!this.ptys.has(id)) return
+    this.kill(id)
+    this.sink.closed?.(id)
   }
 
   /** Wait for the shell's first output so a launched command is not typed before it can receive input. */
@@ -132,8 +159,17 @@ export class PtyManager {
   private push(id: string, data: string): void {
     const e = this.ptys.get(id)
     if (!e) return
-    e.output = (e.output + data).slice(-32_000)
+    // Markers are matched on the unsent batch so one split across two chunks still counts.
     e.buf += data
+    let text = data
+    for (const marker of e.markers) {
+      if (!e.buf.includes(marker)) continue
+      e.state = 'idle'
+      e.buf = e.buf.split(marker).join('')
+      text = text.split(marker).join('')
+    }
+    if (text) e.output = (e.output + text).slice(-32_000)
+    if (!e.buf) return
     if (e.buf.length >= MAX_BATCH) return this.flush(id)
     if (!e.timer) e.timer = setTimeout(() => this.flush(id), FLUSH_MS)
   }

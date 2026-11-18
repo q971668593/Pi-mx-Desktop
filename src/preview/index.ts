@@ -11,6 +11,7 @@ import { probeExtensions } from '../extension-compat/extension-probe'
 import { setActiveDirResolvers } from '../extension-compat/active-dirs'
 import { prepareAdapterCatalog } from '../extension-compat/adapter-loader'
 import { listAvailableModelsWithSdk, listCatalogModelsWithSdk, type ModelEntry } from '../main/active-sdk-models-core'
+import { projectModelForPreview } from '../main/model-preview-projection'
 import { buildSessionContextPreview } from '@shared/session-context-preview'
 import type { PiSessionMessage } from '@shared/worker-message'
 import { annotateExtensionInventory } from '../main/adapter-resource-inventory'
@@ -94,17 +95,7 @@ process.parentPort.on('message', async (event: { data?: PreviewRequest } | Previ
           ? await listAvailableModelsWithSdk(sdk, agentDir)
           : await listCatalogModelsWithSdk(sdk, agentDir)
       // Plain data only: runtime model objects may carry non-cloneable members.
-      result = models.map((m) => ({
-        id: m.id,
-        name: m.name,
-        provider: m.provider,
-        contextWindow: m.contextWindow,
-        maxOutput: m.maxOutput,
-        maxTokens: m.maxTokens,
-        available: m.available,
-        managedBy: m.managedBy,
-        auth: m.auth ? JSON.parse(JSON.stringify(m.auth)) : undefined,
-      }))
+      result = models.map(projectModelForPreview)
     } else if (message.type === 'context.preview') {
       const sdk = message.activeSdkPath
         ? await import(pathToFileURL(message.activeSdkPath).href)

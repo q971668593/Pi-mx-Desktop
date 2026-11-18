@@ -1,8 +1,14 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import i18n from '@renderer/lib/i18n'
 import { StatusBar } from './status-bar'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { __resetRefreshWorkspaceSessionListsForTests } from '@renderer/lib/refresh-workspace-session-lists'
+
+// The assertions below use the English copy; the app ships Chinese by default.
+beforeAll(async () => {
+  if (i18n.language !== 'en') await i18n.changeLanguage('en')
+})
 
 const mocks = vi.hoisted(() => ({ invoke: vi.fn(), activate: vi.fn(), switchSession: vi.fn() }))
 vi.mock('@renderer/lib/ipc-client', () => ({

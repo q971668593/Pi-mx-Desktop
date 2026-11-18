@@ -78,6 +78,7 @@
   },
   "menu": {
     "preview": "预览",
+    "addToChat": "添加到对话",
     "attach": "添加到聊天",
     "copyPath": "复制路径",
     "copyRel": "复制相对路径",

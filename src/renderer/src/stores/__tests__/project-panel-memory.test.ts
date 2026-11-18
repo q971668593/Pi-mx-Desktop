@@ -12,7 +12,8 @@ describe('project panel memory', () => {
     store.setWorkspace('C:/project-a')
     store.setActivePanel('files')
     store.setWorkspace('C:/project-b')
-    expect(useUIStore.getState().activePanel).toBe('run')
+    // A project seen for the first time opens on the default panel.
+    expect(useUIStore.getState().activePanel).toBe('files')
     store.setActivePanel('terminal')
     store.setWorkspace('C:/project-a')
     expect(useUIStore.getState().activePanel).toBe('files')

@@ -1,5 +1,6 @@
 import { BrowserWindow, Notification, ipcMain, screen } from 'electron'
 import { join } from 'path'
+import { normalizeAlertSoundPreset, type AlertSoundPreset } from '@shared/alert-sound'
 import { resolveAppIcon } from './app-icon'
 import { getMainWindow } from './window'
 import { readSessionMetaFromFile } from './session-file-meta'
@@ -30,6 +31,8 @@ let hostReady = false
 let hostFailed = false
 let hoverPaused = false
 let expireTimer: ReturnType<typeof setTimeout> | null = null
+/** Sounds requested before the host page finished loading. */
+const pendingSounds: AlertSoundPreset[] = []
 const active: ActiveCard[] = []
 let listenersBound = false
 
@@ -93,6 +96,27 @@ function hideHost(): void {
   if (host && !host.isDestroyed()) host.hide()
 }
 
+function flushPendingSounds(): void {
+  if (!host || host.isDestroyed() || !hostReady || pendingSounds.length === 0) return
+  for (const preset of pendingSounds.splice(0)) host.webContents.send('notification:sound', { preset })
+}
+
+/**
+ * Plays one preset sound through the (hidden) notification host. Used for "sound only" mode and for
+ * cards that should be heard but not pop up.
+ */
+export async function playAlertSound(preset: AlertSoundPreset | string): Promise<void> {
+  const normalized = normalizeAlertSoundPreset(preset)
+  if (normalized === 'none') return
+  const ok = await createHost()
+  if (!ok || !host || host.isDestroyed()) return
+  if (!hostReady) {
+    pendingSounds.push(normalized)
+    return
+  }
+  host.webContents.send('notification:sound', { preset: normalized })
+}
+
 function ensureListeners(): void {
   if (listenersBound) return
   listenersBound = true
@@ -100,6 +124,7 @@ function ensureListeners(): void {
     if (!host || event.sender !== host.webContents) return
     hostReady = true
     sendUpdate()
+    flushPendingSounds()
     if (active.length > 0) {
       host.showInactive()
       placeHost()
@@ -225,8 +250,11 @@ export async function presentCompletionCard(card: CompletionCard, mode: Delivery
     sessionFile: card.sessionFile,
   }
   rememberNotificationTarget(card.notificationId, target)
+  const system = preferSystem(mode)
+  // One sound path for custom cards and for "sound only" mode; the OS plays its own for system ones.
+  if (card.sound && !system) void playAlertSound(card.soundPreset ?? 'chime')
 
-  if (preferSystem(mode)) {
+  if (system) {
     showSystemCard(card)
     return
   }
@@ -259,6 +287,7 @@ export function disposeCompletionDelivery(): void {
   if (expireTimer) clearTimeout(expireTimer)
   expireTimer = null
   active.length = 0
+  pendingSounds.length = 0
   hostReady = false
   hoverPaused = false
   if (host && !host.isDestroyed()) host.destroy()

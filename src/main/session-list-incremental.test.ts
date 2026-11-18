@@ -92,6 +92,23 @@ describe('listSessionsIncremental', () => {
     expect(restored?.[0]).toMatchObject({ id: 'a', messageCount: 2, firstMessage: 'hello' })
   })
 
+  it('separates the user send time from the last activity time', async () => {
+    const dir = sessionDir()
+    const file = join(dir, 's.jsonl')
+    writeFileSync(file, header('s', '2026-01-01T00:00:00.000Z') + message('user', 'hi', 1000) + message('assistant', 'long answer', 9000))
+
+    // 侧栏显示/排序用 lastUserMessageTime；modified 仍是「最后活动」，两者不能混用
+    const first = (await listSessionsIncremental(cwd, { agentDir, userDataDir }))![0]
+    expect(first.lastUserMessageTime).toBe(1000)
+    expect(+first.modified).toBe(9000)
+
+    // 增量追加路径也要累加它：用户再发 → 两个都动；只有 AI 再回 → 只有 modified 动
+    appendFileSync(file, message('user', 'again', 20000) + message('assistant', 'done', 30000))
+    const second = (await listSessionsIncremental(cwd, { agentDir, userDataDir }))![0]
+    expect(second.lastUserMessageTime).toBe(20000)
+    expect(+second.modified).toBe(30000)
+  })
+
   it('returns null when the project has no session dir (caller falls back to the SDK)', async () => {
     expect(await listSessionsIncremental('/no/such/project', { agentDir, userDataDir })).toBeNull()
   })

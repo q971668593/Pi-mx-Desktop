@@ -1,7 +1,10 @@
 import './bootstrap-path'
+import { join } from 'node:path'
 import { app, shell, type BrowserWindow, dialog, session, Menu } from 'electron'
 import { createWindow, getMainWindow } from './window'
 import { refreshGitWorkspaceWatch } from './git-workspace-watch'
+import { startModelsJsonWatch, type ModelsJsonWatch } from './models-json-watch'
+import { resolveActiveAgentDir } from './agent-dir'
 import { registerAllHandlers } from './ipc'
 import { installGitCommandLogStore } from './git-command-log-store'
 import { workerManager } from './worker-manager'
@@ -140,6 +143,19 @@ app.whenReady().then(() => {
   win.on('restore', () => notifyForegroundChanged())
   win.on('closed', disposeCompletionDelivery)
   void refreshGitWorkspaceWatch(win)
+  // models.json 被外部改动（手改 / 别的工具 / agent edit）时，正在跑的 worker 仍持旧模型表：
+  // 模型列表、上下文窗口都不会更新，重启客户端才恢复。这里重载所有 worker 并通知界面刷新。
+  modelsWatch?.stop()
+  modelsWatch = startModelsJsonWatch({
+    modelsPath: join(resolveActiveAgentDir(), 'models.json'),
+    onChange: () => {
+      void workerManager.reloadModels().catch((error) => {
+        console.warn('[models-watch] reload failed (ignored):', error)
+      })
+      const target = getMainWindow()
+      if (target) target.webContents.send('ipc:model-catalog-changed', {})
+    },
+  })
   // SDK / extension warm-up starts when the renderer reports its shell painted (app.shellReady);
   // the fallback covers a renderer that never gets there. See startup-warmup.ts.
   win.webContents.once('did-finish-load', () => scheduleStartupWarmupFallback())
@@ -171,6 +187,10 @@ app.whenReady().then(() => {
 
 let isQuittingGracefully = false
 let gracefulShutdownPromise: Promise<void> | null = null
+// 注意：这个声明必须留在 `let isQuittingGracefully` 之后 —— before-quit 里要用它，
+// 而 tray-main-lifecycle 契约测试只从 isQuittingGracefully 起截取源码在 vm 里跑。
+/** models.json 外部变更监听（启动时创建，退出时释放）。 */
+let modelsWatch: ModelsJsonWatch | null = null
 
 /**
  * Force-quit mid-stream used to kill workers before abort could write a terminal
@@ -208,6 +228,8 @@ app.on('before-quit', (event) => {
   // A running turn must get the close-decision prompt first (tray Quit / Cmd+Q).
   // Keep the tray alive while the user decides so a hidden window remains reachable.
   if (!guardAppQuit(event)) return
+  modelsWatch?.stop()
+  modelsWatch = null
   destroyAppTray()
   event.preventDefault()
   void gracefulShutdownWorkers().finally(() => {

@@ -50,6 +50,52 @@
 }
 .project-tool { position: relative; }
 .project-tool[aria-pressed='true'] { background: var(--bg-hover); color: var(--text-primary); }
+/* Switches in the section header: icon + mini track, so on/off is unmistakable. */
+.project-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding-inline: 5px;
+  border-radius: 999px;
+  color: var(--text-secondary);
+  transition: background-color 140ms ease, color 140ms ease;
+}
+.project-toggle:hover { background: var(--bg-hover); color: var(--text-primary); }
+.project-toggle[aria-checked='true'] {
+  background: color-mix(in srgb, hsl(var(--primary)) 12%, transparent);
+  color: var(--text-primary);
+}
+.project-toggle-track {
+  position: relative;
+  width: 18px;
+  height: 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-secondary) 32%, transparent);
+  transition: background-color 150ms ease;
+}
+.project-toggle[aria-checked='true'] .project-toggle-track { background: hsl(var(--primary)); }
+.project-toggle-knob {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 1px rgb(0 0 0 / 22%);
+  transition: translate 150ms cubic-bezier(.2, .75, .25, 1);
+}
+.project-toggle[aria-checked='true'] .project-toggle-knob { translate: 8px 0; }
+@media (prefers-reduced-motion: reduce) {
+  .project-toggle, .project-toggle-track, .project-toggle-knob { transition: none; }
+}
+/* Separator between the two switches and the two plain action buttons. */
+.project-tool-sep {
+  width: 1px;
+  height: 12px;
+  margin-inline: 2px;
+  background: color-mix(in srgb, var(--text-secondary) 26%, transparent);
+}
 .project-hidden-dot {
   position: absolute; top: 3px; right: 3px; width: 5px; height: 5px; border-radius: 50%;
   background: var(--text-secondary); box-shadow: 0 0 0 2px var(--bg-1);

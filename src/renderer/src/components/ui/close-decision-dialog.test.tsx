@@ -1,7 +1,13 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import '@renderer/lib/i18n'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import i18n from '@renderer/lib/i18n'
 import { CloseDecisionDialog } from './close-decision-dialog'
+
+// The assertions below use the English copy; the app ships Chinese by default.
+beforeAll(async () => {
+  if (i18n.language !== 'en') await i18n.changeLanguage('en')
+})
+
 
 const mocks = vi.hoisted(() => ({
   onCloseRequested: vi.fn(),

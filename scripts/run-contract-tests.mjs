@@ -50,6 +50,9 @@ let totalFail = 0
 let totalPass = 0
 let batchesRun = 0
 let spuriousNonZeroExits = 0
+/** 整轮结束才统一汇报：早期批次失败不应隐藏后面批次的失败。 */
+const failedFiles = []
+let failedBatches = 0
 
 for (let offset = 0; offset < files.length; offset += FILES_PER_BATCH) {
   const batch = files.slice(offset, offset + FILES_PER_BATCH)
@@ -114,12 +117,15 @@ for (let offset = 0; offset < files.length; offset += FILES_PER_BATCH) {
       if (soloBad) {
         process.stdout.write(solo.stdout || '')
         process.stderr.write(solo.stderr || '')
+        failedFiles.push(file)
         console.error(
           `[test:scripts] failing file: ${file} (status=${solo.status}, fail=${soloFail}, pass=${soloPass})`,
         )
       }
     }
-    process.exit(1)
+    // 继续跑后续批次：一次就报出全部失败文件，而不是让后续批次“看不到”。
+    failedBatches += 1
+    continue
   }
 
   if (statusFailed && !hasRealFailures) {
@@ -128,6 +134,16 @@ for (let offset = 0; offset < files.length; offset += FILES_PER_BATCH) {
       `[test:scripts] batch ${batchNumber}: node exit ${result.status} with reporter fail 0 — treating as pass`,
     )
   }
+}
+
+if (failedFiles.length > 0) {
+  console.error('')
+  console.error(
+    `[test:scripts] FAILED — ${failedFiles.length} file(s) in ${failedBatches} batch(es), ` +
+      `${files.length} files checked, pass=${totalPass}, fail=${totalFail}`,
+  )
+  for (const file of failedFiles) console.error(`  - ${file}`)
+  process.exit(1)
 }
 
 console.log(

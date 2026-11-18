@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { symlinksSupported } from './__tests__/symlink-support'
 import { mkdtemp, mkdir, writeFile, rm, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -27,7 +28,7 @@ describe('independent readonly panel', () => {
     await declaration('../outside.json')
     await expect(resolveSidePanelState('local.tasks', cwd, cwd)).resolves.toMatchObject({ ok: false, error: 'outside_workspace' })
   })
-  it('should_reject_symlink_when_data_file_points_outside_project', async () => {
+  it.skipIf(!symlinksSupported)('should_reject_symlink_when_data_file_points_outside_project', async () => {
     await writeFile(join(dirs.root, 'outside.json'), '{}')
     await symlink(join(dirs.root, 'outside.json'), join(cwd, 'linked.json'))
     await declaration('linked.json')

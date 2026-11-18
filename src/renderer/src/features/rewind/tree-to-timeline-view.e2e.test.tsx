@@ -1,4 +1,4 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react'
+import { fireEvent, render, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TreePanel } from './tree-panel'
 import { Timeline } from '../timeline/timeline'
@@ -60,30 +60,23 @@ beforeEach(() => {
   vi.mocked(ipcClient.invoke).mockClear()
 })
 
-describe('tree click → view event → timeline reveal (end to end)', () => {
-  it('single click on a user row scrolls the timeline to that message', async () => {
+// The tree used to jump the timeline on a single click; it now opens the node detail dialog, and
+// the conversation only moves when one of the dialog actions (Continue / Ask again / Fork) is used.
+describe('tree click → node detail (end to end)', () => {
+  it('single click on a user row opens the node detail without moving the timeline', async () => {
+    const orig = Element.prototype.scrollIntoView
     const scrollIntoView = vi.fn()
     Element.prototype.scrollIntoView = scrollIntoView as unknown as (arg?: boolean | ScrollIntoViewOptions) => void
-    const orig = Element.prototype.scrollIntoView
     try {
+      const tree = render(<TreePanel />)
       render(<Timeline />)
-      render(<TreePanel />)
 
-      fireEvent.click(screenTreeRow('message-5'))
-      await waitFor(() => expect(scrollIntoView).toHaveBeenCalled(), { timeout: 2000 })
-
-      const target = scrollIntoView.mock.contexts[0] as HTMLElement
-      expect(target?.dataset?.sessionEntryId).toBe('entry-5')
+      // The timeline also renders the conversation; scope the query to the tree panel.
+      fireEvent.click(within(tree.container).getByRole('button', { name: /message-5\b/i }))
+      await waitFor(() => expect(document.querySelector('[data-session-node-detail]')).not.toBeNull())
+      expect(scrollIntoView).not.toHaveBeenCalled()
     } finally {
       Element.prototype.scrollIntoView = orig
     }
   })
 })
-
-function screenTreeRow(text: string): HTMLElement {
-  const buttons = document.querySelectorAll('button')
-  for (const b of buttons) {
-    if ((b.textContent ?? '').trim() === text) return b as HTMLElement
-  }
-  throw new Error(`row not found: ${text}`)
-}

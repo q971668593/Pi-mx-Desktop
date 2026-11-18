@@ -1,4 +1,5 @@
 import Store from 'electron-store'
+import { DEFAULT_ALERT_SOUND_PRESET, type AlertSoundPreset } from '@shared/alert-sound'
 import type { AsrConfig } from '@shared/asr-types'
 import type { BackgroundSettings } from '@shared/background'
 import type { CustomCssOverride, CustomTheme } from '@shared/custom-theme'
@@ -52,6 +53,8 @@ export interface StoreSchema {
   ignoredUpdateVersion: string
   /** 全局：用户提醒是否播放提示音 */
   alertSoundEnabled: boolean
+  /** 提示音预设（设置里可选，见 @shared/alert-sound） */
+  alertSoundPreset: AlertSoundPreset
   /** 全局：用户提醒是否使用系统通知 */
   alertNotificationEnabled: boolean
   /** 扩展弹窗需用户作答时提醒 */
@@ -95,7 +98,7 @@ export interface StoreSchema {
   /** Bridge to the user's own Chrome (pi extension over a local WebSocket). */
   browserChromeBridge: { enabled: boolean; port: number; token: string }
   browserDownloadConnections: number
-  /** Composer Tools menu: capabilities switched on per session file (absent = all off). */
+  /** Composer Tools menu: capabilities switched on per session file (absent = the default, built-in browser on). */
   sessionCapabilities: Record<string, import('@shared/capabilities').CapabilityId[]>
   /** Model used by desktop helpers (Git messages, task detection). Null until chosen in Settings. */
   pluginModel: { provider: string; modelId: string; thinkingLevel?: import('@shared/model-thinking-levels').ModelThinkingLevel } | null
@@ -145,6 +148,7 @@ const store = new Store<StoreSchema>({
     lastUpdateCheckAt: 0,
     ignoredUpdateVersion: '',
     alertSoundEnabled: true,
+    alertSoundPreset: DEFAULT_ALERT_SOUND_PRESET,
     alertNotificationEnabled: true,
     alertOnExtensionUi: true,
     alertOnRunIdle: true,

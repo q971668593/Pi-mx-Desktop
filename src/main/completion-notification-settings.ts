@@ -4,6 +4,7 @@ import {
   normalizeCompletionTimeoutSeconds,
   normalizeDndUntil,
 } from '@shared/completion-preview'
+import { normalizeAlertSoundPreset } from '@shared/alert-sound'
 import { configStore } from './config-store'
 import type { CompletionNotificationSettings } from './completion-notification-controller'
 
@@ -11,6 +12,7 @@ export function readCompletionNotificationSettings(now = Date.now()): Completion
   const language = configStore.get('language') === 'en' ? 'en' : 'zh'
   return {
     soundEnabled: configStore.get('alertSoundEnabled') !== false,
+    soundPreset: normalizeAlertSoundPreset(configStore.get('alertSoundPreset')),
     notificationEnabled: configStore.get('alertNotificationEnabled') !== false,
     alertOnRunIdle: configStore.get('alertOnRunIdle') !== false,
     alertOnBackgroundRunIdle: configStore.get('alertOnBackgroundRunIdle') === true,

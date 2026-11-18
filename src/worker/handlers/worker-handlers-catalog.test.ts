@@ -53,14 +53,14 @@ describe('worker model catalog handlers', () => {
     expect(reloadReply).toHaveBeenCalledWith({ type: 'reloadModels-done', ok: true })
     expect(listReply).toHaveBeenCalledWith({
       type: 'getModels-done',
-      models: [{
+      models: [expect.objectContaining({
         id: 'gpt/new',
         name: 'GPT New',
         provider: 'openai',
         contextWindow: 0,
         maxOutput: 0,
         available: true,
-      }],
+      })],
     })
   })
 

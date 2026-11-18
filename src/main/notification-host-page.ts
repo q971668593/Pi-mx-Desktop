@@ -1,3 +1,5 @@
+import { ALERT_SOUND_TONES } from '@shared/alert-sound'
+
 /** Sandboxed notification host. No nodeIntegration; talks only via preload action ids. */
 export function notificationHostPageHtml(): string {
   return `<!doctype html>
@@ -125,30 +127,39 @@ export function notificationHostPageHtml(): string {
   <script>
     const api = window.piNotify
     const stack = document.getElementById('stack')
-    const playedSoundIds = new Set()
-    function beep() {
-      try {
-        const Ctx = window.AudioContext || window.webkitAudioContext
-        if (!Ctx) return
-        const ctx = new Ctx()
+    const TONES = ${JSON.stringify(ALERT_SOUND_TONES)}
+    let audioCtx = null
+    function context() {
+      if (audioCtx) return audioCtx
+      const Ctx = window.AudioContext || window.webkitAudioContext
+      if (!Ctx) return null
+      audioCtx = new Ctx()
+      return audioCtx
+    }
+    /** Same tones as the app (settings preview uses the identical table). */
+    function play(preset) {
+      const tones = TONES[preset]
+      const ctx = context()
+      if (!tones || !ctx) return
+      if (ctx.state === 'suspended') void ctx.resume()
+      const start = ctx.currentTime
+      for (const tone of tones) {
         const osc = ctx.createOscillator()
         const gain = ctx.createGain()
-        osc.type = 'sine'
-        osc.frequency.value = 880
-        gain.gain.setValueAtTime(0.0001, ctx.currentTime)
-        gain.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.01)
-        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.16)
+        osc.type = tone.w || 'sine'
+        osc.frequency.value = tone.f
+        const t0 = start + tone.t
+        const peak = tone.g || 0.08
+        gain.gain.setValueAtTime(0.0001, t0)
+        gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.012)
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + tone.d)
         osc.connect(gain)
         gain.connect(ctx.destination)
-        osc.start()
-        osc.stop(ctx.currentTime + 0.18)
-      } catch (e) {}
+        osc.start(t0)
+        osc.stop(t0 + tone.d + 0.02)
+      }
     }
     function render(cards) {
-      const visibleIds = new Set(cards.map((card) => card.notificationId))
-      for (const id of playedSoundIds) {
-        if (!visibleIds.has(id)) playedSoundIds.delete(id)
-      }
       stack.replaceChildren()
       for (const card of cards) {
         const el = document.createElement('article')
@@ -180,13 +191,10 @@ export function notificationHostPageHtml(): string {
         el.addEventListener('mouseenter', () => api.hover(true))
         el.addEventListener('mouseleave', () => api.hover(false))
         stack.append(el)
-        if (card.sound && !playedSoundIds.has(card.notificationId)) {
-          playedSoundIds.add(card.notificationId)
-          beep()
-        }
       }
     }
     api.onFocus(() => stack.querySelector('.card:last-child .open')?.focus())
+    api.onSound((preset) => play(preset))
     api.onUpdate(render)
     api.ready()
   </script>

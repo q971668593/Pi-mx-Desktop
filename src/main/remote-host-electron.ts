@@ -8,7 +8,8 @@ import { normalizeSessionFileKey } from '@shared/session-file-key'
 import { normalizeCapabilities } from '@shared/capabilities'
 import { wslPathToWindows } from '@shared/wsl-path'
 import { findAdapterByTool } from '../extension-compat/adapter-loader'
-import { capabilityCatalog, capabilitySectionMap, capabilityToolFamilies } from './capabilities/catalog'
+import { capabilityCatalog } from './capabilities/catalog'
+import { applySessionCapabilities, storedCapabilities } from './capabilities/session-apply'
 import { readRemoteAttachment, writeRemoteAttachment } from './clipboard-temp-images'
 import { configStore } from './config-store'
 import { getSessionLeafOverride, setSessionLeafOverride } from './session-leaf-override'
@@ -29,7 +30,6 @@ import { sessionUsage } from './usage-scan'
 import { getMainWindow } from './window'
 import { workerManager } from './worker-manager'
 import { getAgentRuntimeConfig } from './wsl/runtime-config'
-import { noteBrowserTarget } from './browser/targets'
 
 /**
  * Electron implementation of the remote gateway's port. Reads go through the same registered
@@ -146,8 +146,8 @@ export function createElectronRemoteHost(): RemoteHostPort {
       // A session created from the phone has a live worker but no file until its first reply:
       // re-loading it would read a missing header, so only cold sessions go through loadSession.
       if (!workerManager.hasLiveSessionWorker(sessionFile)) await workerManager.loadSession(sessionFile, { cwd: projectId })
-      noteBrowserTarget(sessionFile, capabilities)
-      await workerManager.setCapabilities(capabilitySectionMap(capabilities), capabilityToolFamilies(capabilities), sessionFile)
+      // The list is already resolved (stored switches or the desktop default) by the caller.
+      await applySessionCapabilities(sessionFile, capabilities)
       if (mode === 'steer') await workerManager.steer(text, sessionFile)
       else if (mode === 'followUp') await workerManager.followUp(text, sessionFile)
       else await workerManager.sendPrompt(text, sessionFile)
@@ -315,13 +315,12 @@ export function createElectronRemoteHost(): RemoteHostPort {
     },
 
     capabilityCatalog,
-    sessionCapabilities: (sessionFile) => normalizeCapabilities(configStore.get('sessionCapabilities')?.[normalizeSessionFileKey(sessionFile)]),
+    sessionCapabilities: (sessionFile) => storedCapabilities(sessionFile),
     setSessionCapabilities(sessionFile: string, ids: string[]): void {
       const key = normalizeSessionFileKey(sessionFile)
       const all = { ...(configStore.get('sessionCapabilities') || {}) }
-      const caps = normalizeCapabilities(ids)
-      delete all[key]
-      if (caps.length) all[key] = caps
+      // An empty list is a remembered "all off", not "never touched" — keep it.
+      all[key] = normalizeCapabilities(ids)
       configStore.set('sessionCapabilities', Object.fromEntries(Object.entries(all).slice(-MAX_REMEMBERED_CAPABILITIES)))
     },
 

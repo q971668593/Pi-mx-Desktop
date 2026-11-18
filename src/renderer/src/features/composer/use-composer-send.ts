@@ -65,6 +65,14 @@ export function useComposerSend(opts: {
           toast.message(t('composer:toast.completeExtensionFirst'))
           return
         }
+        // 压缩上下文期间 worker 不接受新 prompt：在这里拦下并保留输入，
+        // 否则会出现“消息看着发出去了、却弹一个报错、文字还得重输”。
+        const compactionStore = useUIStore.getState()
+        const compactionKey = compactionStore.historySessionFile
+        if (compactionKey && compactionStore.compactingSessions[compactionKey]) {
+          toast.message(t('composer:toast.compactingWait'))
+          return
+        }
         const el = editorRef.current
         if (!el) return
         const { displayText, payload, attachments: atts, segments } = serializeRichInput(el)

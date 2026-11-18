@@ -1,11 +1,15 @@
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { extractTextFromToolOutput } from '@extension-compat/json-path'
+import { cn } from '@renderer/lib/utils'
 import { formatThinkingChip } from '@renderer/lib/format-run-display'
 import {
   Wrench,
   AlertTriangle,
+  ChevronDown,
 } from '@renderer/components/icons'
+import type { TimelineItem } from '@renderer/stores/ui-store-types'
 import { useComposerMetrics } from '@renderer/features/composer/use-composer-metrics'
 import {
   ContextDonutChart,
@@ -23,6 +27,22 @@ function formatDuration(ms: number): string {
 
 function formatWaitDuration(ms: number): string {
   return ms < 10_000 ? `${(ms / 1000).toFixed(1)}s` : formatDuration(ms)
+}
+
+const TOOL_ERROR_PREVIEW_CHARS = 800
+const NO_TOOLS: TimelineItem[] = []
+
+/** Failed tool calls of the run that reported errorCount (read on demand — the panel must not re-render per stream token). */
+function collectFailedTools(items: TimelineItem[], runId: string | undefined): TimelineItem[] {
+  return items.filter((item) => item.type === 'tool-call' && item.isError && (!runId || item.runId === runId))
+}
+
+/** One failed tool call of the current run, with the message the agent saw. */
+function failedToolMessage(item: TimelineItem): string {
+  const text = extractTextFromToolOutput(item.toolOutput).trim()
+  const message = text || (item.toolStatusLine ? String(item.toolStatusLine).trim() : '')
+  if (!message) return ''
+  return message.length > TOOL_ERROR_PREVIEW_CHARS ? `${message.slice(0, TOOL_ERROR_PREVIEW_CHARS)}…` : message
 }
 
 type RunVisualStatus = 'idle' | 'running' | 'failed' | 'tool' | 'thinking'
@@ -47,6 +67,7 @@ export function RunPanel() {
   const model = runState.model
   const thinkingLevel = runState.thinkingLevel
   const [tick, setTick] = useState(0)
+  const [errorsOpen, setErrorsOpen] = useState(false)
   const metrics = useComposerMetrics()
 
   useEffect(() => {
@@ -74,6 +95,13 @@ export function RunPanel() {
   })
   const tokPerSec =
     metrics.tps != null && metrics.tps > 0 ? Math.round(metrics.tps / 4) : null
+  /** Live rate while streaming, last measured rate once the run is over. */
+  const speedLabel =
+    tokPerSec != null
+      ? `~${tokPerSec} tok/s`
+      : isRunning
+        ? t('run:waitingOutput')
+        : '—'
 
   const roleSlices = useMemo(
     () =>
@@ -84,6 +112,11 @@ export function RunPanel() {
       ),
     [metrics.contextPreview],
   )
+
+  // Failed tool calls belong to the run that reported errorCount, so match on its id.
+  const failedTools = errorsOpen
+    ? collectFailedTools(useUIStore.getState().timelineItems, runState.activeRunId ?? runState.lastRunId)
+    : NO_TOOLS
 
   const freeTokens =
     metrics.contextWindow != null && metrics.estContextTokens != null
@@ -122,6 +155,9 @@ export function RunPanel() {
             <span className="text-[11px] tabular-nums text-foreground-secondary">{elapsedLabel}</span>
           ) : null}
         </div>
+        {visualStatus === 'idle' ? (
+          <p className="mt-1 text-[11px] text-foreground-secondary/85">{t('run:status.idleHint')}</p>
+        ) : null}
         <div className="mt-1.5 flex min-w-0 items-center gap-1.5 text-[12px]">
           {model ? (
             <span className="min-w-0 truncate" title={model}>
@@ -136,6 +172,27 @@ export function RunPanel() {
           ) : null}
         </div>
         <dl className="mt-2">
+          <div className="panel-kv">
+            <dt title={t('run:genSpeedHint')}>{t('run:genSpeed')}</dt>
+            <dd title={t('run:genSpeedHint')}>{speedLabel}</dd>
+          </div>
+          {runState.usage ? (
+            <div className="panel-kv">
+              <dt>{t('run:output')}</dt>
+              <dd>
+                {runState.usage.output.toLocaleString()} {t('run:metrics.tokens')}
+              </dd>
+            </div>
+          ) : null}
+          {metrics.estContextTokens != null ? (
+            <div className="panel-kv">
+              <dt>{t('run:metrics.budget')}</dt>
+              <dd>
+                {metrics.formatTokens(metrics.estContextTokens)}
+                {metrics.ctxPct != null ? ` · ${metrics.ctxPct.toFixed(0)}%` : ''}
+              </dd>
+            </div>
+          ) : null}
           <div className="panel-kv"><dt>{t('run:firstOutputWait')}</dt><dd>{runState.firstOutputDelayMs != null ? formatWaitDuration(runState.firstOutputDelayMs) : isRunning ? t('run:waitingOutput') : '—'}</dd></div>
         </dl>
         {isRunning && runState.activeTool && (
@@ -149,11 +206,46 @@ export function RunPanel() {
             </div>
           </div>
         )}
-        {/* Soft tool-error chip — muted amber, not destructive red banner */}
+        {/* Soft tool-error chip — muted amber, not destructive red banner; expands to the concrete messages */}
         {runState.errorCount > 0 && (
-          <div className="mt-2 flex items-center gap-1.5 rounded-md bg-amber-500/[0.08] px-2 py-1 text-[11px] text-amber-800/90 dark:text-amber-200/85">
-            <AlertTriangle className="h-3 w-3 shrink-0 opacity-70" />
-            <span className="leading-snug">{t('run:tokenError', { count: runState.errorCount })}</span>
+          <div className="mt-2 rounded-md bg-amber-500/[0.08] text-[11px] text-amber-800/90 dark:text-amber-200/85">
+            <button
+              type="button"
+              onClick={() => setErrorsOpen((open) => !open)}
+              aria-expanded={errorsOpen}
+              title={errorsOpen ? t('run:toolErrorsHide') : t('run:toolErrorsShow')}
+              className="flex w-full items-center gap-1.5 px-2 py-1 text-left"
+            >
+              <AlertTriangle className="h-3 w-3 shrink-0 opacity-70" />
+              <span className="min-w-0 flex-1 leading-snug">{t('run:tokenError', { count: runState.errorCount })}</span>
+              <span className="shrink-0 text-[10px] opacity-70">{errorsOpen ? t('run:toolErrorsHide') : t('run:toolErrorsShow')}</span>
+              <ChevronDown className={cn('h-3 w-3 shrink-0 opacity-60 transition-transform', errorsOpen && 'rotate-180')} />
+            </button>
+            {errorsOpen ? (
+              <ul className="space-y-1.5 border-t border-amber-500/20 px-2 py-1.5">
+                {failedTools.length === 0 ? (
+                  <li className="leading-snug opacity-80">{t('run:toolErrorsUnavailable')}</li>
+                ) : (
+                  failedTools.map((tool) => {
+                    const message = failedToolMessage(tool)
+                    return (
+                      <li key={tool.id} className="min-w-0">
+                        <div className="truncate font-mono text-[10px] text-foreground/90">{tool.toolName || t('run:toolLabel')}</div>
+                        <p
+                          title={message}
+                          className={cn(
+                            'mt-0.5 max-h-24 overflow-y-auto whitespace-pre-wrap break-words font-mono text-[10px] leading-snug',
+                            message ? 'text-destructive/90' : 'text-foreground-secondary',
+                          )}
+                        >
+                          {message || t('run:toolErrorUnknown')}
+                        </p>
+                      </li>
+                    )
+                  })
+                )}
+              </ul>
+            ) : null}
           </div>
         )}
       </section>
@@ -179,20 +271,12 @@ export function RunPanel() {
         ) : (
           <p className="text-[12px] leading-relaxed text-foreground-secondary">{t('run:contextEmpty')}</p>
         )}
-        {tokPerSec != null || isRunning || runState.toolCount > 0 ? (
+        {runState.toolCount > 0 ? (
           <dl className="mt-2">
-            {tokPerSec != null || isRunning ? (
-              <div className="panel-kv">
-                <dt title={t('run:genSpeedHint')}>{t('run:genSpeed')}</dt>
-                <dd title={t('run:genSpeedHint')}>{tokPerSec != null ? `~${tokPerSec} tok/s` : t('run:waitingOutput')}</dd>
-              </div>
-            ) : null}
-            {runState.toolCount > 0 ? (
-              <div className="panel-kv">
-                <dt>{t('run:toolLabel')}</dt>
-                <dd>{runState.toolCount}</dd>
-              </div>
-            ) : null}
+            <div className="panel-kv">
+              <dt>{t('run:toolLabel')}</dt>
+              <dd>{runState.toolCount}</dd>
+            </div>
           </dl>
         ) : null}
       </section>

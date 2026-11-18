@@ -18,6 +18,9 @@ export type SessionItem = {
   firstMessage?: string
   workspaceId?: string
   updatedAt: number
+  /** User's newest send time. Sidebar order and "N 分钟前" use this — never the assistant's
+   *  last activity, which would keep resetting the label while the agent is still working. */
+  lastUserMessageAt?: number
   messageCount?: number
   modelId: string
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DRAFT_CAPABILITY_KEY,
   adoptDraftCapabilities,
+  capabilitiesFor,
   currentSessionCapabilities,
   onCapabilityKeyChange,
   setSessionCapability,
@@ -13,19 +14,27 @@ import { useBrowserStore } from '@renderer/features/browser/browser-store'
 import { useUIStore } from '@renderer/stores/ui-store'
 
 describe('session capabilities', () => {
-  it('switches capabilities per session and drops empty lists (default off)', () => {
+  it('starts from the built-in browser and keeps an explicit "all off"', () => {
+    // Nothing stored yet: the conversation runs the built-in browser.
+    expect(capabilitiesFor({}, '/a.jsonl')).toEqual(['browser'])
     let byKey = toggleCapabilityIn({}, '/a.jsonl', 'pi-ui', true)
     byKey = toggleCapabilityIn(byKey, '/a.jsonl', 'pi-ui', true)
-    expect(byKey).toEqual({ '/a.jsonl': ['pi-ui'] })
-    expect(byKey['/b.jsonl']).toBeUndefined()
-    expect(toggleCapabilityIn(byKey, '/a.jsonl', 'pi-ui', false)).toEqual({})
+    expect(byKey).toEqual({ '/a.jsonl': ['browser', 'pi-ui'] })
+    // Turning everything off is remembered, not treated as "never touched".
+    expect(toggleCapabilityIn(byKey, '/a.jsonl', 'browser', false)).toEqual({ '/a.jsonl': ['pi-ui'] })
+    expect(toggleCapabilityIn({ '/a.jsonl': ['pi-ui'] }, '/a.jsonl', 'pi-ui', false)).toEqual({ '/a.jsonl': [] })
+    expect(capabilitiesFor({ '/a.jsonl': [] }, '/a.jsonl')).toEqual([])
+    expect(capabilitiesFor({ '/a.jsonl': ['pi-ui'] }, '/a.jsonl')).toEqual(['pi-ui'])
+    expect(capabilitiesFor({}, '/b.jsonl')).toEqual(['browser'])
   })
 
-  it('moves draft switches to the new session once', () => {
+  it('moves draft switches to the new session once, including an explicit off', () => {
     const byKey = { [DRAFT_CAPABILITY_KEY]: ['pi-ui' as const] }
     expect(adoptDraftCapabilities(byKey, '/new.jsonl')).toEqual({ '/new.jsonl': ['pi-ui'] })
     expect(adoptDraftCapabilities({ ...byKey, '/new.jsonl': ['browser' as const] }, '/new.jsonl')).toBeNull()
     expect(adoptDraftCapabilities({}, '/new.jsonl')).toBeNull()
+    // A draft where the browser was switched off keeps that choice for its session.
+    expect(adoptDraftCapabilities({ [DRAFT_CAPABILITY_KEY]: [] }, '/off.jsonl')).toEqual({ '/off.jsonl': [] })
   })
 
   it('keeps draft switches only for the session the draft just became', () => {
@@ -49,7 +58,14 @@ describe('session capabilities', () => {
     useUIStore.setState({ historySessionFile: null })
   })
 
-  it('auto-attaches built-in browser capability when the project already has browser tabs unless explicitly turned off', () => {
+  it('a new conversation carries the built-in browser without any switch being touched', () => {
+    useSessionCapabilitiesStore.setState({ byKey: {} })
+    useUIStore.setState({ currentWorkspace: 'F:\\proj\\demo', historySessionFile: '/fresh.jsonl' })
+    expect(currentSessionCapabilities()).toEqual(['browser'])
+    useUIStore.setState({ currentWorkspace: null, historySessionFile: null })
+  })
+
+  it('auto-attaches built-in browser capability when the project already has tabs, unless the switch was turned off', () => {
     useSessionCapabilitiesStore.setState({ byKey: {} })
     useUIStore.setState({ currentWorkspace: 'F:\\proj\\demo', historySessionFile: '/with-tab.jsonl' })
     const projectKey = projectBrowserSessionKey('F:\\proj\\demo')
@@ -70,19 +86,17 @@ describe('session capabilities', () => {
       order: ['t1'],
       activeTabId: 't1',
     })
+    // Untouched sessions follow the project's tabs.
     expect(currentSessionCapabilities()).toEqual(['browser'])
-
-    // Another conversation of the same project shares the tabs, so it keeps the capability
     useUIStore.setState({ historySessionFile: '/other-conversation.jsonl' })
     expect(currentSessionCapabilities()).toEqual(['browser'])
 
-    // Explicit off for the current conversation is respected
+    // Explicit off for the current conversation is respected even though tabs are open
     setSessionCapability('/other-conversation.jsonl', 'browser', false)
     expect(currentSessionCapabilities()).toEqual([])
-
-    // A different workspace without tabs stays off
-    useUIStore.setState({ currentWorkspace: 'F:\\proj\\empty', historySessionFile: '/fresh.jsonl' })
-    expect(currentSessionCapabilities()).toEqual([])
+    // …and a different conversation of the same project still has it on
+    useUIStore.setState({ historySessionFile: '/third.jsonl' })
+    expect(currentSessionCapabilities()).toEqual(['browser'])
 
     useBrowserStore.setState({ tabs: {}, order: [], activeTabId: null })
     useUIStore.setState({ currentWorkspace: null })

@@ -43,10 +43,12 @@ describe('chat image gallery', () => {
     await waitFor(() => expect(invoke.mock.calls.some(([method]) => method === 'clipboard.copyImageFile')).toBe(true))
   })
 
-  it('shows an image returned inside a collapsed tool result', async () => {
+  it('shows an image returned by a tool without expanding the row, and only once when expanded', async () => {
     render(<ToolCallRow item={{ id: 'tool-1', toolName: 'generate_image', toolOutput: JSON.stringify({ content: [{ type: 'text', text: `saved ${image}` }] }) }} />)
-    fireEvent.click(screen.getByRole('button'))
+    // 生图工具/read 的产出必须折叠状态下就能看到（旧行为要展开才显示，且 read 永远不显示）
     expect(await screen.findByRole('img')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { expanded: false }))
+    expect(screen.getAllByRole('img')).toHaveLength(1)
   })
 
   it('adds an annotation directly to the composer with its preview', async () => {

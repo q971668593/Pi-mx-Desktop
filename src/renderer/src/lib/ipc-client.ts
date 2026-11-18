@@ -19,6 +19,7 @@ declare global {
       onAppUpdateAvailable: (callback: (info: AppUpdateAvailableInfo) => void) => () => void
       onAppUpdateDownloadProgress?: (callback: (info: AppUpdateDownloadProgress) => void) => () => void
       onGitWorkspaceChanged: (callback: (payload: { cwd: string }) => void) => () => void
+      onModelCatalogChanged?: (callback: () => void) => () => void
       onBrowserEvent?: (callback: (event: BrowserEvent) => void) => () => void
       onCloseRequested?: (callback: (info: { isStreaming: boolean; terminals?: number }) => void) => () => void
       onNotificationOpenSession?: (
@@ -34,6 +35,8 @@ declare global {
       onTerminalData?: (callback: (payload: { id: string; data: string }) => void) => () => void
       onTerminalCreated?: (callback: (payload: { id: string; cwd: string; workspace: string; profile: import('@renderer/features/terminal/terminal-store').ShellProfile; previous?: string; task?: import('@renderer/features/terminal/terminal-store').TerminalTask }) => void) => () => void
       onTerminalExit?: (callback: (payload: { id: string; code: number }) => void) => () => void
+      onTerminalClosed?: (callback: (payload: { id: string }) => void) => () => void
+      onTerminalReveal?: (callback: (payload: { id: string; workspace: string }) => void) => () => void
       ping: () => string
     }
   }
@@ -102,6 +105,12 @@ export function onAppUpdateDownloadProgress(
 export function onGitWorkspaceChanged(callback: (payload: { cwd: string }) => void): () => void {
   if (!window.piDesktop) return () => {}
   return window.piDesktop.onGitWorkspaceChanged(callback)
+}
+
+/** models.json 被外部改动（手改/别的工具）后，主进程重载了 worker 并发来这个事件。 */
+export function onModelCatalogChanged(callback: () => void): () => void {
+  if (!window.piDesktop?.onModelCatalogChanged) return () => {}
+  return window.piDesktop.onModelCatalogChanged(callback)
 }
 
 export function onCloseRequested(

@@ -41,6 +41,13 @@ const MANUAL_PROJECT_ORDER_KEY = 'pi-desktop:project-manual-order'
 /** 展开的项目（记住用户手动的展开/折叠，重启后还原，应用自己不会折叠） */
 const EXPANDED_PROJECTS_KEY = 'pi-desktop:expanded-projects'
 
+type SessionsByWorkspace = Record<string, SessionItem[]>
+/**
+ * 按项目缓存的会话列表必须跨侧栏卸载存活：进入设置页会卸载整棵侧栏，返回后若从空表重建，
+ * 已展开的项目（展开状态存在 localStorage）会一直渲染成“无会话”，直到再点一次该项目。
+ */
+const sessionsByWorkspaceCache: SessionsByWorkspace = {}
+
 function readPathList(key: string): string[] {
   try {
     const value: unknown = JSON.parse(localStorage.getItem(key) || '[]')
@@ -85,7 +92,21 @@ export function ProjectSidebar({
   const sessionsWorkspace = useUIStore((s) => s.sessionsWorkspace)
   const currentKey = workspacePathKey(currentWorkspace)
   const currentSessionId = useUIStore((s) => s.currentSessionId)
-  const [sessionsByWorkspace, setSessionsByWorkspace] = useState<Record<string, SessionItem[]>>({})
+  const [sessionsByWorkspace, setSessionsByWorkspaceState] = useState<SessionsByWorkspace>(() => ({ ...sessionsByWorkspaceCache }))
+  const setSessionsByWorkspace = useCallback(
+    (updater: (previous: SessionsByWorkspace) => SessionsByWorkspace) => {
+      setSessionsByWorkspaceState((previous) => {
+        const next = updater(previous)
+        if (next === previous) return previous
+        for (const key of Object.keys(sessionsByWorkspaceCache)) delete sessionsByWorkspaceCache[key]
+        Object.assign(sessionsByWorkspaceCache, next)
+        return next
+      })
+    },
+    [],
+  )
+  /** 本次挂载里已请求过（含失败）的项目，避免补拉失败时反复重试。 */
+  const prefetchedProjectSessions = useRef<Set<string>>(new Set())
   const [loadingSessionPaths, setLoadingSessionPaths] = useState<Set<string>>(() => new Set())
   const [sessionErrors, setSessionErrors] = useState<Record<string, string>>({})
   const [repositoryOpen, setRepositoryOpen] = useState<Record<string, boolean>>({})
@@ -498,12 +519,28 @@ export function ProjectSidebar({
   const mergedSessionsByWorkspace = useMemo(() => {
     const next = { ...sessionsByWorkspace }
     if (currentWorkspace && !isSandboxPath(currentWorkspace)) {
-      if (sessions.length > 0 || workspacePathsEqual(sessionsWorkspace, currentWorkspace)) {
+      // 空列表不覆盖已有缓存：setSessions([]) 只说明“当前没有已加载的列表”
+      // （例如 SDK 运行时变更后先清空再重拉），不代表项目真的没有会话。
+      if (sessions.length > 0) {
         next[currentKey] = sessions
       }
     }
     return next
-  }, [sessionsByWorkspace, currentWorkspace, currentKey, sessionsWorkspace, sessions])
+  }, [sessionsByWorkspace, currentWorkspace, currentKey, sessions])
+
+  // 侧栏整体重建后（进入设置页返回、界面刷新等）只补当前项目是不够的：
+  // 已展开但没有缓存的项目必须补拉一次，否则会显示“无会话”。
+  useEffect(() => {
+    if (searchActive) return
+    for (const path of diskPaths) {
+      const key = workspacePathKey(path)
+      if (!expandedPaths.has(key)) continue
+      if (key in sessionsByWorkspace || loadingSessionPaths.has(key)) continue
+      if (prefetchedProjectSessions.current.has(key)) continue
+      prefetchedProjectSessions.current.add(key)
+      void loadWorkspaceSessions(path)
+    }
+  }, [diskPaths, expandedPaths, sessionsByWorkspace, loadingSessionPaths, loadWorkspaceSessions, searchActive])
 
   const visiblePaths = searchActive
     ? diskPaths.filter((path) => (sessionScope === 'all' || workspacePathsEqual(path, currentWorkspace))
@@ -541,7 +578,8 @@ export function ProjectSidebar({
           else next.add(key)
           return next
         })
-        if (willExpand && !(key in mergedSessionsByWorkspace)) void loadWorkspaceSessions(path)
+        // 缓存为空同样要重拉：空白名单可能来自一次失败的列表请求，不能就此定格成“无会话”。
+        if (willExpand && !mergedSessionsByWorkspace[key]?.length) void loadWorkspaceSessions(path)
       }}
       onNewSession={() => void handleNewSessionInProject(path)}
       dragSource={!searchActive && sortKey ? { draggable: true, onDragStart: (event) => projectDrag.start(event, sortKey, 'projects'), onDragEnd: projectDrag.end } : undefined}
@@ -696,9 +734,33 @@ export function ProjectSidebar({
       <div className="mt-3 px-3" hidden={searchActive && visiblePaths.length === 0}>
         <div className="sidebar-section-head">
           <span className="sidebar-section-title flex-1 px-1">{t('common:sidebar.projects')}</span>
-          <button type="button" className="sidebar-section-action project-tool" aria-pressed={titleFollowsLatest} title={titleFollowsLatest ? '对话名跟随最新消息：开 · 点击关闭' : '对话名跟随最新消息：关 · 点击开启'} aria-label="切换对话名跟随最新消息" onClick={() => { const next = !titleFollowsLatest; setTitleFollowsLatestState(next); rememberTitleFollowsLatest(next); void setTitleFollowsLatest(next).catch(() => setTitleFollowsLatestState(!next)) }}><PencilLine size={15} /></button>
-          <button type="button" className="sidebar-section-action project-tool" aria-pressed={recentProjectsFixedOrder} title={recentProjectsFixedOrder ? '手动排序 · 点击切换为最近访问' : '最近访问 · 点击切换为手动排序'} aria-label="切换项目排序" onClick={() => setOrderMode(!recentProjectsFixedOrder)}><ListOrdered size={15} /></button>
-          <button type="button" className="sidebar-section-action project-tool" title={`管理隐藏项目（${hiddenProjects.length}）`} aria-label="管理隐藏项目" aria-haspopup="dialog" onClick={() => setHiddenOpen(true)}><EyeOff size={15} />{hiddenProjects.length > 0 && <span className="project-hidden-dot" />}</button>
+          {/* Switches: their on/off must be readable at a glance, so each carries a mini track. */}
+          <button
+            type="button"
+            role="switch"
+            className="sidebar-section-action project-tool project-toggle"
+            aria-checked={titleFollowsLatest}
+            title={t(titleFollowsLatest ? 'common:sidebar.projectTitleFollowOn' : 'common:sidebar.projectTitleFollowOff')}
+            aria-label={t(titleFollowsLatest ? 'common:sidebar.projectTitleFollowOn' : 'common:sidebar.projectTitleFollowOff')}
+            onClick={() => { const next = !titleFollowsLatest; setTitleFollowsLatestState(next); rememberTitleFollowsLatest(next); void setTitleFollowsLatest(next).catch(() => setTitleFollowsLatestState(!next)) }}
+          >
+            <PencilLine size={14} />
+            <span className="project-toggle-track" aria-hidden><span className="project-toggle-knob" /></span>
+          </button>
+          <button
+            type="button"
+            role="switch"
+            className="sidebar-section-action project-tool project-toggle"
+            aria-checked={recentProjectsFixedOrder}
+            title={t(recentProjectsFixedOrder ? 'common:sidebar.projectOrderManual' : 'common:sidebar.projectOrderRecent')}
+            aria-label={t(recentProjectsFixedOrder ? 'common:sidebar.projectOrderManual' : 'common:sidebar.projectOrderRecent')}
+            onClick={() => setOrderMode(!recentProjectsFixedOrder)}
+          >
+            <ListOrdered size={14} />
+            <span className="project-toggle-track" aria-hidden><span className="project-toggle-knob" /></span>
+          </button>
+          <span className="project-tool-sep" aria-hidden />
+          <button type="button" className="sidebar-section-action project-tool" title={t('common:sidebar.manageHiddenProjects', { count: hiddenProjects.length })} aria-label={t('common:sidebar.manageHiddenProjects', { count: hiddenProjects.length })} aria-haspopup="dialog" onClick={() => setHiddenOpen(true)}><EyeOff size={15} />{hiddenProjects.length > 0 && <span className="project-hidden-dot" />}</button>
           {/* Projects come from opening a folder; refreshing lives in the top-right reload button. */}
           <button
             type="button"

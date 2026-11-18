@@ -183,7 +183,8 @@ describe('/model runtime confirmation', () => {
 
     await executeSlashCommand('/model openai/org/model/v2')
 
-    expect(invoke).not.toHaveBeenCalled()
+    // A draft session only previews the choice: no Worker round-trip at all.
+    expect(invoke.mock.calls.filter(([method]) => method === 'model.set')).toEqual([])
     expect(useUIStore.getState().runState.model).toBe('openai/org/model/v2')
   })
 

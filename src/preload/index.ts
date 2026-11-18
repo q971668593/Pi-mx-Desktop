@@ -96,6 +96,13 @@ const api = {
     return () => ipcRenderer.off('ipc:git-workspace-changed', handler)
   },
 
+  /** models.json 被外部改动、worker 已重载：界面要丢掉模型缓存重新拉一次。 */
+  onModelCatalogChanged(callback: () => void): () => void {
+    const handler = (): void => callback()
+    ipcRenderer.on('ipc:model-catalog-changed', handler)
+    return () => ipcRenderer.off('ipc:model-catalog-changed', handler)
+  },
+
   onCloseRequested(callback: (info: { isStreaming: boolean; terminals?: number }) => void): () => void {
     const handler = (_event: unknown, data: { isStreaming: boolean; terminals?: number }): void => callback(data)
     ipcRenderer.on('ipc:close-requested', handler)
@@ -141,6 +148,18 @@ const api = {
     const handler = (_event: unknown, data: { id: string; code: number }): void => callback(data)
     ipcRenderer.on('ipc:terminal-exit', handler)
     return () => ipcRenderer.off('ipc:terminal-exit', handler)
+  },
+  /** The AI closed a terminal it opened: drop the pane instead of keeping dead output. */
+  onTerminalClosed(callback: (payload: { id: string }) => void): () => void {
+    const handler = (_event: unknown, data: { id: string }): void => callback(data)
+    ipcRenderer.on('ipc:terminal-closed', handler)
+    return () => ipcRenderer.off('ipc:terminal-closed', handler)
+  },
+  /** The AI typed into an existing terminal: show it instead of opening another tab. */
+  onTerminalReveal(callback: (payload: { id: string; workspace: string }) => void): () => void {
+    const handler = (_event: unknown, data: { id: string; workspace: string }): void => callback(data)
+    ipcRenderer.on('ipc:terminal-reveal', handler)
+    return () => ipcRenderer.off('ipc:terminal-reveal', handler)
   },
   ping: (): string => 'pong',
 }

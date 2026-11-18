@@ -54,6 +54,41 @@ describe('PtyManager', () => {
     expect(m.count).toBe(0)
   })
 
+  it('closes a terminal from the tool side and reports it, leaving running ones alone', () => {
+    const pty = fakePty()
+    const sink = { data: vi.fn(), exit: vi.fn(), closed: vi.fn() }
+    const manager = new PtyManager(() => pty as unknown as PtyProcess, sink, () => ({}))
+    const workspace = process.cwd()
+    const one = manager.create(profile, { workspace, cols: 80, rows: 24, owner: 'ai' })
+    const two = manager.create(profile, { workspace, cols: 80, rows: 24, owner: 'user' })
+    expect(manager.list(workspace).map((item) => item.owner)).toEqual(['ai', 'user'])
+    manager.close(two.id)
+    expect(sink.closed).toHaveBeenCalledWith(two.id)
+    expect(manager.list(workspace).map((item) => item.id)).toEqual([one.id])
+    manager.kill(one.id)
+    expect(sink.closed).toHaveBeenCalledTimes(1)
+  })
+
+  it('turns idle when the marker is echoed and never shows it to the user', () => {
+    vi.useFakeTimers()
+    const pty = fakePty()
+    const sink = { data: vi.fn(), exit: vi.fn(), closed: vi.fn() }
+    const manager = new PtyManager(() => pty as unknown as PtyProcess, sink, () => ({}))
+    const workspace = process.cwd()
+    const { id } = manager.create(profile, { workspace, cols: 80, rows: 24, owner: 'ai' })
+    expect(manager.list(workspace).map((item) => item.state)).toEqual(['idle'])
+    manager.send(id, 'npm test\r', ['__PI_DONE_3__'])
+    pty.emit('ready')
+    vi.advanceTimersByTime(20)
+    expect(pty.written).toEqual(['npm test\r'])
+    expect(manager.list(workspace).map((item) => item.state)).toEqual(['busy'])
+    pty.emit('output __PI_DONE_3__')
+    vi.advanceTimersByTime(20)
+    expect(manager.list(workspace).map((item) => item.state)).toEqual(['idle'])
+    expect(sink.data).toHaveBeenLastCalledWith(id, 'output ')
+    expect(manager.list(workspace)[0].output).not.toContain('__PI_DONE_3__')
+  })
+
   it('writes, resizes (clamped) and kills', () => {
     const pty = fakePty()
     const m = new PtyManager(() => pty as unknown as PtyProcess, { data: vi.fn(), exit: vi.fn() }, () => ({}))

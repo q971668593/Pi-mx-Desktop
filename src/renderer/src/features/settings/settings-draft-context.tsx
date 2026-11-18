@@ -25,6 +25,7 @@ import {
   type LanguageChoice,
 } from '@renderer/features/settings/settings-draft'
 import type { AsrConfig } from '@shared/asr-types'
+import type { AlertSoundPreset } from '@shared/alert-sound'
 import type { CompletionDeliveryMode, CompletionPreviewMode } from '@shared/completion-preview'
 import type { IconTheme } from '@shared/icon-theme'
 import type { CustomCssOverride, CustomTheme } from '@shared/custom-theme'
@@ -62,6 +63,7 @@ type SettingsDraftContextValue = {
   setAutoCheckRegistryUpdates: (v: boolean) => void
   setIncludePrereleaseUpdates: (v: boolean) => void
   setAlertSoundEnabled: (v: boolean) => void
+  setAlertSoundPreset: (v: AlertSoundPreset) => void
   setAlertNotificationEnabled: (v: boolean) => void
   setAlertOnExtensionUi: (v: boolean) => void
   setAlertOnRunIdle: (v: boolean) => void
@@ -272,6 +274,7 @@ export function SettingsDraftProvider({ children }: { children: ReactNode }) {
       setAutoCheckRegistryUpdates: (v) => patch((d) => ({ ...d, autoCheckRegistryUpdates: v })),
       setIncludePrereleaseUpdates: (v) => patch((d) => ({ ...d, includePrereleaseUpdates: v })),
       setAlertSoundEnabled: (v) => patch((d) => ({ ...d, alertSoundEnabled: v })),
+  setAlertSoundPreset: (v) => patch((d) => ({ ...d, alertSoundPreset: v })),
       setAlertNotificationEnabled: (v) => patch((d) => ({ ...d, alertNotificationEnabled: v })),
       setAlertOnExtensionUi: (v) => patch((d) => ({ ...d, alertOnExtensionUi: v })),
       setAlertOnRunIdle: (v) => patch((d) => ({ ...d, alertOnRunIdle: v })),

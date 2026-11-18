@@ -1,7 +1,14 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import i18n from '@renderer/lib/i18n'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { ComposerAgentActivity } from './composer-agent-activity'
+
+// The assertions below use the English copy; the app ships Chinese by default.
+beforeAll(async () => {
+  if (i18n.language !== 'en') await i18n.changeLanguage('en')
+})
+
 
 const mocks = vi.hoisted(() => ({
   openSubagentSessionPreview: vi.fn(),

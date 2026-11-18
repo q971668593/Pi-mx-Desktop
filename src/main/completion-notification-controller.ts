@@ -1,4 +1,5 @@
 import type { CompletionEvent } from '@shared/app-events'
+import type { AlertSoundPreset } from '@shared/alert-sound'
 import {
   buildCompletionNotificationCopy,
   type CompletionCopy,
@@ -10,6 +11,7 @@ import { normalizeSessionFilePath, sessionFilePathsEqual } from '@shared/session
 
 export type CompletionNotificationSettings = {
   soundEnabled: boolean
+  soundPreset?: AlertSoundPreset
   notificationEnabled: boolean
   alertOnRunIdle: boolean
   alertOnBackgroundRunIdle: boolean
@@ -32,6 +34,9 @@ export type CompletionCard = {
   copy: CompletionCopy
   timeoutMs: number
   sound: boolean
+  soundPreset?: AlertSoundPreset
+  /** false = sound only, no popup (the user turned popups off). */
+  popup?: boolean
   isTest?: boolean
   kind?: 'done' | 'needs-you'
   unread?: boolean
@@ -131,6 +136,8 @@ export function createCompletionNotificationController(deps: CompletionControlle
       outcome: event.outcome,
       timeoutMs: settings.timeoutSeconds * 1000,
       sound: settings.soundEnabled,
+      soundPreset: settings.soundPreset,
+      popup: settings.notificationEnabled,
       copy: buildCompletionNotificationCopy({
         language: settings.language,
         outcome: event.outcome,
@@ -237,6 +244,8 @@ export function createCompletionNotificationController(deps: CompletionControlle
       outcome: 'success',
       timeoutMs: settings.timeoutSeconds * 1000,
       sound: settings.soundEnabled,
+      soundPreset: settings.soundPreset,
+      popup: settings.notificationEnabled,
       isTest: true,
       copy: buildCompletionNotificationCopy({
         language: settings.language,

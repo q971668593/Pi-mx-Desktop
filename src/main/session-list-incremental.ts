@@ -18,7 +18,9 @@ import { join, resolve } from 'path'
 
 const FIRST_MESSAGE_MAX = 4000
 const CONCURRENCY = 8
-const CACHE_FILE = 'session-list-cache.v2.json'
+// v3: added lastUserMessageTime. The rename forces one re-parse instead of trusting v2 states
+// that cannot answer "when did the user last send a message" without it.
+const CACHE_FILE = 'session-list-cache.v3.json'
 
 type FileState = {
   size: number
@@ -37,6 +39,8 @@ type FileState = {
   messageCount: number
   firstMessage: string
   lastActivityTime?: number
+  /** Timestamp of the newest *user* message — the moment the user last hit send. */
+  lastUserMessageTime?: number
 }
 
 export type IncrementalSessionRow = {
@@ -49,6 +53,8 @@ export type IncrementalSessionRow = {
   forked?: boolean
   created: Date
   modified: Date
+  /** Newest user message (send time), not the newest assistant/tool activity. */
+  lastUserMessageTime?: number
   messageCount: number
   firstMessage: string
 }
@@ -149,6 +155,10 @@ function applyLine(state: FileState, line: string): void {
   const activity =
     typeof message.timestamp === 'number' ? message.timestamp : new Date(String(entry.timestamp)).getTime()
   if (!Number.isNaN(activity)) state.lastActivityTime = Math.max(state.lastActivityTime ?? 0, activity)
+  // 侧栏的"几分钟前"和项目内排序都用这一条：用户按下发送的时间，不是 AI 最后写完的时间。
+  if (message.role === 'user' && !Number.isNaN(activity)) {
+    state.lastUserMessageTime = Math.max(state.lastUserMessageTime ?? 0, activity)
+  }
   if (!state.firstMessage && message.role === 'user') {
     const text = textOf(message)
     if (text) state.firstMessage = text.slice(0, FIRST_MESSAGE_MAX)
@@ -234,6 +244,7 @@ function toRow(path: string, state: FileState): IncrementalSessionRow | null {
     forked: isForkedSession(state),
     created: new Date(state.headerTimestamp),
     modified,
+    lastUserMessageTime: state.lastUserMessageTime,
     messageCount: state.messageCount,
     firstMessage: state.firstMessage || '(no messages)',
   }
