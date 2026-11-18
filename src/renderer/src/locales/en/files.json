@@ -36,6 +36,10 @@
     "collapseAll": "Collapse all"
   },
   "preview": {
+    "reviewExternalChange": "The file changed on disk. Compare the disk version below with your draft before saving.",
+    "diskVersion": "Version on disk",
+    "overwriteDiskVersion": "Overwrite reviewed version",
+    "keepDraft": "Keep editing",
     "pickFile": "Select a file in the tree to preview",
     "loading": "Loading preview…",
     "tooLarge": "File is too large to preview here",

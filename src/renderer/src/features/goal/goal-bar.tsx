@@ -24,6 +24,8 @@ export function GoalBar({ className }: { className?: string }) {
   const setGoal = useSessionGoalStore((state) => state.setGoal)
   const toggleCriterion = useSessionGoalStore((state) => state.toggleCriterion)
   const clearGoal = useSessionGoalStore((state) => state.clear)
+  const setAutoRun = useSessionGoalStore((state) => state.setAutoRun)
+  const autoRun = useSessionGoalStore((state) => sessionFile !== null && state.autoRun[sessionFile] !== undefined)
 
   const [editing, setEditing] = useState(false)
   const [expanded, setExpanded] = useState(true)
@@ -186,6 +188,12 @@ export function GoalBar({ className }: { className?: string }) {
                 </span>
               ) : null}
               <div className="flex shrink-0 items-center gap-0.5">
+                {remaining > 0 && (
+                  <button type="button" aria-pressed={autoRun} onClick={() => setAutoRun(sessionFile, !autoRun)}
+                    className="rounded px-1.5 py-0.5 text-[11px] hover:bg-[var(--bg-hover)] aria-pressed:text-accent">
+                    {t(autoRun ? 'goal:bar.pauseAutoRun' : 'goal:bar.enableAutoRun')}
+                  </button>
+                )}
                 {goal.criteria.length > 0 ? (
                   <button
                     type="button"

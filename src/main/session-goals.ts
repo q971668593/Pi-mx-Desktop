@@ -111,9 +111,9 @@ export class SessionGoalStore {
     const key = goalKey(input.sessionFile)
     const goal = String(input.goal ?? '').trim().slice(0, MAX_GOAL_LENGTH)
     if (!key || !goal) return null
-    const now = input.now ?? Date.now()
     const data = this.load()
     const previous = data.goals[key]
+    const now = Math.max(input.now ?? Date.now(), (previous?.updatedAt ?? -1) + 1)
     const source = input.criteria ?? previous?.criteria.map((criterion) => criterion.text) ?? []
     const criteria = normalizeGoalCriteria(source).map((text) => {
       const prior = previous?.criteria.find((criterion) => criterion.text === text)
@@ -141,7 +141,7 @@ export class SessionGoalStore {
       criteria: current.criteria.map((criterion, i) =>
         i === index ? { ...criterion, done: !criterion.done } : criterion,
       ),
-      updatedAt: now ?? Date.now(),
+      updatedAt: Math.max(now ?? Date.now(), current.updatedAt + 1),
     })
   }
 
@@ -169,7 +169,7 @@ export class SessionGoalStore {
       return { ...criterion, done: true }
     })
     if (!changed) return current
-    return this.replace(current.sessionFile, { ...current, criteria, updatedAt: now ?? Date.now() })
+    return this.replace(current.sessionFile, { ...current, criteria, updatedAt: Math.max(now ?? Date.now(), current.updatedAt + 1) })
   }
 
   clear(sessionFile: string | null | undefined): boolean {

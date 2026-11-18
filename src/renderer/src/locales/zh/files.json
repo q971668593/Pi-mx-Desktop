@@ -36,6 +36,10 @@
     "collapseAll": "折叠全部"
   },
   "preview": {
+    "reviewExternalChange": "磁盘上的文件已更改。保存前请对照下方磁盘版本和编辑器中的草稿。",
+    "diskVersion": "磁盘版本",
+    "overwriteDiskVersion": "覆盖已查看的版本",
+    "keepDraft": "继续编辑",
     "pickFile": "在右侧选择文件以预览",
     "loading": "加载预览…",
     "tooLarge": "文件过大，无法在面板内预览",

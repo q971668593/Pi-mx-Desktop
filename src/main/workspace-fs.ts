@@ -1,4 +1,5 @@
-import { copyFile, mkdir, open, readdir, realpath, rename, stat, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, open, readdir, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { createHash, randomUUID } from 'node:crypto'
 import { StringDecoder } from 'node:string_decoder'
 import { WORKSPACE_TEXT_MAX_BYTES } from '../../packages/shared/workspace-preview'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'path'
@@ -152,7 +153,8 @@ export async function workspaceFsReadText(req: { workspaceRoot: string; path: st
       const truncated = bytesRead < st.size
       const decoder = new StringDecoder('utf8')
       const content = decoder.write(chunk) + (truncated ? '' : decoder.end())
-      return { ok: true as const, content, size: st.size, truncated }
+      const revision = truncated ? undefined : createHash('sha256').update(chunk).digest('hex')
+      return { ok: true as const, content, size: st.size, truncated, revision }
     } finally {
       await handle.close()
     }
@@ -161,19 +163,45 @@ export async function workspaceFsReadText(req: { workspaceRoot: string; path: st
   }
 }
 
-export async function workspaceFsWriteText(req: { workspaceRoot: string; path: string; content: string }) {
+type TextWrite = { workspaceRoot: string; path: string; content: string; expectedRevision?: string }
+const pendingTextWrites = new Map<string, Promise<unknown>>()
+
+export async function workspaceFsWriteText(req: TextWrite) {
   const content = String(req.content ?? '')
   if (Buffer.byteLength(content) > WORKSPACE_TEXT_MAX_BYTES) return { ok: false as const, error: 'too_large' as const }
   const resolved = await resolvePathUnderWorkspace(String(req.workspaceRoot || ''), String(req.path || ''))
   if (!resolved.ok) return { ok: false as const, error: resolved.error }
-  const info = await stat(resolved.abs).catch(() => null)
+  const key = process.platform === 'win32' ? resolved.abs.toLowerCase() : resolved.abs
+  const previous = pendingTextWrites.get(key)
+  const pending = (previous ?? Promise.resolve()).then(() => writeResolvedText(resolved.abs, content, req))
+  pendingTextWrites.set(key, pending)
+  try {
+    return await pending
+  } finally {
+    if (pendingTextWrites.get(key) === pending) pendingTextWrites.delete(key)
+  }
+}
+
+async function writeResolvedText(path: string, content: string, req: TextWrite) {
+  const info = await stat(path).catch(() => null)
   if (!info) return { ok: false as const, error: 'not_found' as const }
   if (!info.isFile()) return { ok: false as const, error: 'not_a_file' as const }
+  const temporary = join(dirname(path), 'pi-save-' + randomUUID() + '.tmp')
   try {
-    await writeFile(resolved.abs, content, 'utf8')
+    await writeFile(temporary, content, { encoding: 'utf8', flag: 'wx', mode: info.mode & 0o777 })
+    if (req.expectedRevision !== undefined) {
+      const livePath = await resolvePathUnderWorkspace(req.workspaceRoot, req.path)
+      const current = await workspaceFsReadText({ ...req, maxBytes: WORKSPACE_TEXT_MAX_BYTES })
+      if (!livePath.ok || livePath.abs !== path || !current.ok || current.revision !== req.expectedRevision) {
+        return { ok: false as const, error: 'conflict' as const }
+      }
+    }
+    await rename(temporary, path)
     return { ok: true as const }
   } catch {
     return { ok: false as const, error: 'write_failed' as const }
+  } finally {
+    await unlink(temporary).catch(() => {})
   }
 }
 

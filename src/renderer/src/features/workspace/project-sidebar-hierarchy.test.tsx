@@ -65,6 +65,9 @@ describe('repository / checkout / session sidebar', () => {
     expect(container.querySelectorAll('.sidebar-project-row')).toHaveLength(3)
     expect(within(repository).getByText('Main checkout')).toBeTruthy()
     const feature = container.querySelector('[data-workspace="/copies/feature"]')!
+    expect(repository.querySelector('.sidebar-project-header')?.querySelectorAll('svg')).toHaveLength(1)
+    expect(feature.querySelector('.sidebar-project-hit svg')).toBeNull()
+    expect(within(feature as HTMLElement).getByText('feature/sidebar')).toHaveClass('sidebar-project-branch')
     expect(feature.textContent).toContain('/copies/feature question')
     expect(feature.textContent).not.toContain('/repo question')
     expect(mocks.invoke.mock.calls.filter(([method]) => method === 'session.list')).toEqual([

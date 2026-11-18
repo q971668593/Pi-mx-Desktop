@@ -1,4 +1,18 @@
 {
+  "snapshot": {
+    "title": "本轮文件快照",
+    "before": "修改前",
+    "after": "修改后",
+    "absent": "当时没有这个文件",
+    "restore": "还原此文件",
+    "trash": "将新增文件移到回收站",
+    "confirmRestore": "将 {{path}} 还原到本轮修改前的版本？",
+    "confirmTrash": "将 {{path}} 移到回收站，以撤销本轮新增？",
+    "restored": "已还原",
+    "failed": "无法还原此文件。",
+    "conflict": "文件在本轮结束后已变化，已保留磁盘版本。",
+    "busy": "请等工作区的任务结束后再还原。"
+  },
   "scope": {
     "turn": "本轮",
     "session": "本对话",

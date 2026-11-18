@@ -1,5 +1,7 @@
 {
   "bar": {
+    "pauseAutoRun": "Pause auto-continue",
+    "enableAutoRun": "Auto-continue",
     "placeholder": "What should this session achieve? (one sentence)",
     "set": "Set goal",
     "edit": "Edit goal",

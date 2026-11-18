@@ -1,7 +1,7 @@
 import { requestOpenInPane, startSessionDrag } from '@renderer/features/split/split-dnd'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronRight, FolderOpen, GitFork, Plus } from '@renderer/components/icons'
+import { ChevronRight, GitFork, Plus } from '@renderer/components/icons'
 import { cn } from '@renderer/lib/utils'
 import { activateWorkspace, switchSessionInPlace } from '@renderer/lib/activate-workspace'
 import { guardSessionSwitch } from '@renderer/lib/session-switch-guard'
@@ -185,7 +185,7 @@ export function ProjectSessionTree({
     return (
       <div
         key={node.key}
-        className="mb-1"
+        className="sidebar-session-entry"
         data-session-file={sessionFile}
         draggable={!!sessionFile && !node.liveChild}
         onDragStart={(e) => {
@@ -206,9 +206,9 @@ export function ProjectSessionTree({
           }
           className={cn(
             'nav-row sidebar-session-row sidebar-drop-target flex items-center gap-0.5',
-            isChild ? 'sidebar-child-row min-h-[30px] rounded-md px-0.5' : 'min-h-[38px] rounded-lg border border-transparent px-1 py-0.5 transition-colors hover:border-border/50',
+            isChild ? 'sidebar-child-row min-h-[30px] rounded-md px-0.5' : 'sidebar-session-root rounded-md',
             parentActive
-              ? 'nav-row-active border-border/60 shadow-sm'
+              ? 'nav-row-active'
               : 'text-foreground-secondary hover:text-foreground',
           )}
         >
@@ -223,7 +223,7 @@ export function ProjectSessionTree({
             aria-current={parentActive ? 'page' : undefined}
             className={cn(
               'sidebar-session-hit flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/45',
-              isChild ? 'min-h-[30px] py-1' : 'min-h-11 py-1.5',
+              isChild ? 'min-h-[30px] py-1' : 'min-h-9 py-1.5',
             )}
           >
             <div className="min-w-0 flex-1">
@@ -243,10 +243,16 @@ export function ProjectSessionTree({
                     aria-label={t('common:sidebar.forkedSession')}
                   />
                 ) : null}
-                <span className="truncate">{s.title || s.sessionId.slice(0, 8)}</span>
+                <span className="min-w-0 flex-1 truncate" title={s.title || s.sessionId.slice(0, 8)}>{s.title || s.sessionId.slice(0, 8)}</span>
+                {s.interruptedAt && attention !== 'working' ? (
+                  <span className="shrink-0 text-[10px] text-amber-700 dark:text-amber-300"
+                    title={new Date(s.interruptedAt).toLocaleString()}>
+                    {t('common:interrupted.badge')}
+                  </span>
+                ) : null}
                 {isChild ? null : (
                   <span
-                    className="ml-auto shrink-0 pl-1.5 text-[11px] leading-[16px] tabular-nums text-foreground-secondary/70"
+                    className="sidebar-session-time shrink-0 pl-0.5 text-[10px] leading-4 tabular-nums"
                     title={new Date(sessionActivityAt(s)).toLocaleString()}
                   >
                     {relativeSessionTime(sessionActivityAt(s), t)}
@@ -295,7 +301,7 @@ export function ProjectSessionTree({
               }}
               className={cn(
                 'chrome-icon-btn flex shrink-0 items-center justify-center gap-1 rounded-md px-1.5',
-                isChild ? 'h-[30px] min-w-[30px]' : 'h-11 min-w-11',
+                isChild ? 'h-[30px] min-w-[30px]' : 'h-9 min-w-8',
               )}
             >
               <span className="sidebar-child-count">{childCount}</span>
@@ -429,6 +435,7 @@ export function ProjectDiskRow({
   sessionTree: React.ReactNode
 }) {
   const { t } = useTranslation()
+  const branchName = branch?.replace(/^refs\/heads\//, '')
   return (
     <div key={path} className={cn('sidebar-project-row sidebar-drop-target', worktree ? 'sidebar-worktree-row' : 'sidebar-project-card')} data-active={active} data-workspace={path} onContextMenu={onProjectContextMenu} {...dropTarget}>
       <div
@@ -438,7 +445,7 @@ export function ProjectDiskRow({
         <button
           type="button"
           onClick={onToggleOpen}
-          className="workbench-icon shrink-0"
+          className="workbench-icon sidebar-project-toggle shrink-0"
           aria-label={t('common:sidebar.toggleProject', { name })}
           aria-expanded={open}
         >
@@ -450,15 +457,12 @@ export function ProjectDiskRow({
         <button
           type="button"
           onClick={() => guardSessionSwitch(onOpenProject || onToggleOpen)}
-          className="sidebar-project-hit flex min-w-0 flex-1 items-center gap-1.5 px-1 py-1 text-left"
-          title={path}
+          className="sidebar-project-hit flex min-w-0 flex-1 items-center gap-2 px-1 text-left"
+          title={`${name}\n${path}`}
           aria-current={active ? 'location' : undefined}
         >
-          <span className="project-folder-tile"><FolderOpen size={15} /></span>
-          <span className="min-w-0 flex-1">
-            <span className={cn('block truncate text-[13px] leading-5', active ? 'font-semibold text-foreground' : 'font-medium text-foreground-secondary')}>{name}</span>
-            {branch && branch !== name ? <span className="block truncate text-[11px] text-foreground-secondary" title={branch}>{branch.replace(/^refs\/heads\//, '')}</span> : null}
-          </span>
+          <span className="sidebar-project-name truncate">{name}</span>
+          {branchName && branchName !== name ? <span className="sidebar-project-branch truncate" title={branchName}>{branchName}</span> : null}
         </button>
         <button
           type="button"
@@ -468,7 +472,7 @@ export function ProjectDiskRow({
           }}
           aria-label={t('common:newSession')}
           title={t('common:newSession')}
-          className="sidebar-section-action ml-0.5"
+          className="sidebar-section-action sidebar-project-add"
         >
           <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
         </button>

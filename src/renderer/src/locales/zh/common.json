@@ -1,4 +1,5 @@
 {
+  "interrupted": {"badge": "已中断", "message": "上次执行已中断。继续前可以先查看文件改动。", "review": "查看改动", "resume": "继续此任务", "resumeFailed": "无法继续此任务。", "resumePrompt": "继续上一次中断的任务。先检查当前工作区和会话记录，再从未完成的步骤继续。请避免重复已完成的命令或改动。"},
   "app": {
     "name": "Pi mx",
     "status": {
@@ -428,6 +429,14 @@
     "focusHint": "窗口太窄，暂以标签显示；可在此切换布局"
   },
   "gitBoard": {
+    "checkRemote": "检查远端",
+    "remoteUnchecked": "尚未检查远端，箭头数量以本地记录为准。",
+    "remoteCheckedAt": "检查时间 {{time}}",
+    "remoteCheckFailed": "检查远端失败：{{error}}",
+    "remoteIncoming": "远端新增提交（{{count}}）",
+    "remoteCurrent": "远端无新增提交",
+    "remoteUntracked": "当前分支未设置上游",
+    "behindCached": "落后本地记录的上游 {{n}} 个提交",
     "rowActions": "{{name}} 的操作",
     "sourceRef": "来源分支或提交",
     "remoteUrl": "远程仓库地址",

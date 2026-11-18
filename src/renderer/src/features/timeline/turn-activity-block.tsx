@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { ChevronDown, FileCode2 } from '@renderer/components/icons'
 import { cn } from '@renderer/lib/utils'
 import { useUIStore } from '@renderer/stores/ui-store'
-import { openReviewSessionForPath, openWorkspaceRelativePath } from '@renderer/lib/open-workspace-path'
+import { openWorkspaceRelativePath } from '@renderer/lib/open-workspace-path'
+import { openTurnReview } from '@renderer/features/review/turn-snapshot-panel'
 import type { TimelineDisplayItem } from './timeline-display-items'
 import {
   buildTurnActivitySummary,
@@ -14,16 +15,6 @@ import { DiffStatBadge } from './diff-stat-badge'
 
 /** Show this many files before "Show N more" (Cursor-style). */
 const FILES_PREVIEW_LIMIT = 6
-
-function openReviewPanel(path?: string) {
-  if (path) openReviewSessionForPath(path)
-  else {
-    const store = useUIStore.getState()
-    store.setActivePanel('review')
-    store.revealRightPanel()
-    window.dispatchEvent(new CustomEvent('pi-desktop:review-scope', { detail: 'session' }))
-  }
-}
 
 function fileExtensionLabel(path: string): string {
   const base = path.split(/[/\\]/).pop() || path
@@ -51,7 +42,7 @@ function FileTypeGlyph({ path }: { path: string }) {
   )
 }
 
-function FileChangeRow({ file }: { file: TurnFileStat }) {
+function FileChangeRow({ file, runId }: { file: TurnFileStat; runId?: string }) {
   const { t } = useTranslation()
   const shortName = file.displayName.split(/[/\\]/).pop() || file.displayName
   return (
@@ -61,7 +52,7 @@ function FileChangeRow({ file }: { file: TurnFileStat }) {
       onClick={() => openWorkspaceRelativePath(file.path)}
       onContextMenu={(event) => {
         event.preventDefault()
-        openReviewPanel(file.path)
+        openTurnReview({ path: file.path, runId })
       }}
       title={t('timeline:activity.openFileHint', { path: file.path })}
     >
@@ -88,12 +79,12 @@ export const TurnActivityBlock = memo(function TurnActivityBlock({
   const fileChanges = useUIStore((s) => s.fileChanges)
   const workspace = useUIStore((s) => s.currentWorkspace)
 
-  const summary = useMemo(() => {
+  const { summary, runId } = useMemo(() => {
     const runIds = collectRunIdsFromBlocks(blocks)
-    return buildTurnActivitySummary(blocks, fileChanges, {
-      runIds,
-      workspaceRoot: workspace,
-    })
+    return {
+      summary: buildTurnActivitySummary(blocks, fileChanges, { runIds, workspaceRoot: workspace }),
+      runId: [...runIds].at(-1),
+    }
   }, [blocks, fileChanges, workspace])
 
   if (summary.files.length === 0) return null
@@ -122,7 +113,7 @@ export const TurnActivityBlock = memo(function TurnActivityBlock({
             'shrink-0 rounded-md px-1.5 py-0.5 text-[12px] font-medium',
             'timeline-text-quiet hover:bg-[var(--bg-hover)] hover:opacity-100',
           )}
-          onClick={() => openReviewPanel(summary.files[0]?.path)}
+          onClick={() => openTurnReview({ path: summary.files[0]?.path, runId })}
         >
           {t('timeline:activity.review')}
         </button>
@@ -130,7 +121,7 @@ export const TurnActivityBlock = memo(function TurnActivityBlock({
 
       <div className="px-1.5 pb-1.5">
         {visibleFiles.map((file) => (
-          <FileChangeRow key={file.path} file={file} />
+          <FileChangeRow key={file.path} file={file} runId={runId} />
         ))}
         {hasOverflow && !showAllFiles ? (
           <button

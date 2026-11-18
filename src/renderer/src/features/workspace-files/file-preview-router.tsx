@@ -21,7 +21,7 @@ import { toast } from 'sonner'
 type ReadTextFn = (
   p: string,
   opts?: { maxBytes?: number },
-) => Promise<{ ok: boolean; content?: string; error?: string; size?: number; truncated?: boolean }>
+) => Promise<{ ok: boolean; content?: string; error?: string; size?: number; truncated?: boolean; revision?: string }>
 
 function FilePreviewScroll({ children, scrollClassName }: { children: ReactNode; scrollClassName?: string }) {
   return (
@@ -80,6 +80,7 @@ export function FilePreviewRouter({
   const [wordWrap, setWordWrap] = useState(() => { try { return localStorage.getItem('pi-desktop:file-word-wrap') === 'true' } catch { return false } })
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
+  const [saveConflict, setSaveConflict] = useState<{ path: string; revision: string; content: string } | null>(null)
   const [finding, setFinding] = useState(false)
   const [gitPreviewView, setGitPreviewView] = useState<'file' | 'diff'>('file')
   const frameRef = useRef<HTMLIFrameElement>(null)
@@ -191,18 +192,34 @@ export function FilePreviewRouter({
     return () => { cancelled = true }
   }, [absPath, workspaceRoot, relativePath, mode, readText, maxBytes, refreshKey, localRefresh])
 
-  const save = async () => {
+  const conflict = saveConflict?.path === absPath ? saveConflict : null
+  const save = async (reviewedRevision?: string) => {
     if (!relativePath || saving || !dirty) return
     setSaving(true)
     try {
-      const current = await readText(relativePath, { maxBytes: WORKSPACE_TEXT_MAX_BYTES })
-      if (!current.ok || current.truncated) throw new Error('read_failed')
-      if (current.content !== content && !window.confirm(t('preview.externalChange'))) return
-      // 编辑器里是 LF；写回时沿用原文件的换行风格。
-      const next = withEolOf(content ?? '', draft)
-      const result = await ipcClient.invoke('workspace.fs.writeText', { workspaceRoot, path: relativePath, content: next })
+      const readCurrent = () => readText(relativePath, { maxBytes: WORKSPACE_TEXT_MAX_BYTES })
+      const current = await readCurrent()
+      if (!current.ok || current.truncated || !current.revision || current.content === undefined) throw new Error('read_failed')
+      if (reviewedRevision ? current.revision !== reviewedRevision : current.content !== content) {
+        setSaveConflict({ path: absPath, revision: current.revision, content: current.content })
+        return
+      }
+      const next = withEolOf(current.content, draft)
+      const result = await ipcClient.invoke('workspace.fs.writeText', {
+        workspaceRoot, path: relativePath, content: next, expectedRevision: current.revision,
+      })
+      if (result?.error === 'conflict') {
+        const latest = await readCurrent()
+        if (latest.ok && latest.revision && latest.content !== undefined) {
+          if (loadedPath.current === absPath) setSaveConflict({ path: absPath, revision: latest.revision, content: latest.content })
+          return
+        }
+      }
       if (!result?.ok) throw new Error(result?.error || 'write_failed')
-      setContent(next)
+      if (loadedPath.current === absPath) {
+        setSaveConflict(null)
+        setContent(next)
+      }
       clearFileDraft(workspaceRoot, relativePath)
       if (relativePath.replace(/\\/g, '/').toLowerCase() === '.vscode/tasks.json') window.dispatchEvent(new CustomEvent('pi-desktop:workspace-tasks-changed', { detail: workspaceRoot }))
       toast.success(t('preview.saved'))
@@ -260,7 +277,22 @@ export function FilePreviewRouter({
   if (mode === 'image') return wrap(imageUrl ? <FileImagePreview src={imageUrl} name={relativePath} /> : null)
   if (mode === 'pdf' || mode === 'binary' || mode === 'sheet') return wrap(<div className="space-y-2 px-3 py-6 text-[12px] text-foreground-secondary"><p>{t(mode === 'pdf' ? 'preview.pdf' : 'preview.binary')}</p><button type="button" className="text-accent hover:underline" onClick={openExternal}>{t('preview.openInSystem')}</button></div>)
   if (content == null) return wrap(null)
-  if (editing) return wrap(<>{editorBar}<FileTextEditor path={relativePath} value={draft} saving={saving} wordWrap={wordWrap} onChange={(value) => { setDraft(value); putFileDraft(workspaceRoot, relativePath, content, value) }} onSave={() => void save()} /></>)
+  const conflictPreview = conflict && (
+    <div role="alert" className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs">
+      <p>{t('preview.reviewExternalChange')}</p>
+      <details open className="my-2">
+        <summary className="cursor-pointer">{t('preview.diskVersion')}</summary>
+        <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-background p-2">{conflict.content}</pre>
+      </details>
+      <button type="button" disabled={saving} className="rounded border px-2 py-1" onClick={() => void save(conflict.revision)}>
+        {t('preview.overwriteDiskVersion')}
+      </button>
+      <button type="button" className="ml-2 px-2 py-1" onClick={() => setSaveConflict(null)}>
+        {t('preview.keepDraft')}
+      </button>
+    </div>
+  )
+  if (editing) return wrap(<>{editorBar}{conflictPreview}<FileTextEditor path={relativePath} value={draft} saving={saving} wordWrap={wordWrap} onChange={(value) => { setDraft(value); putFileDraft(workspaceRoot, relativePath, content, value) }} onSave={() => void save()} /></>)
   if (sourceLocation) return wrap(<FileSourcePreview code={content} lang={guessLangFromPath(relativePath)} path={relativePath} fill={fill} sourceLocation={sourceLocation} />)
   if (mode === 'html' && !truncated) return wrap(<><div>{editorBar}</div><iframe ref={frameRef} title="html-preview" sandbox="allow-scripts" referrerPolicy="no-referrer" srcDoc={htmlDocument} className="min-h-0 w-full flex-1 border-0 bg-[var(--bg-base)]" /></>)
   if (mode === 'markdown' && !truncated && content.length <= PREVIEW_MD_MAX_CHARS && content.split('\n').length <= PREVIEW_MD_MAX_LINES) return wrap(<><div>{editorBar}</div><FilePreviewScroll scrollClassName="px-4 py-3"><MarkdownView baseDirectory={joinWorkspacePath(workspaceRoot, relativePath.split('/').slice(0, -1).join('/'))}>{content}</MarkdownView></FilePreviewScroll></>)

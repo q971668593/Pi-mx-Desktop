@@ -1,3 +1,5 @@
+import { z } from 'zod'
+import { goalContinuationPrompt } from '@shared/session-goal'
 import { registerHandlerWithSchema } from '../registry'
 import { getSessionGoalStore } from '../../session-goals-instance'
 import { workerManager } from '../../worker-manager'
@@ -51,12 +53,26 @@ export function registerSessionGoalHandlers(): void {
 
   registerHandlerWithSchema('ipc:sessionGoal.markDone', sessionGoalMarkDoneSchema, async (req) => {
     const store = getSessionGoalStore()
+    if (req.expectedUpdatedAt !== undefined && store.get(req.sessionFile)?.updatedAt !== req.expectedUpdatedAt) {
+      return { goal: null }
+    }
     const before = store.remaining(req.sessionFile)
     const goal = store.markCriteriaDone(req.sessionFile, req.indices)
     if (!goal) throw new Error('No session goal for this session')
     // 只有真的变了才推：模型反复汇报同一批序号时不该每轮重写 system prompt section。
     if (store.remaining(req.sessionFile) !== before) await pushToLiveWorker(req.sessionFile)
     return { goal }
+  })
+
+  registerHandlerWithSchema('ipc:sessionGoal.continue', sessionGoalGetSchema.extend({
+    runId: z.string().min(1).max(200),
+    expectedUpdatedAt: z.number().int().nonnegative(),
+  }), async ({ sessionFile, runId, expectedUpdatedAt }) => {
+    const store = getSessionGoalStore()
+    const remaining = store.remaining(sessionFile)
+    if (!remaining || store.get(sessionFile)?.updatedAt !== expectedUpdatedAt) return { sent: false }
+    const sent = await workerManager.continueGoal(sessionFile, runId, goalContinuationPrompt(remaining), expectedUpdatedAt)
+    return { sent }
   })
 
   registerHandlerWithSchema('ipc:sessionGoal.clear', sessionGoalClearSchema, async (req) => {

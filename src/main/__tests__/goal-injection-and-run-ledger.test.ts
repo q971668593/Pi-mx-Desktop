@@ -164,14 +164,26 @@ describe('goal reaches the worker before the turn starts', () => {
 describe('run ledger survives a crashed worker', () => {
   it('keeps the run as an orphan and reports it on ipc:worker-fatal', async () => {
     const file = '/sessions/a.jsonl'
-    const slot = makeSlot(file, normalReply)
+    const slot = makeSlot(file, (message, reply) => {
+      if (message.type === 'prompt') {
+        expect(mocks.ledger.read()).toMatchObject([{ sessionFile: key(file) }])
+        reply({ type: 'app-event', event: { type: 'run', phase: 'started', runId: 'run-a' } })
+      }
+      normalReply(message, reply)
+    })
     const { manager, sent } = setup(slot)
+    attachWorkerHandlers(slot, slot.worker, {
+      mainWindow: null,
+      onAppEvent: (payload) => {
+        const target = manager as unknown as { forwardAppEvent(event: typeof payload): void }
+        target.forwardAppEvent(payload)
+      },
+      onSlotExit: vi.fn(),
+    })
 
     await manager.sendPrompt('长任务', file)
-    expect(mocks.ledger.read().map((row) => row.sessionFile)).toEqual([key(file)])
-
-    // worker 在一轮进行中崩掉：没有 run 事件，只有进程退出
-    slot.agentTurnActive = true
+    expect(slot.agentTurnActive).toBe(true)
+    expect(mocks.ledger.read()).toMatchObject([{ sessionFile: key(file), runId: 'run-a' }])
     exitSlot(manager, slot, 1)
 
     // R1 之前这里是 []：mark-orphan 之后紧跟 release，记录当场被删
@@ -180,6 +192,27 @@ describe('run ledger survives a crashed worker', () => {
 
     const fatal = sent.find((entry) => entry.channel === 'ipc:worker-fatal')
     expect(fatal?.payload.orphanedRuns).toBe(1)
+  })
+
+  it('defers external model reload for a busy session only and refreshes its catalog after settlement', async () => {
+    const a = '/sessions/a.jsonl'
+    const b = '/sessions/b.jsonl'
+    const first = makeSlot(a, normalReply)
+    const second = makeSlot(b, normalReply)
+    const { manager, sent } = setup(first, second)
+    await manager.sendPrompt('test', a)
+    await manager.reloadModels()
+    expect(posted(first, 'reloadModels')).toHaveLength(0)
+    expect(posted(second, 'reloadModels')).toHaveLength(1)
+
+    const payload = {
+      event: { type: 'run', phase: 'idle', settled: true, sessionFile: key(a) },
+      fromCwd: first.cwd, fromPoolKey: first.poolKey, sessionFile: key(a), agentTurnActive: false,
+    }
+    const target = manager as unknown as { forwardAppEvent(event: typeof payload): void }
+    target.forwardAppEvent(payload)
+    await vi.waitFor(() => expect(sent.some(({ channel }) => channel === 'ipc:model-catalog-changed')).toBe(true))
+    expect(posted(first, 'reloadModels')).toHaveLength(1)
   })
 
   it('releases the record when the turn ends normally (no orphan left behind)', async () => {
@@ -209,5 +242,29 @@ describe('run ledger survives a crashed worker', () => {
 
     expect(mocks.ledger.read()).toEqual([])
     expect(mocks.ledger.listOrphans()).toEqual([])
+  })
+
+  it('applies a pending model update when the worker rejects a prompt before starting the run', async () => {
+    const file = '/sessions/a.jsonl'
+    let rejectPrompt: () => void = () => { throw new Error('Expected the prompt to reach the worker') }
+    const slot = makeSlot(file, (message, reply) => {
+      if (message.type === 'prompt') {
+        rejectPrompt = () => reply({ requestId: message.requestId, type: 'error', error: 'No session' })
+        return
+      }
+      normalReply(message, reply)
+    })
+    const { manager } = setup(slot)
+
+    const prompt = manager.sendPrompt('test', file)
+    await vi.waitFor(() => expect(posted(slot, 'prompt')).toHaveLength(1))
+    await manager.reloadModels()
+    expect(posted(slot, 'reloadModels')).toHaveLength(0)
+
+    const rejected = expect(prompt).rejects.toThrow('No session')
+    rejectPrompt()
+    await rejected
+    expect(mocks.ledger.read()).toEqual([])
+    expect(posted(slot, 'reloadModels')).toHaveLength(1)
   })
 })

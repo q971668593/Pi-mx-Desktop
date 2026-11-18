@@ -27,7 +27,7 @@ export function useWorkspaceFs(workspaceRoot: string | null, includeDotfiles = f
         path: relativePath,
         maxBytes: opts?.maxBytes ?? PREVIEW_READ_MAX_BYTES,
       })
-      return res as { ok: boolean; content?: string; error?: string; size?: number; truncated?: boolean }
+      return res as { ok: boolean; content?: string; error?: string; size?: number; truncated?: boolean; revision?: string }
     },
     [workspaceRoot],
   )

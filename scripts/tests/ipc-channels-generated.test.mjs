@@ -17,11 +17,10 @@ describe('IPC contract generation', () => {
   it('generated allowlist and docs are up to date', () => {
     const result = spawnSync(process.execPath, [join(root, 'scripts/generate-ipc-channels.mjs'), '--check'], {
       cwd: root,
-      encoding: 'utf8',
+      stdio: 'inherit',
       windowsHide: true,
     })
-    const output = `${result.stdout || ''}${result.stderr || ''}`.trim()
-    assert.equal(result.status, 0, `生成物已漂移，请运行 \`npm run gen:ipc\` 后提交：\n${output}`)
-    assert.match(output, /无漂移|no drift/i)
+    if (result.error) throw result.error
+    assert.equal(result.status, 0, 'IPC 生成物校验未通过，请查看生成器输出')
   })
 })

@@ -16,6 +16,7 @@ import {
 } from '@renderer/components/icons'
 import { FileDiffView, type DiffMode } from './review-diff-views'
 import { useReviewGitData } from './use-review-git-data'
+import { TurnSnapshotPanel, useTurnReviewRequest } from './turn-snapshot-panel'
 import {
   collectTouchedPaths,
   filterReviewGroups,
@@ -87,7 +88,10 @@ function ReviewSkeleton() {
 
 export function ReviewPanel() {
   const { t } = useTranslation()
-  const [scope, setScope] = useState<Scope>('session')
+  const historySessionFile = useUIStore((s) => s.historySessionFile)
+  const requestedTurn = useTurnReviewRequest((s) => s.request)
+  const turnRequest = requestedTurn?.sessionFile === historySessionFile ? requestedTurn : null
+  const [scope, setScope] = useState<Scope>(turnRequest ? 'turn' : 'session')
   const fileChanges = useUIStore((s) => s.fileChanges)
   const tools = useUIStore((s) => selectToolTouchRows(s.timelineItems))
   const workspace = useUIStore((s) => s.currentWorkspace)
@@ -104,7 +108,14 @@ export function ReviewPanel() {
     worktreeChangeSignal: fileChanges,
   })
 
-  const turnRunId = running ? activeRunId : lastRunId
+  const turnRunId = turnRequest?.runId || (running ? activeRunId : lastRunId)
+
+  useEffect(() => {
+    if (!turnRequest) return
+    setScope('turn')
+    setFocusPath(turnRequest.path ?? null)
+    setExpandedPath(turnRequest.path ?? null)
+  }, [turnRequest])
   const cwd = workspace || ''
   const commentCount = useSyncExternalStore(subscribeReviewComments, () => listAllReviewComments(cwd).length)
   const [sending, setSending] = useState(false)
@@ -135,7 +146,10 @@ export function ReviewPanel() {
   useEffect(() => {
     const onScope = (e: Event) => {
       const next = (e as CustomEvent<Scope>).detail
-      if (next && SCOPES.includes(next)) setScope(next)
+      if (next && SCOPES.includes(next)) {
+        useTurnReviewRequest.setState({ request: null })
+        setScope(next)
+      }
     }
     window.addEventListener('pi-desktop:review-scope', onScope)
     return () => window.removeEventListener('pi-desktop:review-scope', onScope)
@@ -245,7 +259,10 @@ export function ReviewPanel() {
               <button
                 key={item}
                 type="button"
-                onClick={() => setScope(item)}
+                onClick={() => {
+                  useTurnReviewRequest.setState({ request: null })
+                  setScope(item)
+                }}
                 aria-pressed={scope === item}
                 aria-label={t(`review:scope.${item}`)}
                 title={t(`review:scope.${item}`)}
@@ -298,6 +315,13 @@ export function ReviewPanel() {
       </div>
       <div className="scrollbar-overlay min-h-0 flex-1 overflow-y-auto" key={scope}>
         <div className="review-scope-body">
+          {scope === 'turn' && workspace && historySessionFile && turnRunId ? (
+            <TurnSnapshotPanel
+              key={JSON.stringify([workspace, historySessionFile, turnRunId])}
+              request={{ workspaceId: workspace, sessionFile: historySessionFile, runId: turnRunId }}
+              running={running} focusPath={focusPath ?? turnRequest?.path} onRestored={loadGit}
+            />
+          ) : null}
           {loading ? (
             <ReviewSkeleton />
           ) : gitData?.isRepo === false ? (

@@ -36,6 +36,7 @@ export const workspaceFsWriteTextSchema = z.object({
   workspaceRoot: z.string().min(1),
   path: z.string().min(1),
   content: z.string().max(8_000_000),
+  expectedRevision: z.string().regex(/^[a-f0-9]{64}$/).optional(),
 })
 
 export const workspaceFsRenameSchema = z.object({
@@ -153,6 +154,7 @@ export const sessionGoalMarkDoneSchema = z
     sessionFile: goalSessionFileSchema,
     /** 1 起的验收项序号，与 `GOAL-PROGRESS: 1,3` 的约定一致。 */
     indices: z.array(z.number().int().min(1).max(MAX_GOAL_CRITERIA)).max(MAX_GOAL_CRITERIA),
+    expectedUpdatedAt: z.number().int().nonnegative().optional(),
   })
   .strict()
 

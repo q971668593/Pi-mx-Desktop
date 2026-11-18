@@ -16,6 +16,7 @@ import { getAgentRuntimeConfig } from './wsl/runtime-config'
 import { resolveWslActiveSdk } from './wsl/sdk-resolve'
 import { syncWorkerBundleToWsl } from './wsl/worker-host'
 import { resolveUtilityEntry } from './utility-entry-path'
+import { recordTurnFileSnapshot } from './turn-file-snapshot-store'
 
 export const extensionUiDialogSource = new Map<string, WorkerSlot>()
 
@@ -156,6 +157,11 @@ export function attachWorkerHandlers(
   transport.onMessage((data) => {
     if (slot.worker !== transport) return
     if (!data || typeof data !== 'object') return
+
+    if (data.type === 'turn-file-snapshot') {
+      if (slot.sessionFile) recordTurnFileSnapshot(slot.sessionFile, data.runId, data.snapshot)
+      return
+    }
 
     if (data.type === 'app-event') {
       const ev = data.event as AppEvent

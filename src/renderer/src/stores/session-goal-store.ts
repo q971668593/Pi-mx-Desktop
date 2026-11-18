@@ -15,6 +15,8 @@ type SessionGoalState = {
   sessionFile: string | null
   goal: SessionGoal | null
   loading: boolean
+  autoRun: Record<string, number>
+  setAutoRun: (sessionFile: string, enabled: boolean) => void
   /** 最近一次 IPC 失败的原因（UI 只读，不弹窗轰炸） */
   error: string | null
   load: (sessionFile: string | null) => Promise<void>
@@ -34,6 +36,7 @@ function keyOf(sessionFile: string | null): string | null {
 export const useSessionGoalStore = create<SessionGoalState>((set, get) => {
   /** 只有仍是同一个会话时才写回，避免切会话时的迟到响应覆盖当前会话。 */
   const sameSession = (requested: string | null): boolean => get().sessionFile === requested
+  let autoRunVersion = 0
 
   const invokeGoalMutation = async (
     channel: string,
@@ -58,6 +61,17 @@ export const useSessionGoalStore = create<SessionGoalState>((set, get) => {
     goal: null,
     loading: false,
     error: null,
+    autoRun: {},
+    setAutoRun: (sessionFile, enabled) => {
+      const key = keyOf(sessionFile)
+      if (!key) return
+      set((state) => {
+        const autoRun = { ...state.autoRun }
+        if (enabled) autoRun[key] = ++autoRunVersion
+        else delete autoRun[key]
+        return { autoRun }
+      })
+    },
 
     load: async (sessionFile) => {
       const key = keyOf(sessionFile)
@@ -82,6 +96,7 @@ export const useSessionGoalStore = create<SessionGoalState>((set, get) => {
     setGoal: async (goal, criteria) => {
       const key = get().sessionFile
       if (!key) return null
+      get().setAutoRun(key, false)
       const request: Record<string, unknown> = { sessionFile: key, goal }
       if (criteria !== undefined) request.criteria = criteria
       return invokeGoalMutation('sessionGoal.set', key, request)
@@ -102,6 +117,7 @@ export const useSessionGoalStore = create<SessionGoalState>((set, get) => {
     clear: async () => {
       const key = get().sessionFile
       if (!key) return false
+      get().setAutoRun(key, false)
       try {
         const response = (await ipcClient.invoke('sessionGoal.clear', { sessionFile: key })) as
           | { cleared?: boolean }

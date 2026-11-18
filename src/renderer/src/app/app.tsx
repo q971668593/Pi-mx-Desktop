@@ -7,6 +7,7 @@ import { ProjectSidebar } from '@renderer/features/workspace/project-sidebar'
 import { MainColRightPanelToggle } from '@renderer/components/app/main-col-right-panel-toggle'
 import { MainColumnWithTimelineScroll } from '@renderer/components/app/main-column-with-timeline-scroll'
 import { GoalBar } from '@renderer/features/goal/goal-bar'
+import { InterruptedRunBanner } from '@renderer/features/run/interrupted-run-banner'
 import { installGoalAutoLoop } from '@renderer/features/goal/goal-auto-loop'
 import { ComposerDock } from '@renderer/components/app/composer-dock'
 import { TimelineScrubber } from '@renderer/features/timeline/timeline-scrubber'
@@ -109,7 +110,6 @@ export default function App() {
   const rightPanelOrder = useUIStore((s) => s.rightPanelOrder)
   const applyRightPanelRuntime = useUIStore((s) => s.applyRightPanelRuntime)
   // 目标自动循环：一轮结束后若目标还有未达成项就续一轮，连亏 3 轮自动停（见 goal-auto-loop.ts）。
-  useEffect(() => installGoalAutoLoop(), [])
   // models.json 被外部改动时丢掉模型快照，聊天框的模型/思考程度不再等到重启才更新。
   useEffect(() => {
     let off = () => {}
@@ -251,7 +251,9 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    const goalLoop = installGoalAutoLoop()
     const unsubEvents = onAppEvent((event) => {
+      goalLoop.observe(event)
       if (event.type === 'sdk-runtime-changed' || event.type === 'adapter-catalog-changed') {
         invalidateAdapterSnapshots()
         invalidateRightPanelCatalog()
@@ -294,6 +296,9 @@ export default function App() {
         store.setCompactingSession,
       )
       if (info.sessionFile) store.setRetryingSession(info.sessionFile, null)
+      void import('@renderer/lib/refresh-workspace-session-lists').then(({ refreshWorkspaceSessionLists }) =>
+        refreshWorkspaceSessionLists({ workspaceIds: [info.cwd] }),
+      ).catch(() => {})
     })
     const unsubNotify = onNotificationOpenSession((payload) => {
       void handleNotificationOpenSession(payload)
@@ -307,6 +312,7 @@ export default function App() {
     window.addEventListener('pi-desktop:open-session', onOpenSession)
     return () => {
       window.removeEventListener('pi-desktop:open-session', onOpenSession)
+      goalLoop.dispose()
       unsubEvents()
       unsubExit()
       unsubNotify()
@@ -431,7 +437,7 @@ export default function App() {
           center={
             <SplitView>
             <MainColumnWithTimelineScroll className="h-full">
-              {!showHome ? <GoalBar /> : null}
+              {!showHome ? <><InterruptedRunBanner /><GoalBar /></> : null}
               {showHome ? (
                 <Suspense fallback={<ShellSuspenseFallback label={t('common:loading')} />}>
                   <ProjectHomeView

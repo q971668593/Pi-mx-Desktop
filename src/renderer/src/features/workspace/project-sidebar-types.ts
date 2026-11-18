@@ -21,12 +21,14 @@ export type SessionItem = {
   /** User's newest send time. Sidebar order and "N 分钟前" use this — never the assistant's
    *  last activity, which would keep resetting the label while the agent is still working. */
   lastUserMessageAt?: number
+  interruptedAt?: number
   messageCount?: number
   modelId: string
 }
 
 export function diskProjectName(path: string) {
-  return path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path
+  const name = path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path
+  return /^[a-z\d]+(?:[-_][a-z\d]+)+$/i.test(name) ? name.replace(/[-_]/g, ' ') : name
 }
 
 export function isSandboxPath(path: string) {

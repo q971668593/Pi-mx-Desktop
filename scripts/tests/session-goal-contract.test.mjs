@@ -38,8 +38,10 @@ describe('session goal contract', () => {
 
     // 每条 turn 起跑前都补推当前目标（桌面端 + 远端 + steer/followUp 都要覆盖）
     const manager = read('src/main/worker-manager.ts')
-    const pushCalls = manager.match(/await this\.pushGoalBeforeTurn\(sessionFile\)/g) ?? []
-    assert.equal(pushCalls.length, 3, 'sendPrompt / steer / followUp 各推一次')
+    assert.match(manager, /async sendPrompt\([^\n]+\{\s*await this\.dispatchPrompt\('prompt', text, sessionFile\)/)
+    assert.match(manager, /async followUp\([^\n]+\{\s*await this\.dispatchPrompt\('followUp', text, sessionFile\)/)
+    assert.match(manager, /private async dispatchPrompt\([^\n]+\{[^}]*await this\.pushGoalBeforeTurn\([^\n]+\)[\s\S]*?await this\.requestOnSlot\(slot, type,/)
+    assert.match(manager, /async steer\([^\n]+\{\s*await this\.pushGoalBeforeTurn\(sessionFile\)\s*await this\.request\('steer',/)
   })
 
   it('brakes the auto loop after three rounds without progress', () => {

@@ -46,6 +46,7 @@ vi.mock('../../worker-manager', () => ({
   workerManager: {
     cwd: '/workspace',
     isRunning: true,
+    listInterruptedRuns: () => [],
     start: vi.fn(),
     newSession: mocks.newSession,
     forkSession: mocks.forkSession,

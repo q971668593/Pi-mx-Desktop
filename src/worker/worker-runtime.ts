@@ -1,4 +1,5 @@
 import { refreshAgentContext } from './session-context-refresh.js'
+import { randomUUID } from 'node:crypto'
 import type {
   AgentSession,
   AgentSessionEvent,
@@ -92,7 +93,7 @@ function nextSeq(): number {
 }
 
 export function beginRunIdentity(): void {
-  st.currentRunId = `run-${nextSeq()}`
+  st.currentRunId = `run-${randomUUID()}`
   st.currentTurnId = `turn-${nextSeq()}`
 }
 

@@ -109,7 +109,10 @@ describe('R8 workspace file operations', () => {
     await mkdir(join(root, 'dir'))
     // 4 bytes cuts the second CJK character in half: the partial sequence must not be emitted.
     await expect(workspaceFsReadText({ workspaceRoot: root, path: 'zh.txt', maxBytes: 4 })).resolves.toEqual({ ok: true, content: '中', size: 12, truncated: true })
-    await expect(workspaceFsReadText({ workspaceRoot: root, path: 'zh.txt' })).resolves.toEqual({ ok: true, content: '中文内容', size: 12, truncated: false })
+    await expect(workspaceFsReadText({ workspaceRoot: root, path: 'zh.txt' })).resolves.toEqual({
+      ok: true, content: '中文内容', size: 12, truncated: false,
+      revision: expect.stringMatching(/^[a-f0-9]{64}$/),
+    })
     await expect(workspaceFsReadText({ workspaceRoot: root, path: 'bin.dat' })).resolves.toEqual({ ok: false, error: 'binary' })
     await expect(workspaceFsReadText({ workspaceRoot: root, path: 'dir' })).resolves.toEqual({ ok: false, error: 'not_a_file' })
     await expect(workspaceFsReadText({ workspaceRoot: root, path: 'nope.txt' })).resolves.toEqual({ ok: false, error: 'not_found' })

@@ -1,29 +1,40 @@
 .sidebar-project-card {
-  margin-block: 6px;
-  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
-  border-radius: 11px;
-  background: color-mix(in srgb, var(--bg-1) 80%, var(--bg-hover));
-  transition: background-color 170ms ease, border-color 170ms ease, box-shadow 170ms ease, opacity 160ms ease;
+  margin-block: 3px;
+  padding-block: 2px;
+  border-block-end: 1px solid color-mix(in srgb, var(--text-primary) 9%, transparent);
+  border-radius: 7px;
+  transition: background-color 170ms ease, opacity 160ms ease;
 }
-.sidebar-project-card[data-active='true'], .sidebar-project-card:has([aria-current='location']) {
-  background: color-mix(in srgb, var(--bg-active) 60%, var(--bg-1));
-  border-color: transparent;
+.sidebar-project-card:last-child { border-block-end-color: transparent; }
+.sidebar-project-row[data-active='true'] > .sidebar-project-header,
+.sidebar-repository-group:has([aria-current='location']) > .sidebar-project-header {
+  background-color: var(--bg-hover);
 }
-.sidebar-project-card:hover { border-color: color-mix(in srgb, var(--text-primary) 16%, transparent); }
-.sidebar-project-header { display: flex; align-items: center; min-height: 45px; padding: 3px 5px; gap: 2px; }
-.sidebar-project-header .workbench-icon { width: 20px; }
-.sidebar-project-header .sidebar-project-hit { gap: 7px; }
-.project-folder-tile {
-  display: inline-grid; place-items: center; flex: none; width: 26px; height: 26px;
-  border-radius: 7px; background: var(--bg-hover); color: var(--text-secondary);
+.sidebar-project-header {
+  display: flex; align-items: center; gap: 2px;
+  min-height: 38px; padding-inline: 3px; border-radius: 7px;
 }
-.sidebar-project-card .sidebar-session-tree { margin: 0 5px 5px; padding: 2px 0 0; }
-.sidebar-project-card .sidebar-session-row { border-radius: 7px; }
-.sidebar-project-card .sidebar-session-hit { padding-inline: 6px; }
-.sidebar-project-card .sidebar-session-row:not(.sidebar-child-row) .sidebar-session-hit { min-height: 38px; }
-.sidebar-project-card .sidebar-session-row.nav-row-active { box-shadow: none; }
-.sidebar-worktree-row { margin-inline: 3px 5px; }
-.sidebar-worktree-row .sidebar-project-header { min-height: 39px; }
+.sidebar-project-header .sidebar-project-hit { min-height: 36px; }
+.sidebar-project-header .sidebar-project-toggle,
+.sidebar-project-header .sidebar-project-add { width: 24px; flex-shrink: 0; }
+.sidebar-project-name {
+  min-width: 0; color: var(--text-primary); font-size: 13px; font-weight: 600; line-height: 20px;
+}
+.sidebar-project-branch {
+  min-width: 0; max-width: 32%; margin-inline-start: auto; padding: 1px 5px;
+  border-radius: 4px; background: var(--bg-hover); color: var(--text-secondary); font-size: 10px; line-height: 15px;
+}
+.sidebar-project-header :is(.sidebar-project-hit, .sidebar-repository-hit):focus-visible {
+  outline: 1px solid var(--focus-border); outline-offset: -2px;
+}
+.sidebar-project-row .sidebar-session-tree {
+  margin: 1px 5px 5px 14px; padding: 2px 0 0 7px;
+  border-inline-start: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
+}
+.sidebar-session-tree .sidebar-session-entry + .sidebar-session-entry { margin-top: 1px; }
+.sidebar-session-root .sidebar-session-hit { padding-inline: 7px 5px; }
+.sidebar-session-time { color: var(--text-secondary); }
+.sidebar-worktree-row { margin-block: 1px; }
 .sidebar-project-header[draggable='true'], [data-session-file][draggable='true'] .sidebar-session-hit { cursor: grab; }
 .sidebar-project-header[draggable='true']:active, [data-session-file][draggable='true'] .sidebar-session-hit:active { cursor: grabbing; }
 .sidebar-drop-target[data-sorting='true'] { opacity: .42; }
@@ -63,7 +74,6 @@
 .hidden-projects-dialog::backdrop { background: rgb(10 15 22 / 42%); }
 .hidden-projects-content { padding: 18px; }
 .hidden-projects-content header { display: flex; align-items: flex-start; gap: 11px; margin-bottom: 15px; }
-.hidden-projects-content header .project-folder-tile { width: 36px; height: 36px; }
 .hidden-projects-content h2 { font-size: 16px; font-weight: 650; }
 .hidden-projects-content h2 span { margin-left: 4px; font-size: 12px; color: var(--text-secondary); }
 .hidden-projects-content p { font-size: 12px; color: var(--text-secondary); }

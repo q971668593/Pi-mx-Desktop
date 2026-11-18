@@ -62,6 +62,7 @@ export interface SweepResult {
 export interface RunLedger {
   readonly filePath: string
   beginRun(input: BeginRunInput): RunRecord | null
+  identifyRun(sessionFile: string, runId: string): void
   releaseRun(sessionFile: string): boolean
   markOrphaned(sessionFile: string, input?: MarkOrphanedInput): boolean
   listOrphans(maxAgeMs?: number): RunRecord[]
@@ -147,6 +148,14 @@ export function createRunLedger(options: RunLedgerOptions): RunLedger {
       return record
     },
 
+    identifyRun(sessionFile, runId) {
+      mutate((runs) => runs.map((row) =>
+        row.sessionFile === sessionFile && row.orphanedAt === undefined
+          ? { ...row, runId, updatedAt: now() }
+          : row,
+      ))
+    },
+
     releaseRun(sessionFile) {
       const key = sessionFile.trim()
       if (!key) return false
@@ -191,10 +200,9 @@ export function createRunLedger(options: RunLedgerOptions): RunLedger {
       const kept: RunRecord[] = []
       const orphans: RunRecord[] = []
       for (const row of load().runs) {
-        const age = at - row.startedAt
         const alreadyOrphaned = typeof row.orphanedAt === 'number'
         // 超龄记录直接丢弃（正常结束的清理由 releaseRun 负责）。
-        if (age > defaultMaxAgeMs) continue
+        if (row.orphanedAt !== undefined && at - row.orphanedAt > defaultMaxAgeMs) continue
         const next: RunRecord = alreadyOrphaned
           ? row
           : { ...row, orphanedAt: at, orphanReason: reasonText, updatedAt: at }

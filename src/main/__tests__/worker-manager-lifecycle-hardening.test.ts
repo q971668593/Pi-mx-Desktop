@@ -3,10 +3,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WorkerSlot } from '../worker-manager-types'
+import { createRunLedger, type RunLedger } from '../run-ledger'
 
 const mocks = vi.hoisted(() => ({
   fork: vi.fn(),
   runtime: { mode: 'host' as 'host' | 'wsl', distro: null as string | null },
+  ledger: null as RunLedger | null,
 }))
 vi.mock('../config-store', () => ({ configStore: { get: vi.fn(() => undefined) } }))
 vi.mock('../session-file-meta', () => ({
@@ -25,6 +27,7 @@ vi.mock('../worker-manager-pool', async (original) => ({
   ...(await original<typeof import('../worker-manager-pool')>()),
   forkWorkerForCwd: mocks.fork,
 }))
+vi.mock('../run-ledger-instance', () => ({ getRunLedger: () => mocks.ledger }))
 
 import { WorkerManager } from '../worker-manager'
 import { attachWorkerHandlers, disposeWorkerSlot } from '../worker-manager-pool'
@@ -88,13 +91,21 @@ const normalReply: Handler = (message, reply) => {
 const posted = (slot: WorkerSlot, type: string) =>
   (slot.worker.postMessage as ReturnType<typeof vi.fn>).mock.calls.filter(([message]) => (message as Message).type === type)
 
+let runLedgerDir: string
+
 beforeEach(() => {
   mocks.fork.mockReset()
+  runLedgerDir = mkdtempSync(join(tmpdir(), 'pi-lifecycle-ledger-'))
+  mocks.ledger = createRunLedger({ filePath: join(runLedgerDir, 'run-ledger.json') })
   mocks.runtime = { mode: 'host', distro: null }
   vi.mocked(readSessionMetaFromFile).mockResolvedValue({ cwd: '/workspace', sessionId: 'a' })
   vi.mocked(configStore.get).mockReset()
 })
-afterEach(() => vi.useRealTimers())
+afterEach(() => {
+  vi.useRealTimers()
+  mocks.ledger = null
+  rmSync(runLedgerDir, { recursive: true, force: true })
+})
 
 describe('WSL session workspace paths', () => {
   it.each(['load', 'rpc', 'fork', 'clone'] as const)('keeps the host cwd when a WSL session is opened through %s', async (action) => {

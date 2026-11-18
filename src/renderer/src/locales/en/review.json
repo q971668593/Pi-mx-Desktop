@@ -1,4 +1,18 @@
 {
+  "snapshot": {
+    "title": "Changes captured for this turn",
+    "before": "Before the turn",
+    "after": "After the turn",
+    "absent": "File did not exist",
+    "restore": "Restore file",
+    "trash": "Move added file to Trash",
+    "confirmRestore": "Restore {{path}} to its version before this turn?",
+    "confirmTrash": "Move {{path}} to Trash to undo the addition?",
+    "restored": "Restored",
+    "failed": "Could not restore the file.",
+    "conflict": "The file changed after this turn. The current version was kept.",
+    "busy": "Wait for the workspace run to finish before restoring."
+  },
   "scope": {
     "turn": "This turn",
     "session": "Session total",

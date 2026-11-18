@@ -127,6 +127,7 @@ describe('run ledger', () => {
     let clock = 10_000
     const { ledger } = newLedger({ now: () => clock, maxAgeMs: 5_000 })
     ledger.beginRun({ sessionFile: '/stale.jsonl' })
+    ledger.markOrphaned('/stale.jsonl')
     clock = 12_000
     ledger.beginRun({ sessionFile: '/fresh.jsonl' })
 
@@ -137,6 +138,17 @@ describe('run ledger', () => {
     expect(result.orphans.map((row) => row.sessionFile)).toEqual(['/fresh.jsonl'])
     expect(result.orphans[0].orphanReason).toBe('app-boot')
     expect(result.kept).toBe(1)
+  })
+
+  it('recovers a long-running claim even when it started before the retention window', () => {
+    let clock = 10_000
+    const { ledger } = newLedger({ now: () => clock, maxAgeMs: 5_000 })
+    ledger.beginRun({ sessionFile: '/long.jsonl' })
+    ledger.identifyRun('/long.jsonl', 'run-long')
+    clock = 50_000
+    expect(ledger.sweep('app-boot').orphans).toMatchObject([
+      { sessionFile: '/long.jsonl', runId: 'run-long', startedAt: 10_000, orphanedAt: 50_000 },
+    ])
   })
 
   it('sweep keeps an already-orphaned fresh entry without rewriting its reason', () => {

@@ -52,6 +52,7 @@ export interface RunEvent extends AppEventBase {
   availableThinkingLevels?: string[]
   /** Internal lifecycle marker: emitted only from SDK agent_settled. */
   settled?: boolean
+  goalProgress?: number[]
   /**
    * SDK could not restore the session's saved model (missing registry entry / auth)
    * and fell back to another model. Surface in UI — do not leave as worker-only log.

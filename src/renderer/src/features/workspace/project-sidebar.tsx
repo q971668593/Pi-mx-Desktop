@@ -774,9 +774,9 @@ export function ProjectSidebar({
                 draggable={!searchActive} onDragStart={(event) => projectDrag.start(event, projectKey(group), 'projects')} onDragEnd={projectDrag.end}>
               <button
                 type="button"
-                className="sidebar-repository-hit flex min-h-[36px] w-full min-w-0 items-center gap-0.5 rounded-lg pl-0.5 pr-1 text-left hover:bg-[var(--bg-hover)]"
+                className="sidebar-repository-hit flex min-h-[36px] w-full min-w-0 items-center gap-1 rounded-md pr-1 text-left hover:bg-[var(--bg-hover)]"
                 aria-expanded={open}
-                title={group.repositoryPath}
+                title={`${name}\n${group.repositoryPath}`}
                 onClick={() => setRepositoryOpen((previous) => ({ ...previous, [group.key]: !open }))}
                 onContextMenu={(event) =>
                   projectMenu.open(event, group.repositoryPath!, name, {
@@ -786,11 +786,10 @@ export function ProjectSidebar({
                   })
                 }
               >
-                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center">
+                <span className="sidebar-project-toggle inline-flex h-8 shrink-0 items-center justify-center">
                   <ChevronRight className="chevron-expand h-3.5 w-3.5 shrink-0 text-foreground-secondary/80" data-open={open ? 'true' : 'false'} />
                 </span>
-                <span className="project-folder-tile"><FolderOpen size={15} /></span>
-                <span className="min-w-0 flex-1 truncate px-1 text-[13px] font-semibold">{name}</span>
+                <span className="sidebar-project-name flex-1 truncate">{name}</span>
                 <span
                   className="ml-0.5 inline-flex h-[26px] w-[26px] shrink-0 items-center justify-center text-[11px] tabular-nums text-foreground-secondary"
                   title={t('common:sidebar.worktreeCount', { count: group.projects.length })}

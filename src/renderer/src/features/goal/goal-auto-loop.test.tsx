@@ -10,6 +10,7 @@ import {
 } from './goal-auto-loop'
 import { useSessionGoalStore } from '@renderer/stores/session-goal-store'
 import { useUIStore } from '@renderer/stores/ui-store'
+import type { AppEvent } from '@shared/app-events'
 import type { SessionGoal } from '@shared/session-goal'
 
 const mocks = vi.hoisted(() => ({ invoke: vi.fn() }))
@@ -40,7 +41,7 @@ function runtime(overrides: Partial<GoalRoundRuntime> = {}) {
   const base: GoalRoundRuntime = {
     getSessionFile: () => sessionFile,
     getGoal: () => current,
-    getLastAssistantText: () => '',
+    reportedIndices: [],
     isBlocked: () => false,
     markDone: async (indices) => {
       current = {
@@ -84,7 +85,7 @@ describe('runGoalRound', () => {
   })
 
   it('absorbs the GOAL-PROGRESS line before deciding, so real progress is not a stall', async () => {
-    const { runtime: deps, calls } = runtime({ getLastAssistantText: () => '做完了\nGOAL-PROGRESS: 1' })
+    const { runtime: deps, calls } = runtime({ reportedIndices: [1] })
     await expect(runGoalRound(deps)).resolves.toBe('continue')
     expect(calls.send[0]).toContain('还剩 1 项')
   })
@@ -104,7 +105,7 @@ describe('runGoalRound', () => {
     await runGoalRound(deps)
     await runGoalRound(deps)
     expect(goalLoopStateForTest(sessionFile)?.stalledRounds).toBe(1)
-    const progressed = runtime({ getLastAssistantText: () => 'GOAL-PROGRESS: 2' })
+    const progressed = runtime({ reportedIndices: [2] })
     await runGoalRound(progressed.runtime)
     expect(goalLoopStateForTest(sessionFile)?.stalledRounds).toBe(0)
     expect(progressed.calls.send[0]).toContain('还剩 1 项')
@@ -170,41 +171,59 @@ describe('runGoalRound', () => {
 })
 
 describe('installGoalAutoLoop wiring', () => {
-  it('turns a settled turn into one continuation prompt, debounced', async () => {
+  const b = '/sessions/other.jsonl'
+  const events = (file: string, id: string) => {
+    const base = { workspaceId: '/workspace', sessionFile: file, runId: id, seq: 1, timestamp: 1 }
+    return {
+      started: { ...base, type: 'run', phase: 'started' } as const,
+      complete: [
+        { ...base, type: 'run', phase: 'idle', settled: true },
+        { ...base, type: 'completion', outcome: 'success', settled: true },
+      ] as const satisfies readonly AppEvent[],
+    }
+  }
+
+  beforeEach(() => {
     vi.useFakeTimers()
-    mocks.invoke.mockResolvedValue({})
-    useSessionGoalStore.setState({ sessionFile, goal: goal(), loading: false, error: null })
-    useUIStore.setState({ runState: { status: 'running', toolCount: 0, errorCount: 0 } })
-    const uninstall = installGoalAutoLoop()
+    useSessionGoalStore.setState({ autoRun: {} })
+    mocks.invoke.mockImplementation(async (channel: string) => channel === 'sessionGoal.get'
+      ? { goal: goal() }
+      : { sent: true })
+  })
+
+  it('continues the completed session even after switching to another session', async () => {
+    useSessionGoalStore.getState().setAutoRun(sessionFile, true)
+    useSessionGoalStore.getState().setAutoRun(b, true)
+    const loop = installGoalAutoLoop()
     try {
-      await act(async () => {
-        useUIStore.setState({ runState: { status: 'idle', toolCount: 0, errorCount: 0 } })
-        await vi.advanceTimersByTimeAsync(GOAL_LOOP_SETTLE_DELAY_MS + 20)
-      })
-      expect(mocks.invoke).toHaveBeenCalledWith('prompt.send', {
-        sessionFile,
-        text: expect.stringContaining('继续推进本会话目标'),
-      })
+      const a = events(sessionFile, 'run-a')
+      loop.observe(a.started)
+      useUIStore.setState({ historySessionFile: b })
+      for (const event of a.complete) loop.observe(event)
+      loop.observe(a.complete[1])
+      await act(() => vi.advanceTimersByTimeAsync(GOAL_LOOP_SETTLE_DELAY_MS))
+      expect(mocks.invoke.mock.calls.filter(([name]) => name === 'sessionGoal.continue')).toEqual([
+        ['sessionGoal.continue', { sessionFile, runId: 'run-a', expectedUpdatedAt: 2 }],
+      ])
     } finally {
-      uninstall()
+      loop.dispose()
     }
   })
 
-  it('drops the continuation if a new turn started during the settle delay', async () => {
-    vi.useFakeTimers()
-    mocks.invoke.mockResolvedValue({})
-    useSessionGoalStore.setState({ sessionFile, goal: goal(), loading: false, error: null })
-    useUIStore.setState({ runState: { status: 'running', toolCount: 0, errorCount: 0 } })
-    const uninstall = installGoalAutoLoop()
+  it.each(['pause', 'new-run', 'new-goal'] as const)('drops a stale continuation after %s', async (action) => {
+    useSessionGoalStore.getState().setAutoRun(sessionFile, true)
+    const loop = installGoalAutoLoop()
     try {
-      await act(async () => {
-        useUIStore.setState({ runState: { status: 'idle', toolCount: 0, errorCount: 0 } })
-        useUIStore.setState({ runState: { status: 'running', toolCount: 0, errorCount: 0 } })
-        await vi.advanceTimersByTimeAsync(GOAL_LOOP_SETTLE_DELAY_MS + 20)
-      })
-      expect(mocks.invoke).not.toHaveBeenCalledWith('prompt.send', expect.anything())
+      const a = events(sessionFile, 'run-a')
+      if (action === 'new-goal') mocks.invoke.mockResolvedValueOnce({ goal: goal({ updatedAt: 1 }) })
+      loop.observe(a.started)
+      for (const event of a.complete) loop.observe(event)
+      if (action === 'pause') useSessionGoalStore.getState().setAutoRun(sessionFile, false)
+      if (action === 'new-run') loop.observe(events(sessionFile, 'run-b').started)
+      await act(() => vi.advanceTimersByTimeAsync(GOAL_LOOP_SETTLE_DELAY_MS))
+      expect(mocks.invoke).not.toHaveBeenCalledWith('sessionGoal.continue', expect.anything())
     } finally {
-      uninstall()
+      loop.dispose()
     }
   })
 })

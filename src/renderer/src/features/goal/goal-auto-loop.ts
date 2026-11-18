@@ -4,10 +4,10 @@ import { ipcClient } from '@renderer/lib/ipc-client'
 import { extensionUiBlocksComposer } from '@renderer/stores/extension-ui-store'
 import { useSessionGoalStore } from '@renderer/stores/session-goal-store'
 import { useUIStore } from '@renderer/stores/ui-store'
+import type { AppEvent } from '@shared/app-events'
 import {
   decideGoalLoop,
   goalContinuationPrompt,
-  parseGoalProgress,
   type GoalLoopState,
   type SessionGoal,
 } from '@shared/session-goal'
@@ -15,13 +15,11 @@ import i18n from '@renderer/lib/i18n'
 import { normalizeSessionFileKey } from '@renderer/lib/session-file-key'
 
 /**
- * 目标自动循环（渲染层驱动）。
- *
- * 一轮结束（run 回到 idle）且目标还有未达成项时，自动发一条「继续推进目标」的 prompt。
+ * 目标自动循环由 Worker 的成功完成事件触发。等待收尾时，用户可以暂停续跑。
  * 刹车用 `decideGoalLoop`：连续 3 轮 remaining 没下降就停（还有轮数上限），
  * 停止后不再自动发；用户勾选/改目标/手动发消息后重新开始计数。
  *
- * 进度从模型自己汇报的 `GOAL-PROGRESS: 1,3` 行读（约定写在注入的 goal section 里），
+ * Worker 从模型自己汇报的 `GOAL-PROGRESS: 1,3` 行读（约定写在注入的 goal section 里），
  * 由主进程落盘 —— 这里不猜完成度。
  */
 
@@ -33,12 +31,11 @@ export type GoalLoopOutcome = 'idle' | 'blocked' | 'continue' | 'done' | 'stalle
 export type GoalRoundRuntime = {
   getSessionFile: () => string | null
   getGoal: () => SessionGoal | null
-  /** 本轮（刚刚结束的那一轮）最后一条 assistant 正文。 */
-  getLastAssistantText: () => string
+  reportedIndices: number[]
   /** 现在不该自动发消息（还在跑 / 用户刚按停 / 压缩中 / 扩展弹窗挡着输入）。 */
   isBlocked: () => boolean
   markDone: (indices: number[]) => Promise<SessionGoal | null>
-  send: (text: string, sessionFile: string) => Promise<void>
+  send: (text: string, sessionFile: string) => Promise<boolean | void>
   notify: (event: { kind: 'done' | 'stalled' | 'capped'; remaining: number }) => void
 }
 
@@ -71,8 +68,7 @@ export async function runGoalRound(runtime: GoalRoundRuntime): Promise<GoalLoopO
   const state = prior && prior.goalText === goal.goal ? prior : null
   const before = remainingOf(goal)
 
-  const indices = parseGoalProgress(runtime.getLastAssistantText(), goal.criteria.length)
-  if (indices && indices.length > 0) await runtime.markDone(indices)
+  if (runtime.reportedIndices.length > 0) await runtime.markDone(runtime.reportedIndices)
   // 目标可能在上一轮里被清掉/改掉：以最新状态为准，不能拿旧快照续跑。
   const latest = runtime.getGoal()
   if (!latest) {
@@ -96,94 +92,122 @@ export async function runGoalRound(runtime: GoalRoundRuntime): Promise<GoalLoopO
     return decision
   }
 
+  const sent = await runtime.send(goalContinuationPrompt(remaining), sessionFile)
+  if (sent === false) return 'blocked'
   loopStates.set(sessionFile, { ...next, goalText: latest.goal })
-  await runtime.send(goalContinuationPrompt(remaining), sessionFile)
   return 'continue'
 }
 
-function lastAssistantText(): string {
-  const items = useUIStore.getState().timelineItems
-  for (let index = items.length - 1; index >= 0; index -= 1) {
-    const item = items[index]
-    if (item.type !== 'assistant-message') continue
-    const text = String((item as { text?: string }).text ?? '').trim()
-    if (text) return text
-  }
-  return ''
+type GoalRun = {
+  id: string
+  version: number
+  goal: Promise<SessionGoal | null>
+  indices: number[]
+  timer?: ReturnType<typeof setTimeout>
 }
 
-function createRuntime(): GoalRoundRuntime {
-  const viewedSession = (): string | null =>
-    normalizeSessionFileKey(useUIStore.getState().historySessionFile) || null
-  return {
-    getSessionFile: () => {
-      const store = useSessionGoalStore.getState()
-      const session = viewedSession()
-      return session && store.sessionFile === session ? session : null
-    },
-    getGoal: () => {
-      const store = useSessionGoalStore.getState()
-      const session = viewedSession()
-      if (!session || store.sessionFile !== session) return null
-      return store.goal
-    },
-    getLastAssistantText: lastAssistantText,
-    isBlocked: () => {
-      const ui = useUIStore.getState()
-      if (ui.runState.status !== 'idle') return true
-      // 用户刚敲了一条还没落到 run 状态（乐观行）：别抢在用户消息之前自动续。
-      if (ui.optimisticPendingUserText) return true
-      const session = ui.historySessionFile
-      if (session && isAbortUiHoldActive(session)) return true
-      if (session && ui.compactingSessions[session]) return true
-      return extensionUiBlocksComposer()
-    },
-    markDone: (indices) => useSessionGoalStore.getState().markCriteriaDone(indices),
-    send: async (text, sessionFile) => {
-      await ipcClient.invoke('prompt.send', { sessionFile, text })
-    },
-    notify: ({ kind, remaining }) => {
-      const t = i18n.t.bind(i18n)
-      if (kind === 'done') {
-        toast.success(t('goal:bar.done'))
-        return
-      }
-      toast.message(kind === 'capped' ? t('goal:bar.loopCapped', { count: remaining }) : t('goal:bar.loopStalled', { count: remaining }))
-    },
-  }
-}
-
-/**
- * 挂到 UI store 上：只在「running → idle」这一次真实收尾时触发，且同一次收尾只排一个定时器。
- * 返回卸载函数（app 卸载 / 测试用）。
- */
-export function installGoalAutoLoop(runtime: GoalRoundRuntime = createRuntime()): () => void {
-  let lastStatus = useUIStore.getState().runState.status
-  let timer: ReturnType<typeof setTimeout> | null = null
+export function installGoalAutoLoop() {
+  const runs = new Map<string, GoalRun>()
   let disposed = false
-  let inFlight = false
 
-  const unsubscribe = useUIStore.subscribe((state) => {
-    const status = state.runState.status
-    const settled = lastStatus === 'running' && status === 'idle'
-    lastStatus = status
-    if (!settled || disposed) return
-    if (timer) clearTimeout(timer)
-    timer = setTimeout(() => {
-      timer = null
-      if (disposed || inFlight) return
-      inFlight = true
-      void runGoalRound(runtime)
-        .catch((error) => console.warn('[GoalAutoLoop] round failed:', error))
-        .finally(() => {
-          inFlight = false
-        })
-    }, GOAL_LOOP_SETTLE_DELAY_MS)
+  const forget = (sessionFile: string) => {
+    clearTimeout(runs.get(sessionFile)?.timer)
+    runs.delete(sessionFile)
+  }
+
+  function observe(event: AppEvent) {
+    if (disposed || (event.type !== 'run' && event.type !== 'completion') || !event.runId) return
+    const sessionFile = normalizeSessionFileKey(event.sessionFile || '')
+    if (!sessionFile) return
+    const current = runs.get(sessionFile)
+    const version = useSessionGoalStore.getState().autoRun[sessionFile]
+    if (event.type === 'run' && (event.phase === 'started' || event.phase === 'running')) {
+      if (current?.id === event.runId) return
+      forget(sessionFile)
+      if (version === undefined) return
+      const goal = ipcClient.invoke('sessionGoal.get', { sessionFile })
+        .then((result) => (result?.goal ?? null) as SessionGoal | null)
+        .catch(() => null)
+      runs.set(sessionFile, { id: event.runId, version, goal, indices: [] })
+      return
+    }
+    if (!current || current.id !== event.runId) return
+    if (event.type === 'run') {
+      if (event.phase === 'cancelled' || event.phase === 'failed') forget(sessionFile)
+      if (event.phase === 'idle' && event.settled) current.indices = event.goalProgress ?? []
+      return
+    }
+    if (event.outcome !== 'success' || current.timer) return
+    current.timer = setTimeout(() => void finish(sessionFile, current), GOAL_LOOP_SETTLE_DELAY_MS)
+  }
+
+  async function finish(sessionFile: string, run: GoalRun) {
+    const valid = () => !disposed && runs.get(sessionFile) === run
+      && useSessionGoalStore.getState().autoRun[sessionFile] === run.version
+    const blocked = () => {
+      const ui = useUIStore.getState()
+      const visible = normalizeSessionFileKey(ui.historySessionFile || '') === sessionFile
+      return !valid() || isAbortUiHoldActive(sessionFile) || !!ui.compactingSessions[sessionFile]
+        || (visible && (!!ui.optimisticPendingUserText || extensionUiBlocksComposer()))
+    }
+    try {
+      let goal = await run.goal
+      if (!goal || blocked()) return
+      const latest = await ipcClient.invoke('sessionGoal.get', { sessionFile })
+      if (blocked() || latest?.goal?.updatedAt !== goal.updatedAt) return
+      const result = await runGoalRound({
+        getSessionFile: () => sessionFile,
+        getGoal: () => goal,
+        reportedIndices: run.indices,
+        isBlocked: blocked,
+        markDone: async (indices) => {
+          const response = await ipcClient.invoke('sessionGoal.markDone', {
+            sessionFile, indices, expectedUpdatedAt: goal?.updatedAt,
+          })
+          goal = response?.goal ?? null
+          const view = useSessionGoalStore.getState()
+          if (goal && view.sessionFile === sessionFile) view.applyGoal(goal)
+          return goal
+        },
+        send: async () => {
+          if (!goal || blocked()) return false
+          const response = await ipcClient.invoke('sessionGoal.continue', {
+            sessionFile, runId: run.id, expectedUpdatedAt: goal.updatedAt,
+          })
+          return response?.sent === true
+        },
+        notify: ({ kind, remaining }) => {
+          const t = i18n.t.bind(i18n)
+          if (kind === 'done') toast.success(t('goal:bar.done'))
+          else toast.message(t(kind === 'capped' ? 'goal:bar.loopCapped' : 'goal:bar.loopStalled', { count: remaining }))
+        },
+      })
+      if (result === 'done' || result === 'stalled' || result === 'capped') {
+        if (valid()) useSessionGoalStore.getState().setAutoRun(sessionFile, false)
+      }
+    } catch (error) {
+      console.warn('[GoalAutoLoop] round failed:', error)
+    } finally {
+      if (runs.get(sessionFile) === run) forget(sessionFile)
+    }
+  }
+
+  const unsubscribe = useSessionGoalStore.subscribe((state, previous) => {
+    if (state.autoRun === previous.autoRun) return
+    for (const sessionFile of Object.keys(previous.autoRun)) {
+      if (state.autoRun[sessionFile] !== previous.autoRun[sessionFile]) {
+        forget(sessionFile)
+        loopStates.delete(sessionFile)
+      }
+    }
   })
 
-  return () => {
-    disposed = true
-    if (timer) clearTimeout(timer)
-    unsubscribe()
+  return {
+    observe,
+    dispose() {
+      disposed = true
+      unsubscribe()
+      for (const sessionFile of runs.keys()) forget(sessionFile)
+    },
   }
 }

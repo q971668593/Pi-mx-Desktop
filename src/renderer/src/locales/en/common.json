@@ -1,4 +1,5 @@
 {
+  "interrupted": {"badge": "Interrupted", "message": "The previous run was interrupted. Review the files before continuing.", "review": "View changes", "resume": "Continue task", "resumeFailed": "Could not continue this task.", "resumePrompt": "Continue the task from the last interrupted run. First review the current workspace and session history, then continue from the unfinished step. Avoid repeating commands or changes that already completed."},
   "app": {
     "name": "Pi mx",
     "status": {
@@ -439,6 +440,14 @@
     "focusHint": "Too narrow for all panes; shown as tabs. Change the layout here"
   },
   "gitBoard": {
+    "checkRemote": "Check remote",
+    "remoteUnchecked": "Remote not checked yet. Arrow counts use locally cached refs.",
+    "remoteCheckedAt": "Checked at {{time}}",
+    "remoteCheckFailed": "Remote check failed: {{error}}",
+    "remoteIncoming": "Incoming commits ({{count}})",
+    "remoteCurrent": "No incoming commits",
+    "remoteUntracked": "This branch has no upstream",
+    "behindCached": "{{n}} behind the last known upstream",
     "rowActions": "Actions for {{name}}",
     "sourceRef": "Source branch or commit",
     "remoteUrl": "Remote URL",

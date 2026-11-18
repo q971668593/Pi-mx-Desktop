@@ -66,6 +66,10 @@ export async function handleInit(msg: WorkerIncomingMessage, reply: WorkerReply)
 export async function handlePrompt(msg: WorkerIncomingMessage, reply: WorkerReply): Promise<void> {
         const promptSession = st.session
         if (!promptSession) { reply({ type: 'error', error: 'No session' }); return }
+        if (msg.onlyIfIdle === true && (promptSession.isStreaming || st.agentTurnActive)) {
+          reply({ type: 'prompt-done', skipped: true })
+          return
+        }
         const promptText = String(msg.text ?? '').trim()
         const slashMatch = promptText.match(/^(\/\S+)/)
         if (slashMatch) {

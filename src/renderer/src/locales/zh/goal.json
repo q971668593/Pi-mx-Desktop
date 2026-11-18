@@ -1,5 +1,7 @@
 {
   "bar": {
+    "pauseAutoRun": "暂停自动继续",
+    "enableAutoRun": "自动继续",
     "placeholder": "这个会话要达成什么？（一句话）",
     "set": "设定目标",
     "edit": "编辑目标",

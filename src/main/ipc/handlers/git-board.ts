@@ -201,8 +201,21 @@ export function registerGitBoardHandlers(): void {
   registerHandlerWithSchema('ipc:gitBoard.sync', z.object({ cwd: z.string().min(1), action: z.enum(['fetch', 'pull', 'push']) }).strict(), async ({ cwd, action }) => {
     const repo = await authorized(cwd)
     if (!repo.ok) return repo
-    const args = action === 'fetch' ? ['fetch', '--prune'] : action === 'pull' ? ['pull', '--no-edit'] : ['push']
-    return git(repo.cwd, args)
+    if (action !== 'fetch') return git(repo.cwd, action === 'pull' ? ['pull', '--no-edit'] : ['push'])
+    const fetched = await git(repo.cwd, ['fetch', '--all', '--prune'])
+    if (!fetched.ok) return fetched
+    const upstream = await git(repo.cwd, ['rev-parse', '--symbolic-full-name', '@{upstream}'])
+    if (!upstream.ok) return { ...fetched, incoming: [], tracking: false }
+    const range = 'HEAD..@{upstream}'
+    const count = await git(repo.cwd, ['rev-list', '--count', range, '--'])
+    if (!count.ok) return count
+    const log = await git(repo.cwd, ['log', '--max-count=20', '--format=%h%x09%s', range, '--'])
+    if (!log.ok) return log
+    const incoming = log.stdout.trimEnd().split('\n').filter(Boolean).map((line) => {
+      const separator = line.indexOf('\t')
+      return { hash: line.slice(0, separator), subject: line.slice(separator + 1) }
+    })
+    return { ...fetched, incoming, incomingCount: Number(count.stdout.trim()), tracking: true }
   })
 
   registerHandlerWithSchema('ipc:gitBoard.branch', z.object({ cwd: z.string().min(1), action: z.enum(['create', 'rename', 'delete', 'track']), name: z.string().trim().min(1).max(250), from: z.string().trim().max(250).optional(), force: z.boolean().optional() }).strict(), async ({ cwd, action, name, from, force }) => {

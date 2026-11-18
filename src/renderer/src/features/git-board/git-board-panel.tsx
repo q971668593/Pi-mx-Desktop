@@ -161,6 +161,44 @@ export function GitBoardPanel() {
   const nodes = useMemo(() => parseConflicts(conflictText), [conflictText])
   const unresolved = nodes.filter((node) => node.kind === 'conflict' && !choices.has(node.index)).length
 
+  const [remoteChecks, setRemoteChecks] = useState<Record<string, {
+    checkedAt: number
+    incoming?: Array<{ hash: string; subject: string }>
+    incomingCount?: number
+    tracking?: boolean
+    error?: string
+  }>>({})
+  const remoteKey = JSON.stringify([workspacePathKey(cwd || ''), data?.status.branch, data?.status.upstream])
+  const remoteCheck = remoteChecks[remoteKey]
+  const clearRemoteCheck = () => setRemoteChecks((old) => {
+    const next = { ...old }
+    delete next[remoteKey]
+    return next
+  })
+
+  const checkRemote = async () => {
+    if (!cwd || busy || !data?.remotes.length) return
+    setBusy(true)
+    try {
+      const result = await git<{
+        incoming: Array<{ hash: string; subject: string }>
+        incomingCount?: number
+        tracking: boolean
+      }>('gitBoard.sync', { cwd, action: 'fetch' })
+      if (!result.ok) throw new Error(result.error || 'git_failed')
+      setRemoteChecks((old) => ({ ...old, [remoteKey]: {
+        checkedAt: Date.now(), incoming: result.incoming, incomingCount: result.incomingCount, tracking: result.tracking,
+      } }))
+      await load(false)
+    } catch (error) {
+      setRemoteChecks((old) => ({ ...old, [remoteKey]: {
+        checkedAt: Date.now(), error: error instanceof Error ? error.message : String(error),
+      } }))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const run = async (method: string, request: Record<string, unknown> = {}) => {
     if (!cwd) return null
     setBusy(true)
@@ -174,6 +212,8 @@ export function GitBoardPanel() {
         }
         throw new Error(result.error || 'git_failed')
       }
+      if (method === 'gitBoard.sync' || method === 'gitBoard.commit' || method === 'gitBoard.checkoutCommit'
+        || method === 'gitBoard.operation' || method === 'gitBoard.merge' || method === 'gitBoard.rebase') clearRemoteCheck()
       if (method === 'gitBoard.commitDetail') return { ...result, hash: String(request.ref || '') }
       if (!['gitBoard.suggestCommit', 'gitBoard.diff', 'gitBoard.commitDetail'].includes(method)) {
         toast.success(method === 'gitBoard.commit' && request.action === 'commit-and-push' ? t('common:gitBoard.commitPushDone') : t('common:gitBoard.done'))
@@ -425,6 +465,8 @@ export function GitBoardPanel() {
     try {
       const pull = await git<Record<string, unknown>>('gitBoard.sync', { cwd, action: 'pull' })
       if (!pull.ok) throw new Error(pull.error || 'git_failed')
+      clearRemoteCheck()
+      await load(false)
       const push = await git<Record<string, unknown>>('gitBoard.sync', { cwd, action: 'push' })
       if (!push.ok) throw new Error(push.error || 'git_failed')
       toast.success(t('common:gitBoard.syncDone'))
@@ -463,13 +505,17 @@ export function GitBoardPanel() {
           </span>
           <span
             className={cn(data.status.behind > 0 ? 'font-medium text-emerald-600 dark:text-emerald-400' : 'text-foreground-tertiary')}
-            title={t('common:gitBoard.behind', { n: data.status.behind })}
+            title={t('common:gitBoard.behindCached', { n: data.status.behind })}
           >
             {data.status.behind}↓
           </span>
         </span>
         {data.operation ? <span className="rounded bg-amber-500/15 px-1.5 text-amber-700">{data.operation}</span> : null}
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex min-w-0 items-center gap-1 overflow-x-auto">
+          <button type="button" disabled={busy || data.remotes.length === 0} onClick={() => void checkRemote()}
+            className="shrink-0 rounded border border-border/60 px-2 py-0.5 text-[12px] hover:bg-muted disabled:opacity-40">
+            {t('common:gitBoard.checkRemote')}
+          </button>
           {syncActions.map(([label, action]) => (
             <button
               key={label}
@@ -484,6 +530,27 @@ export function GitBoardPanel() {
           <button type="button" className="rounded p-1.5 text-foreground-secondary hover:bg-muted hover:text-foreground" aria-label={t('common:gitBoard.refresh')} onClick={() => void load(false)}><RefreshCw className="h-3.5 w-3.5" /></button>
         </div>
       </div>
+      {data.remotes.length > 0 && (
+        <div className="shrink-0 border-b border-border/50 px-3 py-1.5 text-[11px] text-foreground-secondary" aria-live="polite">
+          {!remoteCheck ? t('common:gitBoard.remoteUnchecked') : remoteCheck.error
+            ? <span className="break-words text-destructive">{t('common:gitBoard.remoteCheckFailed', { error: remoteCheck.error })}</span>
+            : (
+              <div className="flex flex-wrap items-baseline gap-x-2">
+                <span>{t('common:gitBoard.remoteCheckedAt', { time: new Date(remoteCheck.checkedAt).toLocaleTimeString() })}</span>
+                {remoteCheck.incoming?.length ? (
+                  <details className="min-w-0">
+                    <summary className="cursor-pointer">{t('common:gitBoard.remoteIncoming', { count: remoteCheck.incomingCount ?? remoteCheck.incoming.length })}</summary>
+                    <ul className="max-h-36 overflow-auto pt-1">
+                      {remoteCheck.incoming.map((commit) => (
+                        <li key={commit.hash} className="flex gap-2"><code>{commit.hash}</code><span className="break-words">{commit.subject}</span></li>
+                      ))}
+                    </ul>
+                  </details>
+                ) : <span>{t(remoteCheck.tracking ? 'common:gitBoard.remoteCurrent' : 'common:gitBoard.remoteUntracked')}</span>}
+              </div>
+            )}
+        </div>
+      )}
       <div role="tablist" className="flex shrink-0 overflow-x-auto border-b border-border/50 bg-[var(--bg-1)]">{TABS.map((item) => <button key={item} type="button" role="tab" aria-selected={tab === item} className={cn('relative h-9 shrink-0 border-b-2 px-3 text-[12px] transition-colors', tab === item ? 'border-primary bg-[var(--bg-base)] font-medium text-foreground' : 'border-transparent text-foreground-secondary hover:bg-muted hover:text-foreground')} onClick={() => { setTab(item); try { localStorage.setItem(`pi-desktop:git-tab:${workspacePathKey(cwd)}`, item) } catch { void 0 } }}>{t(`common:gitBoard.${item}`)}{item === 'changes' && visibleChanges.length ? <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px]">{visibleChanges.length}</span> : null}</button>)}</div>
       {tab === 'advanced' && <div role="tablist" aria-label={t('common:gitBoard.advanced')} className="flex shrink-0 gap-1 overflow-x-auto border-b border-border/50 px-2 py-1">{REPOSITORY_TABS.map((item) => <button key={item} type="button" role="tab" aria-selected={repositoryTab === item} className={cn('shrink-0 rounded px-2 py-1 text-[12px]', repositoryTab === item ? 'bg-muted font-medium text-foreground' : 'text-foreground-secondary hover:bg-muted')} onClick={() => setRepositoryTab(item)}>{t(`common:gitBoard.${item}`)}</button>)}</div>}
       {tab === 'changes' && !data.status.upstream && !data.remotes.length ? <p className="border-b border-border/40 px-3 py-2 text-[11px] text-foreground-tertiary">{t('common:gitBoard.addRemoteBeforePush')}</p> : null}

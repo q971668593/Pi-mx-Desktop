@@ -1,3 +1,5 @@
+import { sessionPreviewText } from './session-preview-text'
+
 /** 侧栏会话标题：pi JSONL name（/name）> 旧版本地 overlay > 首条消息等 fallback */
 export function pickSessionListTitle(
   sdkTitle: string,
@@ -11,22 +13,22 @@ export function pickSessionListTitle(
   return sdkTitle
 }
 
-/**
- * 侧栏标题跟随最新一条用户消息时的标题文本：取首行、去掉 @路径 引用，按字符截断。
- * 只有「跟随最新消息」打开时才会用到。
- */
+/** Extract a title for an unnamed session or the follow-latest setting. */
 export function deriveSessionTitle(text: string, maxChars = 40): string {
-  const raw = String(text || '')
-  const firstLine = raw
+  const firstLine = String(text || '')
     .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find((line) => line.length > 0)
+    .map(sessionPreviewText)
+    .find(Boolean)
   if (!firstLine) return ''
   const withoutRefs = firstLine
     .replace(/@"[^"]*"/g, ' ')
     .replace(/@\S+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
-  const title = withoutRefs || firstLine
+  const summary = withoutRefs || firstLine
+  const title = summary
+    .replace(/^(?:(?:好的|好吧|行|嗯|可以)[，,。！!、]\s*)+/, '')
+    .replace(/^(?:现在[，,]?\s*)?(?:请你|请|麻烦你?|你帮我|你给我|帮我|给我)\s*/, '')
+    .trim() || summary
   return title.length > maxChars ? `${title.slice(0, maxChars).trimEnd()}…` : title
 }

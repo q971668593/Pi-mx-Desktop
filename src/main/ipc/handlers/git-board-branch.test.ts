@@ -29,6 +29,30 @@ registerGitBoardHandlers()
 describe('git branch safety', () => {
   afterEach(() => { for (const repo of repos.splice(0)) rmSync(repo, { recursive: true, force: true }) })
 
+  it('fetches incoming commits without updating HEAD or the working tree', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'pi-git-fetch-'))
+    repos.push(base)
+    git(base, ['init', '-b', 'main'])
+    git(base, ['config', 'user.email', 'tester@example.com'])
+    git(base, ['config', 'user.name', 'tester'])
+    writeFileSync(join(base, 'note.txt'), 'before')
+    git(base, ['add', '.'])
+    git(base, ['commit', '-m', 'base'])
+    const local = join(base, 'clone')
+    git(base, ['clone', '--no-local', '.', local])
+    const head = git(local, ['rev-parse', 'HEAD'])
+    writeFileSync(join(base, 'note.txt'), 'after')
+    git(base, ['commit', '-am', 'incoming change'])
+
+    const fetchRemote = handlers.get('ipc:gitBoard.sync')!
+    await expect(fetchRemote({ cwd: local, action: 'fetch' })).resolves.toMatchObject({
+      ok: true, tracking: true, incomingCount: 1, incoming: [{ subject: 'incoming change' }],
+    })
+    expect(git(local, ['rev-parse', 'HEAD'])).toBe(head)
+    expect(git(local, ['show', 'HEAD:note.txt'])).toBe('before')
+    expect(git(local, ['status', '--porcelain'])).toBe('')
+  })
+
   it('does not list the remote default-branch alias as a separate branch', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'pi-git-branch-'))
     repos.push(cwd)

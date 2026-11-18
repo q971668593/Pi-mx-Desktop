@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { deriveSessionTitle, pickSessionListTitle } from './session-list-title'
 
 describe('deriveSessionTitle', () => {
+  it('skips leading attachments and trims conversational openings', () => {
+    expect(deriveSessionTitle('C:/temp/sidebar.png\n好的，现在请你检查项目列表\n第二行')).toBe('检查项目列表')
+    expect(deriveSessionTitle('好的，你给我看看这个页面')).toBe('看看这个页面')
+    expect(deriveSessionTitle('问题1：应用提交失败')).toBe('问题1：应用提交失败')
+  })
+
   it('uses the first non-empty line', () => {
     expect(deriveSessionTitle('\n\n修一下登录超时\n第二条不参与')).toBe('修一下登录超时')
   })

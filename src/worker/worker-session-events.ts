@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto'
+import { beginTurnFileSnapshot, finishTurnFileSnapshot, resetTurnFileSnapshots } from './worker-turn-file-snapshots.js'
+import { MAX_GOAL_CRITERIA, parseGoalProgress } from '@shared/session-goal'
 import type { AgentSession, AgentSessionEvent } from '@earendil-works/pi-coding-agent'
 import type { AppEvent, CompletionEvent } from '@shared/app-events'
 import { sanitizeCompletionPreview, COMPLETION_BODY_MAX, COMPLETION_TITLE_MAX } from '@shared/completion-preview'
@@ -49,6 +52,7 @@ let queuedSteering = 0
 let queuedFollowUp = 0
 
 export function resetSessionEventTracking(): void {
+  resetTurnFileSnapshots()
   assistantTextSnapshot = ''
   assistantThinkingSnapshot = ''
   pendingTerminalError = null
@@ -84,6 +88,7 @@ function emitSettledRun(deps: SessionEventDeps): void {
   )
   const durationMs = runStartedAt > 0 ? Math.max(0, Date.now() - runStartedAt) : undefined
   const queueBusy = queuedSteering > 0 || queuedFollowUp > 0
+  const goalProgress = parseGoalProgress(lastAssistantPreview || assistantTextSnapshot, MAX_GOAL_CRITERIA)
   deps.setAgentTurnActive(false)
   deps.setPromptPreflightActive(false)
   pendingTerminalError = null
@@ -105,7 +110,7 @@ function emitSettledRun(deps: SessionEventDeps): void {
         ? 'cancelled'
         : 'failed'
       : 'idle'
-    deps.emit({ ...base, type: 'run', phase, settled: true } as AppEvent)
+    deps.emit({ ...base, type: 'run', phase, settled: true, ...(phase === 'idle' && goalProgress ? { goalProgress } : {}) } as AppEvent)
     if (queueBusy) return
     const outcome = phase === 'idle' ? 'success' : phase === 'cancelled' ? 'cancelled' : 'failed'
     deps.emit({
@@ -140,7 +145,7 @@ export function handleSessionEvent(event: AgentSessionEvent, deps: SessionEventD
       deps.setAgentTurnActive(true)
       deps.setPromptPreflightActive(false)
       if (!hadProvisionalRun) {
-        deps.setCurrentRunId(`run-${deps.nextSeq()}`)
+        deps.setCurrentRunId(`run-${randomUUID()}`)
         deps.setCurrentTurnId(`turn-${deps.nextSeq()}`)
       }
       resetSessionEventTracking()
@@ -268,6 +273,9 @@ export function handleSessionEvent(event: AgentSessionEvent, deps: SessionEventD
       break
     }
     case 'tool_execution_start': {
+      if ((event.toolName === 'edit' || event.toolName === 'write') && typeof base.workspaceId === 'string') {
+        beginTurnFileSnapshot(event.toolCallId, base.workspaceId, event.args)
+      }
       if (event.args) deps.captureAdapterTool?.(event.toolName, event.args)
       if (uiBridge && event.args) {
         const interact = resolveInteractByTool(event.toolName)
@@ -313,6 +321,10 @@ export function handleSessionEvent(event: AgentSessionEvent, deps: SessionEventD
       break
     }
     case 'tool_execution_end': {
+      const snapshot = finishTurnFileSnapshot(event.toolCallId, event.isError)
+      if (snapshot && typeof base.runId === 'string' && base.runId) {
+        sendToMain({ type: 'turn-file-snapshot', runId: base.runId, snapshot })
+      }
       const endResult = event.result as { details?: unknown }
       const parentSessionFile = typeof base.sessionFile === 'string' ? base.sessionFile : undefined
       const details = enrichToolChildSessionFiles(

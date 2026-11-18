@@ -50,7 +50,6 @@ import { observeAppEventForCompletion, observeWorkerExitForCompletion } from './
 import { observeAiActivityGlow } from './ai-activity-glow'
 import { remoteTap } from './remote/tap'
 import { getRunLedger } from './run-ledger-instance'
-import { derivePhase, exitLedgerCommands, turnEndCommands, turnStartCommands } from './worker-lifecycle-machine'
 
 interface InitResult extends WorkerInitResult {}
 
@@ -65,7 +64,8 @@ export class WorkerManager {
   private orphanSwept = false
 
   /** 已记账「正在跑」的会话（转移表之外的去重器，进程内有效）。 */
-  private readonly activeRuns = new Set<string>()
+  private readonly activeRuns = new Map<string, { slot: WorkerSlot; runId?: string }>()
+  private readonly lastSuccessfulRun = new WeakMap<WorkerSlot, string>()
 
   /**
    * 等着「这一轮跑完再重载模型表」的槽位。
@@ -353,8 +353,11 @@ export class WorkerManager {
     observeAppEventForCompletion(enriched)
     observeAiActivityGlow(enriched)
     remoteTap.appEvent(enriched)
-    this.releaseRunOnTerminalEvent(sessionFile, enriched)
-    this.applyDeferredModelReload(fromPoolKey, enriched)
+    this.observeRunEvent(fromPoolKey, sessionFile, enriched)
+    if (enriched.type === 'run' && (enriched.settled === true || enriched.phase === 'idle'
+      || enriched.phase === 'failed' || enriched.phase === 'cancelled')) {
+      this.applyDeferredModelReload(fromPoolKey)
+    }
     if (!this.mainWindow || this.mainWindow.isDestroyed()) return
     this.mainWindow.webContents.send('ipc:events', enriched)
     void agentTurnActive
@@ -364,55 +367,53 @@ export class WorkerManager {
    * Run 账本：记录「哪个会话正在跑」。参考 opencode 的 write-ahead execution claim，
    * 只做诊断与崩溃归因，不改变 pi 的会话数据（不另造内核）。
    */
-  private trackRunStart(sessionFile: string | null | undefined): void {
-    const key = normalizeSessionKey(sessionFile || this.foregroundSlot()?.sessionFile || '')
-    if (!key) return
-    const slot = this.pool.get(key) ?? this.foregroundSlot()
-    const phase = derivePhase({
-      stopping: slot?.stopping ?? false,
-      agentTurnActive: Boolean(slot?.agentTurnActive) || this.activeRuns.has(key),
-    })
-    // 是否记账由转移表决定：已在跑（busy）时不重复 begin
-    if (!turnStartCommands(phase).some((command) => command.type === 'run.begin')) return
-    this.activeRuns.add(key)
-    try {
-      getRunLedger().beginRun({ sessionFile: key, cwd: slot?.cwd ?? '' })
-    } catch (error) {
-      console.warn('[RunLedger] 记录执行开始失败（忽略）:', error)
+  private observeRunEvent(poolKey: string, sessionFile: string | null, event: AppEvent): void {
+    if (event.type !== 'run') return
+    const key = normalizeSessionKey(sessionFile || event.sessionFile || '')
+    const slot = this.pool.get(poolKey)
+    if (!key || !slot || slot.stopping) return
+    const active = this.activeRuns.get(key)
+    if (event.phase === 'started' || event.phase === 'running') {
+      if (!active || active.slot !== slot || (active.runId && event.runId && active.runId !== event.runId)) {
+        this.claimRun(key, slot, event.runId)
+      } else if (!active.runId && event.runId) {
+        active.runId = event.runId
+        getRunLedger().identifyRun(key, event.runId)
+      }
+      return
     }
+    if (event.phase !== 'idle' && event.phase !== 'failed' && event.phase !== 'cancelled') return
+    if (!active || active.slot !== slot || (active.runId && event.runId && active.runId !== event.runId)) return
+    this.activeRuns.delete(key)
+    if (event.phase === 'idle' && event.settled && event.runId) {
+      this.lastSuccessfulRun.set(slot, event.runId)
+    }
+    getRunLedger().releaseRun(key)
   }
 
-  private releaseRunOnTerminalEvent(sessionFile: string | null, event: AppEvent): void {
-    if (event.type !== 'run') return
-    const settled = event.settled === true || event.phase === 'idle' || event.phase === 'failed' || event.phase === 'cancelled'
-    if (!settled) return
-    const key = normalizeSessionKey(sessionFile || event.sessionFile || '')
-    if (!key) return
-    const outcome = event.phase === 'failed' ? 'failed' : event.phase === 'cancelled' ? 'cancelled' : 'idle'
-    const commands = turnEndCommands(this.activeRuns.has(key) ? 'busy' : 'ready', outcome)
-    this.activeRuns.delete(key)
-    try {
-      for (const command of commands) {
-        if (command.type === 'run.mark-orphan') getRunLedger().markOrphaned(key, { reason: command.reason })
-        else if (command.type === 'run.release') getRunLedger().releaseRun(key)
-      }
-    } catch (error) {
-      console.warn('[RunLedger] 结算执行记录失败（忽略）:', error)
-    }
+  private claimRun(key: string, slot: WorkerSlot, runId?: string) {
+    this.sweepOrphanedRunsOnce()
+    this.lastSuccessfulRun.delete(slot)
+    const active = { slot, runId }
+    this.activeRuns.set(key, active)
+    getRunLedger().beginRun({ sessionFile: key, cwd: slot.cwd, runId })
+    return active
+  }
+
+  listInterruptedRuns() {
+    this.sweepOrphanedRunsOnce()
+    return getRunLedger().listOrphans()
   }
 
   /**
    * 一轮结束后补做被推迟的 models.json 重载，并再通知一次界面：
    * 推迟期间界面拿到的是旧表，重载完不复通知的话要等下次重启才看到新模型。
    */
-  private applyDeferredModelReload(poolKey: string, event: AppEvent): void {
-    if (event.type !== 'run') return
-    const settled =
-      event.settled === true || event.phase === 'idle' || event.phase === 'failed' || event.phase === 'cancelled'
-    if (!settled || !this.pendingModelReload.has(poolKey)) return
-    this.pendingModelReload.delete(poolKey)
+  private applyDeferredModelReload(poolKey: string): void {
+    if (!this.pendingModelReload.has(poolKey)) return
     const slot = this.pool.get(poolKey)
-    if (!slot || slot.stopping) return
+    if (!slot || slot.stopping || this.hasPendingTurn(slot)) return
+    this.pendingModelReload.delete(poolKey)
     void this.requestOnSlot(slot, 'reloadModels')
       .then(() => {
         if (!this.mainWindow || this.mainWindow.isDestroyed()) return
@@ -458,6 +459,12 @@ export class WorkerManager {
       slot.initRejecter = null
     }
 
+    const sessionKey = normalizeSessionKey(slot.sessionFile || '')
+    if (this.activeRuns.get(sessionKey)?.slot === slot) {
+      this.activeRuns.delete(sessionKey)
+      getRunLedger().markOrphaned(sessionKey, { reason: slot.stopping ? 'app-stop' : `worker-exit:${code}` })
+    }
+
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send('ipc:worker-exit', {
         code,
@@ -468,24 +475,6 @@ export class WorkerManager {
     }
     if (code !== 0 && !slot.stopping) {
       observeWorkerExitForCompletion({ cwd: slot.cwd, sessionFile: slot.sessionFile })
-    }
-
-    // T5 接线点 1：退出时的运行账本处置交给纯转移表（draining / 正常退出 / 崩溃三分支），
-    // manager 只负责执行命令；`notify.fatal` 仍按 autoRestartEnabled 等策略决定。
-    if (slot.sessionFile) {
-      this.activeRuns.delete(normalizeSessionKey(slot.sessionFile))
-      const phase = derivePhase({ stopping: slot.stopping, agentTurnActive: slot.agentTurnActive })
-      for (const command of exitLedgerCommands(phase, code)) {
-        try {
-          if (command.type === 'run.mark-orphan') {
-            getRunLedger().markOrphaned(slot.sessionFile, { reason: command.reason })
-          } else if (command.type === 'run.release') {
-            getRunLedger().releaseRun(slot.sessionFile)
-          }
-        } catch (error) {
-          console.warn('[RunLedger] 退出结算失败（忽略）:', error)
-        }
-      }
     }
 
     if (slot.stopping || code === 0 || !slot.autoRestartEnabled) return
@@ -636,9 +625,47 @@ export class WorkerManager {
   }
 
   async sendPrompt(text: string, sessionFile?: string): Promise<void> {
-    await this.pushGoalBeforeTurn(sessionFile)
-    await this.request('prompt', { text, sessionFile })
-    this.trackRunStart(sessionFile)
+    await this.dispatchPrompt('prompt', text, sessionFile)
+  }
+
+  async continueGoal(sessionFile: string, runId: string, text: string, expectedUpdatedAt: number): Promise<boolean> {
+    const key = normalizeSessionKey(sessionFile)
+    const slot = this.pool.get(key)
+    if (!slot || slot.stopping || slot.agentTurnActive || this.activeRuns.has(key) || this.lastSuccessfulRun.get(slot) !== runId) return false
+    if (getSessionGoalStore().get(key)?.updatedAt !== expectedUpdatedAt) return false
+    this.lastSuccessfulRun.delete(slot)
+    const claim = this.claimRun(key, slot)
+    try {
+      const result = await this.requestOnSlot(slot, 'prompt', { text, sessionFile: key, onlyIfIdle: true })
+      if (result.skipped !== true) return true
+    } catch (error) {
+      console.warn('[WorkerManager] goal continuation failed:', error)
+    }
+    if (this.activeRuns.get(key) === claim && !claim.runId) {
+      this.activeRuns.delete(key)
+      getRunLedger().releaseRun(key)
+      this.applyDeferredModelReload(slot.poolKey)
+    }
+    return false
+  }
+
+  private async dispatchPrompt(type: 'prompt' | 'followUp', text: string, sessionFile?: string): Promise<void> {
+    const slot = await this.resolveSlotForRpc(sessionFile)
+    const key = normalizeSessionKey(slot.sessionFile || sessionFile || '')
+    await this.pushGoalBeforeTurn(key || undefined)
+    const claim = key && !slot.stopping && !slot.agentTurnActive && !this.activeRuns.has(key)
+      ? this.claimRun(key, slot)
+      : null
+    try {
+      await this.requestOnSlot(slot, type, { text, sessionFile })
+    } catch (error) {
+      if (claim && this.activeRuns.get(key) === claim && !claim.runId && !slot.agentTurnActive) {
+        this.activeRuns.delete(key)
+        getRunLedger().releaseRun(key)
+        this.applyDeferredModelReload(slot.poolKey)
+      }
+      throw error
+    }
   }
 
   /**
@@ -671,9 +698,7 @@ export class WorkerManager {
     await this.request('steer', { text, sessionFile })
   }
   async followUp(text: string, sessionFile?: string): Promise<void> {
-    await this.pushGoalBeforeTurn(sessionFile)
-    await this.request('followUp', { text, sessionFile })
-    this.trackRunStart(sessionFile)
+    await this.dispatchPrompt('followUp', text, sessionFile)
   }
   async clearPromptQueue(sessionFile?: string): Promise<{ steering: string[]; followUp: string[] }> {
     const r = await this.request('clearQueue', sessionFile ? { sessionFile } : {})
@@ -1061,7 +1086,7 @@ export class WorkerManager {
     const slots = [...this.pool.values()].filter((slot) => !slot.stopping)
     const idle: WorkerSlot[] = []
     for (const slot of slots) {
-      if (slot.agentTurnActive) this.pendingModelReload.add(slot.poolKey)
+      if (this.hasPendingTurn(slot)) this.pendingModelReload.add(slot.poolKey)
       else idle.push(slot)
     }
     await Promise.allSettled(idle.map((slot) => this.requestOnSlot(slot, 'reloadModels')))
@@ -1243,6 +1268,16 @@ export class WorkerManager {
 
   get isRunning(): boolean {
     return this.foregroundSlot() != null
+  }
+
+  private hasPendingTurn(slot: WorkerSlot): boolean {
+    const sessionKey = normalizeSessionKey(slot.sessionFile || '')
+    return slot.agentTurnActive || this.activeRuns.get(sessionKey)?.slot === slot
+  }
+
+  isWorkspaceRunning(cwd: string): boolean {
+    const key = workspacePoolKey(cwd)
+    return [...this.pool.values()].some((slot) => workspacePoolKey(slot.cwd) === key && this.hasPendingTurn(slot))
   }
 
   get hasActiveTurns(): boolean {

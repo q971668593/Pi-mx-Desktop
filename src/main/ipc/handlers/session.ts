@@ -1,4 +1,8 @@
+import { z } from 'zod'
+import { deriveSessionTitle } from '@shared/session-list-title'
 import { configStore } from '../../config-store'
+import { normalizeSessionKey } from '../../worker-session-key'
+import { readTurnSnapshot, restoreTurnSnapshotFile } from '../../turn-file-snapshot-store'
 import { workerManager } from '../../worker-manager'
 import { listRewindCheckpoints } from '../../pi-rewind-read'
 import { listMessageAnchorsFromSessionFile } from '../../session-branch-anchors'
@@ -62,6 +66,7 @@ export function registerSessionHandlers(): void {
       return runtime.mode === 'wsl' && !!runtime.distro
         && workspacePathsEqual(wslPathToWindows(runtime.distro, s.cwd), workspaceId)
     })
+    const interrupted = new Map(workerManager.listInterruptedRuns().map((row) => [row.sessionFile, row.orphanedAt]))
     const formatted = ownedSessions.map((s: SessionOnDiskRow) => {
       const preview = sessionPreviewText(s.firstMessage || '')
       return {
@@ -73,7 +78,7 @@ export function registerSessionHandlers(): void {
         workspaceId,
         title: resolveSessionListTitle(
           s.path,
-          preview.slice(0, 60) || s.id.slice(0, 8),
+          deriveSessionTitle(s.firstMessage || '', 60) || s.id.slice(0, 8),
           s.name,
         ),
         firstMessage: preview.slice(0, 120),
@@ -84,9 +89,43 @@ export function registerSessionHandlers(): void {
         messageCount: s.messageCount || 0,
         modelId: '',
         status: 'idle' as const,
+        interruptedAt: interrupted.get(normalizeSessionKey(s.path)),
       }
     })
     return { sessions: formatted }
+  })
+
+  registerHandlerWithSchema('ipc:session.interrupted', z.object({
+    workspaceId: z.string().min(1),
+    sessionFile: z.string().min(1),
+  }).strict(), async ({ workspaceId, sessionFile }) => {
+    const authorized = await authorizeTrustedSessionFile(workspaceId, sessionFile)
+    if (!authorized.ok) return { run: null }
+    const key = normalizeSessionKey(authorized.sessionFile)
+    const run = workerManager.listInterruptedRuns().find((row) => row.sessionFile === key)
+    return { run: run ? { interruptedAt: run.orphanedAt, runId: run.runId } : null }
+  })
+
+  const turnSnapshotRequest = z.object({
+    workspaceId: z.string().min(1),
+    sessionFile: z.string().min(1),
+    runId: z.string().min(1).max(200),
+  })
+
+  registerHandlerWithSchema('ipc:session.turnSnapshot', turnSnapshotRequest.strict(), async (req) => {
+    const authorized = await authorizeTrustedSessionFile(req.workspaceId, req.sessionFile)
+    if (!authorized.ok) return { snapshot: null }
+    const snapshot = await readTurnSnapshot(authorized.sessionFile, req.runId)
+    return { snapshot: snapshot ? { runId: snapshot.runId, files: snapshot.files } : null }
+  })
+
+  registerHandlerWithSchema('ipc:session.restoreTurnFile', turnSnapshotRequest.extend({
+    path: z.string().min(1).max(2048),
+  }).strict(), async (req) => {
+    const authorized = await authorizeTrustedSessionFile(req.workspaceId, req.sessionFile)
+    if (!authorized.ok) return authorized
+    return restoreTurnSnapshotFile(authorized.cwd, authorized.sessionFile, req.runId, req.path,
+      () => workerManager.isWorkspaceRunning(authorized.cwd))
   })
 
   registerHandler('ipc:session.open', async (req) => {

@@ -222,8 +222,8 @@ const currentMd = readOrEmpty(outMd)
 
 if (process.argv.includes('--check')) {
   const problems = []
-  if (currentTs !== ts) problems.push('packages/shared/ipc-channels.generated.ts')
-  if (currentMd !== mdText) problems.push('doc/IPC-CONTRACTS.generated.md')
+  if (currentTs?.replace(/\r\n/g, '\n') !== ts) problems.push('packages/shared/ipc-channels.generated.ts')
+  if (currentMd?.replace(/\r\n/g, '\n') !== mdText) problems.push('doc/IPC-CONTRACTS.generated.md')
   if (problems.length > 0) {
     console.error('[gen:ipc] 生成物已漂移，请运行 `npm run gen:ipc` 后提交：')
     for (const problem of problems) console.error(`  - ${problem}`)

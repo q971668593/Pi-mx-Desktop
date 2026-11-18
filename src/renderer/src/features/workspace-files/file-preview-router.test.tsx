@@ -63,7 +63,7 @@ describe('file preview', () => {
     confirm.mockRestore()
   })
   it('saves an edited CRLF file with its original line endings', async () => {
-    const readText = vi.fn().mockResolvedValue({ ok: true, content: '阿里云:\r\nluyaomeng3\r\n' })
+    const readText = vi.fn().mockResolvedValue({ ok: true, revision: 'a'.repeat(64), content: '阿里云:\r\nluyaomeng3\r\n' })
     vi.mocked(ipcClient.invoke).mockResolvedValue({ ok: true })
     const { container } = render(<FilePreviewRouter workspaceRoot="/ws" relativePath="账号密码.md" readText={readText} />)
     fireEvent.click(await screen.findByRole('button', { name: 'preview.edit' }))
@@ -76,6 +76,7 @@ describe('file preview', () => {
     fireEvent.click(screen.getByRole('button', { name: 'preview.save' }))
     await waitFor(() => expect(ipcClient.invoke).toHaveBeenCalledWith('workspace.fs.writeText', {
       workspaceRoot: '/ws',
+      expectedRevision: 'a'.repeat(64),
       path: '账号密码.md',
       content: '阿里云:\r\nluyaomeng3\r\nzhang37148\r\n',
     }))
