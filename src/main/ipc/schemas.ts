@@ -6,11 +6,11 @@ import { BROWSER_SEARCH_ENGINE_IDS, type BrowserSearchEngine } from '../../../pa
 import { CAPABILITY_IDS } from '../../../packages/shared/capabilities.ts'
 
 export const shellOpenPathSchema = z.object({
-  path: z.string(),
+  path: z.string().min(1).max(4096),
 })
 
 export const shellShowItemSchema = z.object({
-  path: z.string(),
+  path: z.string().min(1).max(4096),
 })
 
 export const workspaceFsListDirSchema = z.object({

@@ -39,6 +39,13 @@ describe('workspace shell file operations', () => {
     await expect(mocks.handlers.get('ipc:shell.openPath')!({ path: '/home/user/missing.pdf' })).resolves.toEqual({ ok: false, error: 'File not found' })
   })
 
+  it('reveals executables instead of launching them', async () => {
+    await expect(mocks.handlers.get('ipc:shell.openPath')!({ path: '/home/user/tools/setup.exe' }))
+      .resolves.toEqual({ ok: true, revealed: true })
+    expect(shell.openPath).not.toHaveBeenCalled()
+    expect(shell.showItemInFolder).toHaveBeenCalledWith('\\\\wsl.localhost\\Ubuntu\\home\\user\\tools\\setup.exe')
+  })
+
   it('preserves native Linux and host-runtime paths', async () => {
     vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
     await mocks.handlers.get('ipc:shell.openPath')!({ path: '/home/user/report.pdf' })

@@ -18,14 +18,10 @@ export function isPublicPreviewAddress(address: string): boolean {
     && !address.startsWith('2001:0:') && !address.startsWith('2002:')
 }
 
-export function isWebLink(value: string): boolean {
-  try {
-    const url = new URL(value)
-    return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password
-  } catch {
-    return false
-  }
-}
+import { isWebUrl } from '@shared/web-url'
+
+/** Kept as the main-process name; policy lives in `@shared/web-url`. */
+export const isWebLink = isWebUrl
 
 /** Use Chromium's network settings and validate every page, redirect and share-image destination. */
 async function readPreviewResource(value: string, image = false, redirects = 0): Promise<{ url: string; data: Buffer; type: string }> {

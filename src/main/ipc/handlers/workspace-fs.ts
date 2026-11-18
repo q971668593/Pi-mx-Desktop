@@ -6,6 +6,7 @@ import { workspaceFsCopyFile, workspaceFsCreate, workspaceFsListDir, workspaceFs
 import { resolveActionableImage } from '../../image-file-access'
 import { invalidateWorkspaceFileSearchIndex, primeWorkspaceFileSearchIndex, workspaceFsSearch } from '../../workspace-file-search'
 import { registerHandler, registerHandlerWithSchema } from '../registry'
+import { decideShellOpenAction } from '../../shell-open-safety'
 import { wslPathToWindows } from '@shared/wsl-path'
 import { getAgentRuntimeConfig } from '../../wsl/runtime-config'
 import {
@@ -61,6 +62,11 @@ export function registerWorkspaceFsHandlers(): void {
   registerHandlerWithSchema('ipc:shell.openPath', shellOpenPathSchema, async (req) => {
     const p = shellPath(String(req.path || ''))
     if (!p) return { ok: false }
+    if (decideShellOpenAction(p) === 'reveal') {
+      // Never let a rendered link launch an executable; show it in the file manager instead.
+      shell.showItemInFolder(p)
+      return { ok: true, revealed: true }
+    }
     try {
       const error = await shell.openPath(p)
       return error ? { ok: false, error } : { ok: true }

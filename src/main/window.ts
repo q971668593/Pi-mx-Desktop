@@ -2,6 +2,7 @@ import { BrowserWindow, shell } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { resolveAppIcon } from './app-icon'
+import { decideWindowNavigation, isSafeExternalUrl } from './window-navigation'
 
 const isMac = process.platform === 'darwin'
 const isLinux = process.platform === 'linux'
@@ -139,9 +140,26 @@ export function createWindow(closeToTray = false): BrowserWindow {
     console.error('[Renderer] Unresponsive')
   })
 
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    // Only web links reach the system browser; file:/javascript:/custom protocols are dropped.
+    if (isSafeExternalUrl(url)) void shell.openExternal(url)
     return { action: 'deny' }
+  })
+
+  // Keep the app on its own document: renderer navigation to file: paths (which the OS may
+  // execute) or to arbitrary web pages must never replace the workbench window.
+  const rendererRoot = join(__dirname, '../renderer')
+  const devServerUrl = process.env['ELECTRON_RENDERER_URL']
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const decision = decideWindowNavigation({
+      target: url,
+      current: mainWindow?.webContents.getURL() ?? '',
+      rendererRoot,
+      devServerUrl,
+    })
+    if (!decision.prevent) return
+    event.preventDefault()
+    if (decision.openExternal) void shell.openExternal(decision.openExternal)
   })
 
   attachWindowBoundsPersistence(mainWindow)
