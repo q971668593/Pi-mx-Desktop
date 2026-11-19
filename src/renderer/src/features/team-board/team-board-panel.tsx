@@ -18,18 +18,23 @@ import { useUIStore } from '@renderer/stores/ui-store'
 import { cn } from '@renderer/lib/utils'
 import {
   TEAM_STATUSES,
+  deriveTeamStage,
   teamProgress,
   type TeamRoleBinding,
   type TeamRun,
   type TeamSnapshot,
+  type TeamStage,
   type TeamStatus,
   type TeamTask,
 } from '@shared/team-board'
 import './team-board.css'
 import {
+  CARD_STAGES,
+  STAGE_TONES,
   TEAM_BOARD_CHANGED_EVENT,
   isSessionRunning,
   latestRun,
+  needsAttention,
   notifyTeamBoardChanged,
   notifyTeamRunsChanged,
   openTeamSession,
@@ -37,6 +42,7 @@ import {
   roleColor,
   roleLabel,
   shortModel,
+  stageLabel,
   statusLabel,
   STATUS_COLORS,
 } from './team-board-lib'
@@ -156,6 +162,7 @@ export function TeamBoardPanel() {
   const selectedBinding = roles.find((binding) => binding.role === selectedTask?.role)
   const specPath = snapshot?.specPath || `${String(workspaceId || '').replace(/\/+$/, '')}/.文档/开发规范`
   const projectName = projectNameOf(workspaceId)
+  const approvalCount = tasks.filter((task) => needsAttention(task) && task.status !== '已验收').length
 
   useEffect(() => {
     if (selectedTaskId && !tasks.some((task) => task.id === selectedTaskId)) {
@@ -312,12 +319,58 @@ export function TeamBoardPanel() {
         workspaceId,
         sessionFile: run.sessionFile,
         outcome: 'success',
+        closedBy: 'human',
+        note: '人工确认这轮已结束',
       })
       if (response?.snapshot) setSnapshot(response.snapshot as TeamSnapshot)
       notifyTeamBoardChanged()
       toast.success(t('team:settled'))
     } catch (caught) {
       toast.error(t('team:statusFailed'), { description: String((caught as Error)?.message || caught) })
+    }
+  }
+
+  const interveneRun = async (task: TeamTask, text: string): Promise<boolean> => {
+    try {
+      const response = await ipcClient.invoke('teamBoard.intervene', { workspaceId, taskId: task.id, text })
+      if (response?.snapshot) setSnapshot(response.snapshot as TeamSnapshot)
+      notifyTeamBoardChanged()
+      toast.success(t('team:intervened'))
+      return true
+    } catch (caught) {
+      toast.error(t('team:interveneFailed'), { description: String((caught as Error)?.message || caught) })
+      return false
+    }
+  }
+
+  const abortRun = async (run: TeamRun) => {
+    try {
+      const response = await ipcClient.invoke('teamBoard.abortRun', { workspaceId, sessionFile: run.sessionFile })
+      if (response?.snapshot) setSnapshot(response.snapshot as TeamSnapshot)
+      notifyTeamBoardChanged()
+      toast.success(t('team:aborted'))
+    } catch (caught) {
+      toast.error(t('team:statusFailed'), { description: String((caught as Error)?.message || caught) })
+    }
+  }
+
+  const resolveApproval = async (task: TeamTask, decision: 'approve' | 'deny', note: string): Promise<boolean> => {
+    try {
+      const response = await ipcClient.invoke('teamBoard.approval', {
+        workspaceId,
+        taskId: task.id,
+        decision,
+        ...(note.trim() ? { note: note.trim() } : {}),
+        from: task.status,
+      })
+      if (response?.snapshot) setSnapshot(response.snapshot as TeamSnapshot)
+      notifyTeamBoardChanged()
+      toast.success(decision === 'approve' ? t('team:approvalApproved') : t('team:approvalDenied'))
+      return true
+    } catch (caught) {
+      toast.error(t('team:approvalFailed'), { description: String((caught as Error)?.message || caught) })
+      await refresh({ silent: true })
+      return false
     }
   }
 
@@ -385,6 +438,11 @@ export function TeamBoardPanel() {
               <span className="team-chip shrink-0" data-tone="danger">
                 <AlertTriangle className="h-2.5 w-2.5" />
                 {t('team:blocked', { count: progress.blocked })}
+              </span>
+            ) : null}
+            {approvalCount > 0 ? (
+              <span className="team-chip shrink-0" data-tone="danger" title={t('team:approvalHint')}>
+                {t('team:approvalCount', { count: approvalCount })}
               </span>
             ) : null}
           </div>
@@ -561,6 +619,7 @@ export function TeamBoardPanel() {
                             key={task.id}
                             task={task}
                             run={run}
+                            stage={deriveTeamStage({ task, run })}
                             running={isSessionRunning(sessionRuntimeRunning, run?.sessionFile)}
                             dragging={draggingId === task.id}
                             onOpen={() => openTask(task)}
@@ -620,6 +679,9 @@ export function TeamBoardPanel() {
           }}
           onOpenSession={(run) => void openRunSession(run)}
           onSettleRun={(run) => void settleRun(run)}
+          onApproval={(decision, note) => resolveApproval(selectedTask, decision, note)}
+          onIntervene={(text) => interveneRun(selectedTask, text)}
+          onAbort={(run) => void abortRun(run)}
         />
       ) : null}
 
@@ -746,6 +808,7 @@ function RoleChip({
 function TaskCard({
   task,
   run,
+  stage,
   running,
   dragging,
   onOpen,
@@ -754,6 +817,7 @@ function TaskCard({
 }: {
   task: TeamTask
   run: TeamRun | undefined
+  stage: TeamStage
   running: boolean
   dragging: boolean
   onOpen: () => void
@@ -763,6 +827,7 @@ function TaskCard({
   const { t } = useTranslation()
   const accepted = task.acceptance.filter((item) => item.done).length
   const runActive = run?.status === 'starting' || run?.status === 'running'
+  const showStage = CARD_STAGES.has(stage)
   return (
     <button
       type="button"
@@ -773,13 +838,18 @@ function TaskCard({
       className="team-card"
       data-dragging={dragging}
       data-running={runActive}
+      data-stage={stage}
       style={{ '--card-accent': STATUS_COLORS[task.status] } as CSSProperties}
       title={task.note || task.title}
     >
       <div className="flex items-center gap-1">
         <span className="team-card-id">{task.id}</span>
         <span className="h-1 w-1 rounded-full" style={{ background: roleColor(task.role) }} />
-        {runActive ? (
+        {showStage ? (
+          <span className="team-chip ml-auto shrink-0" data-tone={STAGE_TONES[stage]}>
+            {stageLabel(stage, t)}
+          </span>
+        ) : runActive ? (
           <span
             className="team-role-dot ml-auto"
             data-live={running}

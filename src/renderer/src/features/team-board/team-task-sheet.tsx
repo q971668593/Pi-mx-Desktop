@@ -35,6 +35,9 @@ export function TeamTaskSheet({
   onOpenRole,
   onOpenSession,
   onSettleRun,
+  onApproval,
+  onIntervene,
+  onAbort,
 }: {
   task: TeamTask
   binding: TeamRoleBinding | undefined
@@ -49,6 +52,9 @@ export function TeamTaskSheet({
   onOpenRole: () => void
   onOpenSession: (run: TeamRun) => void
   onSettleRun: (run: TeamRun) => void
+  onApproval: (decision: 'approve' | 'deny', note: string) => Promise<boolean>
+  onIntervene: (text: string) => Promise<boolean>
+  onAbort: (run: TeamRun) => void
 }) {
   const { t } = useTranslation()
   const [pending, setPending] = useState<TeamStatus | null>(initialPending ?? null)
@@ -56,6 +62,10 @@ export function TeamTaskSheet({
   const [reason, setReason] = useState('')
   const [blockType, setBlockType] = useState<string>(BLOCK_TYPES[0])
   const [blockReason, setBlockReason] = useState('')
+  const [approvalNote, setApprovalNote] = useState('')
+  const [approvalBusy, setApprovalBusy] = useState(false)
+  const [guidance, setGuidance] = useState('')
+  const [guidanceBusy, setGuidanceBusy] = useState(false)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -63,6 +73,8 @@ export function TeamTaskSheet({
     setAcceptedCheck(false)
     setReason('')
     setBlockReason('')
+    setApprovalNote('')
+    setGuidance('')
   }, [initialPending, task.id])
 
   const run = latestRun(task, runs)
@@ -103,6 +115,25 @@ export function TeamTaskSheet({
       if (await onStatus('阻塞', { blockType, reason: blockReason })) setPending(null)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const decideApproval = async (decision: 'approve' | 'deny') => {
+    setApprovalBusy(true)
+    try {
+      if (await onApproval(decision, approvalNote)) setApprovalNote('')
+    } finally {
+      setApprovalBusy(false)
+    }
+  }
+
+  const sendGuidance = async () => {
+    if (!guidance.trim()) return
+    setGuidanceBusy(true)
+    try {
+      if (await onIntervene(guidance.trim())) setGuidance('')
+    } finally {
+      setGuidanceBusy(false)
     }
   }
 
@@ -153,6 +184,43 @@ export function TeamTaskSheet({
             {t('team:open')}
           </button>
         </div>
+
+        {task.approval ? (
+          <section className="mt-2 rounded-lg border border-amber-500/45 bg-amber-500/5 p-2.5" data-testid="team-approval">
+            <div className="flex items-center gap-1.5">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+              <span className="text-xs font-semibold">{t('team:approvalTitle')}</span>
+            </div>
+            <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed">{task.approval}</p>
+            <p className="mt-1 text-2xs leading-relaxed text-foreground-secondary">{t('team:approvalHint')}</p>
+            <input
+              value={approvalNote}
+              onChange={(event) => setApprovalNote(event.target.value)}
+              maxLength={300}
+              placeholder={t('team:approvalNotePlaceholder')}
+              className="mt-1.5 w-full rounded border border-border/60 bg-background px-1.5 py-1 text-xs text-foreground outline-none focus:border-primary/60"
+            />
+            <div className="mt-2 flex justify-end gap-1.5">
+              <button
+                type="button"
+                disabled={approvalBusy}
+                onClick={() => void decideApproval('deny')}
+                className="rounded border border-red-500/40 px-2 py-1 text-2xs text-red-600 hover:bg-red-500/10 disabled:opacity-40 dark:text-red-400"
+              >
+                {t('team:approvalDeny')}
+              </button>
+              <button
+                type="button"
+                disabled={approvalBusy}
+                onClick={() => void decideApproval('approve')}
+                className="inline-flex items-center gap-1 rounded bg-emerald-600 px-2 py-1 text-2xs font-medium text-white disabled:opacity-40"
+              >
+                {approvalBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                {t('team:approvalApprove')}
+              </button>
+            </div>
+          </section>
+        ) : null}
 
         <section className="mt-3">
           <div className="team-field-label">{t('team:status')}</div>
@@ -269,6 +337,7 @@ export function TeamTaskSheet({
             {task.note ? <Info label={t('team:note')} value={task.note} /> : null}
             {task.manualNote ? <Info label={t('team:manualNote')} value={task.manualNote} /> : null}
             {task.autoNote ? <Info label={t('team:autoNote')} value={task.autoNote} /> : null}
+            {task.approvalNote ? <Info label={t('team:approvalNote')} value={task.approvalNote} /> : null}
           </dl>
         </section>
 
@@ -333,7 +402,24 @@ export function TeamTaskSheet({
                 <span>{new Date(run.startedAt).toLocaleString()}</span>
                 <span className="truncate font-mono" title={run.sessionFile}>{sessionFileName(run.sessionFile)}</span>
               </div>
-              {runActive && !live ? (
+              {run.report ? (
+                <div className="mt-1 flex items-start gap-1.5 text-2xs text-foreground-secondary">
+                  <span
+                    className="team-chip shrink-0"
+                    data-tone={run.report.kind === 'failed' ? 'danger' : run.report.kind === 'ready' ? 'success' : undefined}
+                  >
+                    {t(`team:reportKinds.${run.report.kind}`)}
+                  </span>
+                  {run.report.text ? <span className="min-w-0 flex-1 break-words">{run.report.text}</span> : null}
+                </div>
+              ) : null}
+              {runActive && run.staleAt ? (
+                <div className="mt-1 flex items-start gap-1.5 text-2xs text-amber-600 dark:text-amber-400">
+                  <AlertTriangle className="mt-[1px] h-3 w-3 shrink-0" />
+                  <span className="flex-1">{t('team:runStale')}</span>
+                </div>
+              ) : null}
+              {runActive && !live && !run.staleAt ? (
                 <div className="mt-1 flex items-start gap-1.5 text-2xs text-amber-600">
                   <AlertTriangle className="mt-[1px] h-3 w-3 shrink-0" />
                   <span className="flex-1">{t('team:staleRun')}</span>
@@ -348,7 +434,35 @@ export function TeamTaskSheet({
                     {t('team:settleRun')}
                   </button>
                 ) : null}
+                {runActive ? (
+                  <button
+                    type="button"
+                    onClick={() => onAbort(run)}
+                    className="rounded bg-red-500/10 px-2 py-1 text-2xs text-red-700 hover:bg-red-500/20 dark:text-red-300"
+                  >
+                    {t('team:abortRun')}
+                  </button>
+                ) : null}
               </div>
+              {runActive ? (
+                <div className="mt-1.5 flex items-center gap-1">
+                  <input
+                    value={guidance}
+                    onChange={(event) => setGuidance(event.target.value)}
+                    maxLength={1500}
+                    placeholder={t('team:intervenePlaceholder')}
+                    className="min-w-0 flex-1 rounded border border-border/60 bg-background px-1.5 py-1 text-2xs text-foreground outline-none focus:border-primary/60"
+                  />
+                  <button
+                    type="button"
+                    disabled={!guidance.trim() || guidanceBusy}
+                    onClick={() => void sendGuidance()}
+                    className="shrink-0 rounded bg-[var(--bg-hover)] px-2 py-1 text-2xs hover:bg-[var(--bg-active)] disabled:opacity-40"
+                  >
+                    {guidanceBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : t('team:intervene')}
+                  </button>
+                </div>
+              ) : null}
             </>
           ) : (
             <p className="mt-1 text-2xs text-foreground-tertiary">{t('team:runIdle')}</p>

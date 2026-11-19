@@ -11,7 +11,36 @@ import testerFull from '@renderer/assets/roles/tester.webp'
 import { ipcClient } from '@renderer/lib/ipc-client'
 import { activateWorkspace } from '@renderer/lib/activate-workspace'
 import { normalizeSessionFileKey, sessionFilesEqual } from '@renderer/lib/session-file-key'
-import type { TeamRole, TeamRun, TeamStatus, TeamTask } from '@shared/team-board'
+import type { TeamRole, TeamRun, TeamStage, TeamStatus, TeamTask } from '@shared/team-board'
+
+/** 阶段色只表达「需要谁动手」，不替代泳道状态色。 */
+export const STAGE_TONES: Record<TeamStage, 'danger' | 'warning' | 'success' | 'info' | 'neutral'> = {
+  idle: 'neutral',
+  queued: 'info',
+  running: 'info',
+  stale: 'warning',
+  'awaiting-approval': 'danger',
+  'awaiting-review': 'warning',
+  blocked: 'danger',
+  failed: 'danger',
+  implemented: 'info',
+  accepted: 'success',
+}
+
+export function stageLabel(stage: TeamStage, t: (key: string) => string): string {
+  return t(`team:stages.${stage}`)
+}
+
+/** 卡片上值得单独提一句的阶段：其它情况由泳道本身表达，不重复标签。 */
+export const CARD_STAGES: ReadonlySet<TeamStage> = new Set<TeamStage>([
+  'awaiting-approval',
+  'stale',
+  'failed',
+])
+
+export function needsAttention(task: TeamTask): boolean {
+  return Boolean(task.approval) || task.blockType === '待用户确认'
+}
 
 export const TEAM_AVATARS: Record<TeamRole, { face: string; full: string }> = {
   Leader: { face: leaderFace, full: leaderFull },

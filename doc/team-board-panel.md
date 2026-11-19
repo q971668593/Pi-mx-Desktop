@@ -190,3 +190,103 @@ CRLF 会原样保留；只有索引行、没有详情段的老卡片会在下一
 - 轮次归档、任务合同、验收指纹、汇报频率未迁移；需要时按上面的数据格式增量实现。
 - E2E 在本机 Electron 43 + 当前 Playwright 组合下会因 `--remote-debugging-port=0` 启动失败
   （与本次改动无关，`e2e/smoke.spec.ts` 同样失败）；截图与链路验证用 CDP 脚本完成。
+
+## 7. 运行语义（第二轮：借鉴 dsh-super-agent 的 Ticket/Assignment/Watchdog）
+
+第一轮迁移解决的是「面板能看能派发」。第二轮补的是「派发之后到底发生了什么」——
+参考 `https://github.com/LofiSu/dsh-super-agent` 的 `core/stage.ts`、`core/assignments.ts`、
+`watchdog/*`、`harness/team.ts` 里那套「状态由事实推导、回执有类型、卡住会被兜住」的做法，
+但不搬它的 SQLite 真相、Router/Worker 双角色、Eval/deliver gate 和 mesh。
+
+### 7.1 阶段由事实推导，不由标签决定
+
+`packages/shared/team-board.ts` 的 `deriveTeamStage({ task, run })` 是纯函数，UI 只负责展示：
+
+| 阶段 | 判定 |
+|------|------|
+| `awaiting-approval` | 卡片有 `- 待批准：`，或「阻塞 / 待用户确认」 |
+| `stale` | 派发还是 starting/running，且已被看门狗标 `staleAt` |
+| `queued` / `running` | 派发 starting / running |
+| `awaiting-review` | 卡片「待审查」，或最近派发已交付 |
+| `failed` | 最近派发 failed/cancelled |
+| `blocked` | 卡片「阻塞」且不是待批准 |
+| `accepted` | 卡片「已验收」 |
+
+markdown 仍是唯一真相；阶段只是同一份事实的更细读法，所以刷新、重启、外部手改都不会让
+面板和执行方各说一套。
+
+### 7.2 派发回执是结构化的
+
+`TeamRun.report = { kind, text, at, verdict }`：
+
+- `kind`：`ready` 已交付 / `failed` 失败 / `blocked` 受阻 / `waiting` 等触发 / `question` 待答复。
+- `text`：一句话回执；长报告与证据留在会话与 `协作/`。
+- `verdict`：`deliver` 值得给主人看 / `hold` 压住 / `discard` 不值得发。
+
+落账时由 `settleTeamRun` 写入，`closedBy` 区分「宿主自动落账」与「人工结束这次派发」。
+
+### 7.3 看门狗：派发死在半路会被兜住
+
+`src/main/team-board.ts` 的 `sweepTeamRuns(spec, cwd)`。
+
+- 判定：派发仍在 starting/running，且 `max(startedAt, 会话文件 mtime)` 距今超过
+  `TEAM_RUN_STALE_MS_DEFAULT`（30 分钟）。
+- 动作：给派发标 `staleAt`（只标一次），把对应「进行中」卡片移到「阻塞 / 待用户确认」，
+  自动推进里写清「派发超过 N 分钟没有结束事件」。
+- 不动：已有待批准字段的卡、已收口/已验收的卡、还在写会话文件的派发。
+- 覆盖范围：应用重启后悬空的 starting/running 记录也会被收敛（会话文件 mtime 兜底）。
+- 之后可以「结束这次派发」或直接重新派发：超时记录会被自动关掉再开新的，不用先手动收尾。
+
+渲染层 `TeamBoardAutoSettle` 常驻每分钟 tick 一次（仅可见窗口），并把新被阻塞的卡用一条
+toast 提示出来；主进程不持有定时器。
+
+### 7.4 卡片级审批（hold，而不是直接做）
+
+不需要给 agent 装工具：审批走同一份 markdown 字段，面板与执行方天然共享真相。
+
+执行方（派发提示词已写明这条约定）遇到需要拍板的动作：
+
+```markdown
+- 状态：阻塞
+- 阻塞分型：待用户确认
+- 待批准：给 200 个用户发上线通知邮件 · 外发不可撤回
+```
+
+面板：顶部出现「N 待批准」，卡片带「待批准」标签和左侧警示边；卡片详情里是批准/驳回面板。
+
+- 批准：清掉 `- 待批准：`，落一行 `- 批准：<时间> · <备注>`，卡片回「进行中」，
+  并把「主人已批准：<动作>」发回这一轮会话让它继续；会话已不在就只放行卡片。
+- 驳回：落一行 `- 驳回：`，卡片留在「阻塞 / 待用户确认」。
+- 两者都带 `from` 乐观并发校验；没有待批准事项时返回 `no_pending_approval`，不会静默改卡。
+- 落账不会越过待批准：有 `- 待批准：` 的卡不会被会话结束自动推进到「待审查」。
+
+### 7.5 插话与中止
+
+- **插话**：向这一轮会话发一条指引（`主人插话：…`），并在卡片「自动推进」留一行
+  `人工插话：…`，所以事后能看到是谁、在第几轮改了方向。
+- **中止**：`workerManager.abort` 关会话 → 派发记 `cancelled` + `closedBy: human`（只关记录，
+  不覆盖卡片说明）→ 卡片从「进行中」转「阻塞 / 待用户确认」。
+
+### 7.6 写回防护
+
+- `sanitizeTeamText()`：去 NUL/ESC/DEL、双向文本标记，折叠换行与空白，按字段截断。
+  所有非结构化写回（状态说明、人工/自动推进、阻塞分型、审批备注、新建卡字段）都过它。
+- 结果：一段恶意备注没法在看板里伪造出新的 `### T-999` 标题段。
+- 派发记录归一化时同样清洗 `report.text`，旧版本 `协作/团队.json` 缺字段也能读。
+
+### 7.7 测试锚点
+
+- `packages/shared/team-board.test.ts`：阶段矩阵、解析 `- 待批准：`、批准/驳回写回、
+  乐观并发与 `no_pending_approval`、控制字符清洗。
+- `src/main/team-board.test.ts`：看门狗标记一次、仍在写的派发不动、待批准卡不被改写、
+  落账写回执并清 `staleAt`、重复落账幂等、审批写回看板索引。
+- `src/renderer/src/features/team-board/team-board-panel.test.tsx`：待批准计数与批准动作。
+
+### 7.8 仍未做（有意留下的下一步）
+
+- **agent 侧结构化工具**（`team_task_create/status/report/approve_request`）：目前靠提示词
+  约定 + markdown 字段，够用但没有参数校验和角色守卫；要做得更硬，应该写成 pi 扩展
+  （`.pi/extensions/team-board.ts`），并复用 dsh-super-agent 的「角色守卫 + 双格式解析 +
+  永远抛带原因的 UserError」写法。
+- **轮次归档 / 任务合同 / 验收指纹**：仍按第一轮的口径不迁移。
+- **面板实时推送**：仍是 8 秒轮询 + 事件刷新够用；多窗口并发改最多 8 秒延迟。

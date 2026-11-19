@@ -27,15 +27,18 @@ import {
   markTeamRunRunning,
   readTeamSnapshot,
   recordTeamDispatch,
+  resolveTeamTaskApproval,
   saveTeamRoles,
   setTeamTaskStatus,
   settleTeamRun,
+  sweepTeamRuns,
   teamSpecPath,
 } from '../../team-board'
 import { registerHandlerWithSchema } from '../registry'
 
 const workspace = z.string().min(1).max(4096)
 const statusEnum = z.enum([...TEAM_STATUSES] as [TeamStatus, ...TeamStatus[]])
+const runOutcomes = z.enum(['success', 'failed', 'cancelled'])
 
 function authorizedCwd(workspaceId: string): string {
   const authorized = authorizeProjectCwd(workspaceId)
@@ -247,7 +250,17 @@ export function registerTeamBoardHandlers(): void {
       }
 
       const active = snapshot.runs.find((run) => run.taskId === taskId && (run.status === 'starting' || run.status === 'running'))
-      if (active) throw new Error(`这张卡已有运行中的派发（${active.role}），等它结束或先核对会话状态`)
+      if (active) {
+        // 看门狗已经判定超时的记录不再挡路：关掉旧的再开新的，人不用先去手动收尾。
+        if (!active.staleAt) {
+          throw new Error(`这张卡已有运行中的派发（${active.role}），等它结束或先核对会话状态`)
+        }
+        settleTeamRun(teamSpecPath(cwd), cwd, active.sessionFile, 'cancelled', {
+          note: '超时未落账，已被新的派发替代',
+          closedBy: 'human',
+          silent: true,
+        })
+      }
 
       const prompt = buildTeamPrompt({ role, batch: snapshot.batch, goal: snapshot.goal, task })
       const session = await workerManager.newSessionInBackground(cwd)
@@ -325,19 +338,131 @@ export function registerTeamBoardHandlers(): void {
   )
 
   registerHandlerWithSchema(
+    'ipc:teamBoard.intervene',
+    z.object({ workspaceId: workspace, taskId: z.string().min(1).max(20), text: z.string().min(1).max(1500) }).strict(),
+    async ({ workspaceId, taskId, text }) => {
+      const cwd = authorizedCwd(workspaceId)
+      const snapshot = readTeamSnapshot(cwd)
+      const task = snapshot.tasks.find((item) => item.id === taskId)
+      if (!task) throw new Error(`找不到任务卡 ${taskId}，请刷新看板`)
+      const run = [...snapshot.runs].reverse().find((item) => item.taskId === taskId)
+      if (!run) throw new Error('这张卡还没有派发记录，先在卡片里派发开工')
+      if (!existsSync(run.sessionFile)) throw new Error('这次派发的会话文件已不存在，只能先结束这次派发')
+      const guidance = text.replace(/\s+/g, ' ').trim()
+      await workerManager.sendPrompt(
+        `主人插话：${guidance}\n\n按这条指引继续这张卡；如果它改变了范围或验收标准，先说明影响再动手。`,
+        run.sessionFile,
+      )
+      setTeamTaskStatus(cwd, {
+        taskId,
+        to: task.status,
+        from: task.status,
+        autoNote: `人工插话：${guidance}`,
+      })
+      return { ok: true, snapshot: readTeamSnapshot(cwd) }
+    },
+  )
+
+  registerHandlerWithSchema(
+    'ipc:teamBoard.abortRun',
+    z.object({ workspaceId: workspace, sessionFile: z.string().min(1).max(4096) }).strict(),
+    async ({ workspaceId, sessionFile }) => {
+      const cwd = authorizedCwd(workspaceId)
+      const spec = teamSpecPath(cwd)
+      const before = readTeamSnapshot(cwd)
+      const run = [...before.runs].reverse().find((item) => item.sessionFile === sessionFile)
+      try {
+        await workerManager.abort(sessionFile)
+      } catch (error) {
+        console.warn('[team-board] 中止会话失败，继续收回派发记录：', error)
+      }
+      settleTeamRun(spec, cwd, sessionFile, 'cancelled', {
+        note: '人工中止这次派发',
+        closedBy: 'human',
+        silent: true,
+      })
+      const task = run ? before.tasks.find((item) => item.id === run.taskId) : undefined
+      if (task && task.status === '进行中' && !task.approval) {
+        setTeamTaskStatus(cwd, {
+          taskId: task.id,
+          to: '阻塞',
+          from: '进行中',
+          blockType: '待用户确认',
+          autoNote: '人工中止了这次派发，核对产物后重新派发',
+        })
+      }
+      return { ok: true, snapshot: readTeamSnapshot(cwd) }
+    },
+  )
+
+  registerHandlerWithSchema(
     'ipc:teamBoard.settleRun',
     z
       .object({
         workspaceId: workspace,
         sessionFile: z.string().min(1).max(4096),
-        outcome: z.enum(['success', 'failed', 'cancelled']),
+        outcome: runOutcomes,
+        note: z.string().max(300).optional(),
+        closedBy: z.enum(['human', 'host']).optional(),
       })
       .strict(),
-    async ({ workspaceId, sessionFile, outcome }) => {
+    async ({ workspaceId, sessionFile, outcome, note, closedBy }) => {
       const cwd = authorizedCwd(workspaceId)
       const spec = teamSpecPath(cwd)
-      const result = settleTeamRun(spec, cwd, sessionFile, outcome)
+      const result = settleTeamRun(spec, cwd, sessionFile, outcome, { note, closedBy })
       return { ok: true, ...result, snapshot: readTeamSnapshot(cwd) }
+    },
+  )
+
+  registerHandlerWithSchema(
+    'ipc:teamBoard.sweep',
+    z.object({ workspaceId: workspace }).strict(),
+    async ({ workspaceId }) => {
+      const cwd = authorizedCwd(workspaceId)
+      const result = sweepTeamRuns(teamSpecPath(cwd), cwd)
+      return { ok: true, stale: result.stale, blocked: result.blocked, snapshot: result.snapshot }
+    },
+  )
+
+  registerHandlerWithSchema(
+    'ipc:teamBoard.approval',
+    z
+      .object({
+        workspaceId: workspace,
+        taskId: z.string().min(1).max(20),
+        decision: z.enum(['approve', 'deny']),
+        note: z.string().max(300).optional(),
+        from: z.string().max(40).optional(),
+      })
+      .strict(),
+    async ({ workspaceId, taskId, decision, note, from }) => {
+      const cwd = authorizedCwd(workspaceId)
+      const result = resolveTeamTaskApproval(cwd, { taskId, decision, note, from })
+      if (!result.ok) {
+        const messages: Record<string, string> = {
+          task_not_found: `找不到任务卡 ${taskId}，请刷新看板`,
+          no_pending_approval: `${taskId} 没有待批准事项（可能已被别人处理）`,
+          status_mismatch: `${taskId} 的状态已被改动，已刷新看板`,
+        }
+        throw new Error(messages[result.reason] ?? '审批失败')
+      }
+      // 批准后把这轮会话叫起来继续：审批的意义是「同意继续」，不是只改一行字。
+      let resumed = false
+      if (decision === 'approve') {
+        const run = [...result.snapshot.runs].reverse().find((item) => item.taskId === taskId)
+        if (run && existsSync(run.sessionFile)) {
+          try {
+            await workerManager.sendPrompt(
+              `主人已批准：${result.request}\n\n继续完成任务卡 ${taskId}；结束后按约定给「交付摘要」与「验证」。`,
+              run.sessionFile,
+            )
+            resumed = true
+          } catch (error) {
+            console.warn('[team-board] 批准后唤醒会话失败，卡片已放行：', error)
+          }
+        }
+      }
+      return { ok: true, from: result.from, to: result.to, request: result.request, resumed, snapshot: result.snapshot }
     },
   )
 

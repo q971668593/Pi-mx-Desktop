@@ -272,6 +272,28 @@
   background: color-mix(in srgb, var(--success-semantic, #059669) 12%, transparent);
 }
 
+.team-chip[data-tone='info'] {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.team-chip[data-tone='neutral'] {
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--text-secondary) 9%, transparent);
+}
+
+/* 需要主人动手的卡：左边框加粗，不靠单纯变色（色弱也能看出）。 */
+.team-card[data-stage='awaiting-approval'] {
+  border-color: color-mix(in srgb, var(--warning-semantic, #d97706) 55%, transparent);
+  box-shadow: inset 2px 0 0 var(--warning-semantic, #d97706);
+}
+
+.team-card[data-stage='stale'],
+.team-card[data-stage='failed'] {
+  border-color: color-mix(in srgb, var(--danger-semantic, #dc2626) 45%, transparent);
+  box-shadow: inset 2px 0 0 var(--danger-semantic, #dc2626);
+}
+
 /* ---- 进度环 ---- */
 
 .team-progress-ring circle.value {

@@ -33,6 +33,8 @@ function snapshot(overrides: Partial<TeamSnapshot> = {}): TeamSnapshot {
         blockType: '',
         manualNote: '',
         autoNote: '',
+        approval: '',
+        approvalNote: '',
         acceptance: [{ text: '账号密码可登录', done: false }],
         raw: 'T-001 登录页',
       },
@@ -49,6 +51,8 @@ function snapshot(overrides: Partial<TeamSnapshot> = {}): TeamSnapshot {
         blockType: '',
         manualNote: '',
         autoNote: '',
+        approval: '',
+        approvalNote: '',
         acceptance: [],
         raw: 'T-002 支付接口',
       },
@@ -128,6 +132,40 @@ describe('TeamBoardPanel', () => {
         from: '进行中',
         reason: '真机验证主流程',
         manualConfirmed: true,
+      }),
+    )
+  })
+
+  it('surfaces a pending approval and sends the decision back', async () => {
+    const pending = snapshot({
+      tasks: snapshot().tasks.map((task) =>
+        task.id === 'T-001'
+          ? { ...task, status: '阻塞' as const, blockType: '待用户确认', approval: '外发测试邮件给 200 个用户 · 不可撤回' }
+          : task,
+      ),
+    })
+    mocks.invoke.mockImplementation(async (channel: string) => {
+      if (channel === 'teamBoard.snapshot') return { ok: true, snapshot: pending }
+      if (channel === 'teamBoard.approval') return { ok: true, from: '阻塞', to: '进行中', request: pending.tasks[0].approval, resumed: true, snapshot: pending }
+      return {}
+    })
+    render(<TeamBoardPanel />)
+    expect(await screen.findByText('1 待批准')).toBeInTheDocument()
+    expect(screen.getByText('待批准')).toBeInTheDocument()
+
+    fireEvent.click(screen.getAllByText('登录页')[0])
+    const dialog = await screen.findByRole('dialog', { name: 'T-001 登录页' })
+    expect(within(dialog).getByText('等你批准')).toBeInTheDocument()
+    expect(within(dialog).getByText('外发测试邮件给 200 个用户 · 不可撤回')).toBeInTheDocument()
+    fireEvent.change(within(dialog).getByPlaceholderText('可选：批准条件或驳回原因'), { target: { value: '只发内测名单' } })
+    fireEvent.click(within(dialog).getByText('批准并继续'))
+    await waitFor(() =>
+      expect(mocks.invoke).toHaveBeenCalledWith('teamBoard.approval', {
+        workspaceId,
+        taskId: 'T-001',
+        decision: 'approve',
+        note: '只发内测名单',
+        from: '阻塞',
       }),
     )
   })

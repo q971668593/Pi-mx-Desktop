@@ -15,20 +15,27 @@ import { basename, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import {
   TEAM_BOARD_RELATIVE_PATH,
+  TEAM_RUN_REPORT_KINDS,
+  TEAM_RUN_STALE_MS_DEFAULT,
   TEAM_SPEC_RELATIVE_DIR,
   TEAM_STATE_RELATIVE_PATH,
   canonicalTeamRole,
   defaultTeamRoleBindings,
   emptyTeamState,
   isTeamRole,
+  isTeamRunActive,
   normalizeTeamRoleBindings,
   appendTeamTask,
   parseTeamBoard,
+  resolveTeamApproval,
+  sanitizeTeamText,
   updateTeamTaskStatus,
   type TeamBoard,
   type TeamRole,
   type TeamRoleBinding,
   type TeamRun,
+  type TeamRunReport,
+  type TeamRunReportKind,
   type TeamRunStatus,
   type TeamSnapshot,
   type TeamState,
@@ -226,12 +233,30 @@ export function saveTeamRoles(spec: string, input: unknown): TeamRoleBinding[] {
 
 const RUN_STATUSES: TeamRunStatus[] = ['starting', 'running', 'done', 'failed', 'cancelled']
 
+function normalizeReport(value: unknown): TeamRunReport | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const record = value as Record<string, unknown>
+  const kind = String(record.kind ?? '')
+  if (!(TEAM_RUN_REPORT_KINDS as readonly string[]).includes(kind)) return undefined
+  const verdict =
+    record.verdict === 'deliver' || record.verdict === 'hold' || record.verdict === 'discard' ? record.verdict : undefined
+  return {
+    kind: kind as TeamRunReportKind,
+    ...(typeof record.text === 'string' && record.text.trim()
+      ? { text: sanitizeTeamText(record.text, 300) }
+      : {}),
+    at: typeof record.at === 'number' ? record.at : Date.now(),
+    ...(verdict ? { verdict } : {}),
+  }
+}
+
 function normalizeRun(value: unknown): TeamRun | null {
   if (!value || typeof value !== 'object') return null
   const run = value as Record<string, unknown>
   if (typeof run.sessionFile !== 'string' || !run.sessionFile) return null
   const role = canonicalTeamRole(run.role)
   const status = String(run.status ?? '') as TeamRunStatus
+  const report = normalizeReport(run.report)
   return {
     id: typeof run.id === 'string' && run.id ? run.id : randomUUID(),
     taskId: typeof run.taskId === 'string' ? run.taskId : '',
@@ -242,6 +267,9 @@ function normalizeRun(value: unknown): TeamRun | null {
     startedAt: typeof run.startedAt === 'number' ? run.startedAt : 0,
     ...(typeof run.endedAt === 'number' ? { endedAt: run.endedAt } : {}),
     ...(typeof run.settledTo === 'string' ? { settledTo: run.settledTo as TeamStatus } : {}),
+    ...(report ? { report } : {}),
+    ...(typeof run.staleAt === 'number' ? { staleAt: run.staleAt } : {}),
+    ...(run.closedBy === 'human' || run.closedBy === 'host' ? { closedBy: run.closedBy } : {}),
   }
 }
 
@@ -412,32 +440,64 @@ export type TeamSettleOutcome = {
   movedTo?: TeamStatus | null
 }
 
+export type TeamSettleOptions = {
+  /** 写进 report.text 的一句话回执 */
+  note?: string
+  /** 人工点「结束这次派发」还是宿主自动落账 */
+  closedBy?: 'human' | 'host'
+  /** 只关记录不动看板（例如被新派发替代时，卡片的说明已经由看门狗写过） */
+  silent?: boolean
+}
+
+const SETTLE_REPORT: Record<'success' | 'failed' | 'cancelled', { kind: TeamRunReportKind; text: string }> = {
+  success: { kind: 'ready', text: '会话已结束，等待审查' },
+  failed: { kind: 'failed', text: '本轮执行失败/中止' },
+  cancelled: { kind: 'blocked', text: '本轮被取消' },
+}
+
 /**
  * 会话结束落账：成功且卡片仍在「进行中」→「待审查」；失败/中止只记回执，
  * 不动状态（人要知道这轮没交付，不能假装有产物）。
+ *
+ * 落账只在 starting/running 上生效：重复事件（settled + completion）与看门狗后到的
+ * 定时器都不能二次改写已结算的记录或已验证的卡片。
  */
 export function settleTeamRun(
   spec: string,
   workspaceId: string,
   sessionFile: string,
   outcome: 'success' | 'failed' | 'cancelled',
+  options: TeamSettleOptions = {},
 ): TeamSettleOutcome {
+  const settledAt = Date.now()
   const settledRun = withTeamState(spec, (state) => {
     for (let i = state.runs.length - 1; i >= 0; i--) {
       const run = state.runs[i]
       if (run.sessionFile !== sessionFile) continue
-      if (run.status !== 'starting' && run.status !== 'running') continue
+      if (!isTeamRunActive(run)) continue
       run.status = outcome === 'success' ? 'done' : outcome
-      run.endedAt = Date.now()
+      run.endedAt = settledAt
+      delete run.staleAt
+      const fallback = SETTLE_REPORT[outcome]
+      run.report = {
+        kind: fallback.kind,
+        text: sanitizeTeamText(options.note, 300) || fallback.text,
+        at: settledAt,
+        verdict: 'deliver',
+      }
+      if (options.closedBy) run.closedBy = options.closedBy
       return { ...run }
     }
     return null
   })
   if (!settledRun) return { settled: false }
+  if (options.silent) return { settled: true, run: settledRun, movedTo: null }
 
   const board = parseTeamBoard(textFile(join(spec, TEAM_BOARD_RELATIVE_PATH)) ?? '')
   const task = board.tasks.find((item) => item.id === settledRun.taskId)
   if (!task) return { settled: true, run: settledRun, movedTo: null }
+  // 已经有待批事项的卡不自动推进：人在等一个决定，不是等一次落账。
+  if (task.approval) return { settled: true, run: settledRun, movedTo: null }
 
   if (outcome === 'success') {
     if (task.status !== '进行中') return { settled: true, run: settledRun, movedTo: null }
@@ -463,6 +523,114 @@ export function settleTeamRun(
     autoNote: `${settledRun.role} ${label}，请核对产物后重试`,
   })
   return { settled: true, run: settledRun, movedTo: null }
+}
+
+/* ---------------- 看门狗：派发有没有死在半路 ---------------- */
+
+export type TeamSweepOutcome = {
+  /** 当前所有被判定超时的派发（含之前已经标过的） */
+  stale: TeamRun[]
+  /** 本次因此被移到「阻塞 / 待用户确认」的卡片 */
+  blocked: string[]
+  snapshot: TeamSnapshot
+}
+
+/** 会话文件最后写入时间与启动时间取大者：文件不再增长 = 这轮没人推进了。 */
+function lastActivityOf(run: TeamRun): number {
+  let last = Number.isFinite(run.startedAt) ? run.startedAt : 0
+  try {
+    const mtime = statSync(run.sessionFile).mtimeMs
+    if (Number.isFinite(mtime) && mtime > last) last = mtime
+  } catch {
+    /* 会话文件不存在/不可读：退回启动时间，重启后的悬空记录靠这个收敛 */
+  }
+  return last
+}
+
+/**
+ * 看门狗 tick：把「还在 starting/running、但超过 staleMs 没有任何活动」的派发标为超时，
+ * 并把对应的「进行中」卡片移到「阻塞 / 待用户确认」，让人一眼看到哪一轮死在半路。
+ *
+ * 只标记一次（staleAt）；不伪造失败，不自动重派，不覆盖待批准或已收口的卡。
+ */
+export function sweepTeamRuns(
+  spec: string,
+  workspaceId: string,
+  options: { staleMs?: number; now?: number } = {},
+): TeamSweepOutcome {
+  const now = options.now ?? Date.now()
+  const staleMs = Math.max(60_000, options.staleMs ?? TEAM_RUN_STALE_MS_DEFAULT)
+  const state = readTeamState(spec)
+  const fresh = state.runs.filter((run) => isTeamRunActive(run) && !run.staleAt && now - lastActivityOf(run) > staleMs)
+  const stale = state.runs.filter((run) => isTeamRunActive(run) && run.staleAt).map((run) => ({ ...run }))
+
+  if (fresh.length) {
+    const ids = new Set(fresh.map((run) => run.id))
+    withTeamState(spec, (next) => {
+      for (const run of next.runs) {
+        if (!ids.has(run.id) || run.staleAt) continue
+        run.staleAt = now
+      }
+    })
+    stale.push(...fresh.map((run) => ({ ...run, staleAt: now })))
+  }
+
+  const blocked: string[] = []
+  if (fresh.length) {
+    const board = parseTeamBoard(textFile(join(spec, TEAM_BOARD_RELATIVE_PATH)) ?? '')
+    const minutes = Math.round(staleMs / 60_000)
+    for (const run of fresh) {
+      const task = board.tasks.find((item) => item.id === run.taskId)
+      if (!task || task.status !== '进行中' || task.approval) continue
+      const result = setTeamTaskStatusInSpec(spec, workspaceId, {
+        id: task.id,
+        to: '阻塞',
+        from: '进行中',
+        blockType: '待用户确认',
+        autoNote: `派发超过 ${minutes} 分钟没有结束事件（${run.role}），请核对会话后重新派发`,
+      })
+      if (result.ok) blocked.push(task.id)
+    }
+  }
+
+  return { stale, blocked, snapshot: snapshotFor(spec, workspaceId) }
+}
+
+/* ---------------- 卡片级审批 ---------------- */
+
+export type TeamApprovalOutcome =
+  | { ok: true; from: TeamStatus; to: TeamStatus; request: string; snapshot: TeamSnapshot }
+  | { ok: false; reason: 'task_not_found' | 'no_pending_approval' | 'status_mismatch'; current?: TeamStatus }
+
+/**
+ * 批准/驳回卡片上的 `- 待批准：`：和执行方申请共用同一份 markdown 字段，
+ * 不另建一套数据库；批准后卡片回到「进行中」，驳回留在「阻塞 / 待用户确认」。
+ */
+export function resolveTeamTaskApproval(
+  workspaceRoot: string,
+  input: { taskId: string; decision: 'approve' | 'deny'; note?: string; from?: string | null },
+): TeamApprovalOutcome {
+  const spec = teamSpecPath(workspaceRoot)
+  const boardFile = join(spec, TEAM_BOARD_RELATIVE_PATH)
+  return withLock(boardLockRoot(spec), () => {
+    const markdown = textFile(boardFile)
+    if (markdown == null) return { ok: false as const, reason: 'task_not_found' as const }
+    const result = resolveTeamApproval(markdown, {
+      id: input.taskId,
+      decision: input.decision,
+      note: input.note,
+      from: input.from,
+    })
+    if (!result.ok) return result
+    writeAtomic(boardFile, result.markdown)
+    return {
+      ok: true as const,
+      from: result.from,
+      to: result.to,
+      request: result.request,
+      snapshot: snapshotFor(spec, workspaceRoot),
+    }
+  })
 }
 
 /** 面板建卡：和状态写回共用同一把看板锁，编号按现有最大 T-xxx 递增。 */

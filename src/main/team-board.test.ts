@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -11,9 +11,11 @@ import {
   readTeamSnapshot,
   readTeamState,
   recordTeamDispatch,
+  resolveTeamTaskApproval,
   saveTeamRoles,
   settleTeamRun,
   setTeamTaskStatus,
+  sweepTeamRuns,
   teamBoardPath,
   teamSpecPath,
 } from './team-board'
@@ -220,5 +222,177 @@ describe('dispatch runs', () => {
     expect(bindTeamSession(spec, '设计', { sessionFile: 'C:/sessions/design.jsonl' })).toBe('设计师')
     expect(readTeamState(spec).sessions['设计师']).toMatchObject({ sessionFile: 'C:/sessions/design.jsonl' })
     expect(readTeamSnapshot(root).sessions['设计师']).toBeTruthy()
+  })
+})
+
+/* ---------------- 看门狗 / 审批 ---------------- */
+
+function session(root: string, name: string, ageMs = 0): string {
+  const file = join(root, name)
+  writeFileSync(file, '{"type":"message"}\n')
+  if (ageMs > 0) {
+    const seconds = (Date.now() - ageMs) / 1000
+    utimesSync(file, seconds, seconds)
+  }
+  return file
+}
+
+/** 让看门狗以为过了 31 分钟，而不用真的等。 */
+function afterStaleWindow(): { now: number } {
+  return { now: Date.now() + 31 * 60 * 1000 }
+}
+
+function writeApprovalBoard(root: string): void {
+  const board = `# 看板：当前批次
+
+## 批次信息
+
+- 当前批次：订单模块
+- 目标：完成下单主流程
+
+## 任务索引
+
+| 编号 | 标题 | 角色 | 状态 | 一句话 |
+|------|------|------|------|--------|
+| T-001 | 登录页 | 前端 | 阻塞 | 账号密码登录 |
+
+## 卡片详情
+
+### T-001 登录页
+
+- 角色：前端
+- 状态：阻塞
+- 阻塞分型：待用户确认
+- 待批准：外发测试邮件给 200 个用户 · 不可撤回
+
+- [ ] 账号密码可登录
+`
+  writeFileSync(teamBoardPath(root), board, 'utf8')
+}
+
+describe('run watchdog', () => {
+  it('flags a dispatch that stopped moving and blocks the card exactly once', () => {
+    const { root, spec } = workspace()
+    initTeamProject(root)
+    writeBoard(root)
+    const file = session(root, 'dead.jsonl')
+    recordTeamDispatch(spec, { taskId: 'T-001', role: '前端', sessionFile: file })
+    markTeamRunRunning(spec, file)
+
+    const first = sweepTeamRuns(spec, root, afterStaleWindow())
+    expect(first.stale.map((run) => run.taskId)).toEqual(['T-001'])
+    expect(first.blocked).toEqual(['T-001'])
+    expect(readTeamState(spec).runs[0].staleAt).toBeGreaterThan(0)
+    const board = readFileSync(teamBoardPath(root), 'utf8')
+    expect(board).toContain('- 状态：阻塞')
+    expect(board).toContain('- 阻塞分型：待用户确认')
+    expect(board).toContain('派发超过 30 分钟没有结束事件')
+
+    // 第二次 tick：不再重复报阻塞，但仍旧把它列在 stale 里给面板提示
+    const second = sweepTeamRuns(spec, root, afterStaleWindow())
+    expect(second.blocked).toEqual([])
+    expect(second.stale).toHaveLength(1)
+  })
+
+  it('leaves a dispatch that is still writing its session alone', () => {
+    const { root, spec } = workspace()
+    initTeamProject(root)
+    writeBoard(root)
+    const file = session(root, 'live.jsonl')
+    recordTeamDispatch(spec, { taskId: 'T-001', role: '前端', sessionFile: file })
+    markTeamRunRunning(spec, file)
+    // 时间过去了 31 分钟，但会话文件到这一刻还在写：不算死。
+    const window = afterStaleWindow()
+    const seconds = window.now / 1000
+    utimesSync(file, seconds, seconds)
+    const result = sweepTeamRuns(spec, root, window)
+    expect(result.stale).toEqual([])
+    expect(result.blocked).toEqual([])
+    expect(readFileSync(teamBoardPath(root), 'utf8')).toContain('- 状态：进行中')
+  })
+
+  it('does not touch a card that is waiting for an approval', () => {
+    const { root, spec } = workspace()
+    initTeamProject(root)
+    writeApprovalBoard(root)
+    writeFileSync(
+      teamBoardPath(root),
+      readFileSync(teamBoardPath(root), 'utf8').replace('- 状态：阻塞', '- 状态：进行中'),
+      'utf8',
+    )
+    const file = session(root, 'wait.jsonl')
+    recordTeamDispatch(spec, { taskId: 'T-001', role: '前端', sessionFile: file })
+    markTeamRunRunning(spec, file)
+    const result = sweepTeamRuns(spec, root, afterStaleWindow())
+    expect(result.blocked).toEqual([])
+    expect(readFileSync(teamBoardPath(root), 'utf8')).toContain('- 待批准：')
+  })
+
+  it('settle records a typed report and clears the stale mark', () => {
+    const { root, spec } = workspace()
+    initTeamProject(root)
+    writeBoard(root)
+    const file = session(root, 'dead.jsonl')
+    recordTeamDispatch(spec, { taskId: 'T-001', role: '前端', sessionFile: file })
+    markTeamRunRunning(spec, file)
+    sweepTeamRuns(spec, root, afterStaleWindow())
+
+    const settled = settleTeamRun(spec, root, file, 'success', { closedBy: 'human', note: '人工核对后收口' })
+    expect(settled.settled).toBe(true)
+    const run = readTeamState(spec).runs[0]
+    expect(run.staleAt).toBeUndefined()
+    expect(run.closedBy).toBe('human')
+    expect(run.report).toMatchObject({ kind: 'ready', text: '人工核对后收口', verdict: 'deliver' })
+  })
+
+  it('keeps the settlement idempotent when the same session reports twice', () => {
+    const { root, spec } = workspace()
+    initTeamProject(root)
+    writeBoard(root)
+    const file = session(root, 'once.jsonl')
+    recordTeamDispatch(spec, { taskId: 'T-001', role: '前端', sessionFile: file })
+    markTeamRunRunning(spec, file)
+    expect(settleTeamRun(spec, root, file, 'failed').settled).toBe(true)
+    expect(settleTeamRun(spec, root, file, 'success')).toEqual({ settled: false })
+    expect(readTeamState(spec).runs[0].report?.kind).toBe('failed')
+  })
+})
+
+describe('card approval', () => {
+  it('approves into 进行中 and returns the exact request', () => {
+    const { root } = workspace()
+    initTeamProject(root)
+    writeApprovalBoard(root)
+    const result = resolveTeamTaskApproval(root, { taskId: 'T-001', decision: 'approve', note: '只发内测名单', from: '阻塞' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.to).toBe('进行中')
+    expect(result.request).toContain('外发测试邮件')
+    expect(result.snapshot.tasks[0].status).toBe('进行中')
+    expect(result.snapshot.tasks[0].approval).toBe('')
+    expect(result.snapshot.tasks[0].approvalNote).toContain('只发内测名单')
+  })
+
+  it('denies and keeps the card blocked pending the user', () => {
+    const { root } = workspace()
+    initTeamProject(root)
+    writeApprovalBoard(root)
+    const result = resolveTeamTaskApproval(root, { taskId: 'T-001', decision: 'deny', note: '先别发' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.to).toBe('阻塞')
+    expect(result.snapshot.tasks[0].blockType).toBe('待用户确认')
+    expect(result.snapshot.tasks[0].approvalNote).toContain('先别发')
+  })
+
+  it('reports a missing pending request instead of silently editing the card', () => {
+    const { root } = workspace()
+    initTeamProject(root)
+    writeBoard(root)
+    expect(resolveTeamTaskApproval(root, { taskId: 'T-001', decision: 'approve' })).toEqual({
+      ok: false,
+      reason: 'no_pending_approval',
+      current: '进行中',
+    })
   })
 })

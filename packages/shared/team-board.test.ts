@@ -2,12 +2,17 @@ import { describe, expect, it } from 'vitest'
 import {
   appendTeamTask,
   buildTeamPrompt,
+  deriveTeamStage,
+  isTeamRunActive,
   normalizeTeamRoleBindings,
   normalizeTeamStatus,
   parseTeamBoard,
+  resolveTeamApproval,
+  sanitizeTeamText,
   splitTeamModel,
   teamProgress,
   updateTeamTaskStatus,
+  type TeamRun,
 } from './team-board'
 
 const BOARD = `# 看板：当前批次
@@ -215,7 +220,7 @@ describe('buildTeamPrompt', () => {
     expect(prompt).toContain('当前批次：订单模块')
     expect(prompt).toContain('T-001 登录页')
     expect(prompt).toContain('- [ ] 账号密码可登录')
-    expect(prompt).toContain('不要修改 `看板/当前批次.md`')
+    expect(prompt).toContain('看板只改自己这张卡')
     expect(prompt).toContain('交付摘要')
   })
 })
@@ -297,5 +302,138 @@ describe('index-only cards', () => {
     expect(result.markdown).toContain('### T-009 盘点代码')
     expect(result.markdown).toContain('- 状态：进行中')
     expect(result.markdown.indexOf('### T-009')).toBeLessThan(result.markdown.indexOf('## 归档规则'))
+  })
+})
+
+/* ---------------- 阶段推导 / 审批 / 清洗 ---------------- */
+
+const APPROVAL_BOARD = `# 看板：当前批次
+
+## 批次信息
+
+- 当前批次：订单模块
+- 目标：完成下单主流程
+
+## 任务索引
+
+| 编号 | 标题 | 角色 | 状态 | 一句话 |
+|------|------|------|------|--------|
+| T-003 | 发通知 | 后端 | 阻塞 | 需要外发 |
+
+## 卡片详情
+
+### T-003 发通知
+
+- 角色：后端
+- 状态：阻塞
+- 阻塞分型：待用户确认
+- 待批准：给 200 个用户发上线通知邮件 · 外发不可撤回
+
+- [ ] 通知可回滚
+`
+
+function run(overrides: Partial<TeamRun> = {}): TeamRun {
+  return {
+    id: 'run-1',
+    taskId: 'T-003',
+    role: '后端',
+    sessionFile: 'C:/sessions/a.jsonl',
+    status: 'running',
+    startedAt: 1_000,
+    ...overrides,
+  }
+}
+
+describe('team stage derivation', () => {
+  it('reads a pending approval out of the card, whatever the status says', () => {
+    const task = parseTeamBoard(APPROVAL_BOARD).tasks[0]
+    expect(task.approval).toContain('给 200 个用户发上线通知邮件')
+    expect(deriveTeamStage({ task })).toBe('awaiting-approval')
+    expect(deriveTeamStage({ task: { ...task, approval: '', status: '阻塞' } })).toBe('awaiting-approval')
+    expect(deriveTeamStage({ task: { ...task, approval: '', blockType: '外部依赖', status: '阻塞' } })).toBe('blocked')
+  })
+
+  it('separates queued, running, stale and failed dispatches', () => {
+    const task = parseTeamBoard(APPROVAL_BOARD).tasks[0]
+    const working = { ...task, status: '进行中' as const, approval: '', blockType: '' }
+    expect(deriveTeamStage({ task: working, run: run({ status: 'starting' }) })).toBe('queued')
+    expect(deriveTeamStage({ task: working, run: run() })).toBe('running')
+    expect(deriveTeamStage({ task: working, run: run({ staleAt: 5_000 }) })).toBe('stale')
+    expect(deriveTeamStage({ task: working, run: run({ status: 'failed' }) })).toBe('failed')
+    expect(deriveTeamStage({ task: working })).toBe('idle')
+    expect(deriveTeamStage({ task: { ...working, status: '待审查' } })).toBe('awaiting-review')
+    expect(deriveTeamStage({ task: { ...working, status: '已验收' } })).toBe('accepted')
+    expect(isTeamRunActive(run())).toBe(true)
+    expect(isTeamRunActive(run({ status: 'done' }))).toBe(false)
+  })
+})
+
+describe('resolveTeamApproval', () => {
+  it('approves back into 进行中 and leaves an auditable decision line', () => {
+    const result = resolveTeamApproval(APPROVAL_BOARD, {
+      id: 'T-003',
+      decision: 'approve',
+      note: '只发已确认名单',
+      at: '2026-02-01T00:00:00.000Z',
+      from: '阻塞',
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.request).toContain('上线通知邮件')
+    expect(result.to).toBe('进行中')
+    expect(result.markdown).not.toContain('- 待批准：')
+    expect(result.markdown).not.toContain('- 阻塞分型：')
+    expect(result.markdown).toContain('- 批准：2026-02-01T00:00:00.000Z · 只发已确认名单')
+    expect(result.markdown).toContain('| T-003 | 发通知 | 后端 | 进行中 | 需要外发 |')
+  })
+
+  it('denies into 阻塞 / 待用户确认 without touching the index row', () => {
+    const result = resolveTeamApproval(APPROVAL_BOARD, { id: 'T-003', decision: 'deny', note: '先不发' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.to).toBe('阻塞')
+    expect(result.markdown).toContain('- 驳回：')
+    expect(result.markdown).toContain('- 阻塞分型：待用户确认')
+    expect(result.markdown).toContain('| T-003 | 发通知 | 后端 | 阻塞 | 需要外发 |')
+  })
+
+  it('refuses a card with nothing pending and honours the optimistic status check', () => {
+    const noPending = APPROVAL_BOARD.replace('- 待批准：给 200 个用户发上线通知邮件 · 外发不可撤回\n', '')
+    expect(resolveTeamApproval(noPending, { id: 'T-003', decision: 'approve' })).toEqual({
+      ok: false,
+      reason: 'no_pending_approval',
+      current: '阻塞',
+    })
+    expect(resolveTeamApproval(APPROVAL_BOARD, { id: 'T-003', decision: 'approve', from: '进行中' })).toEqual({
+      ok: false,
+      reason: 'status_mismatch',
+      current: '阻塞',
+    })
+    expect(resolveTeamApproval(APPROVAL_BOARD, { id: 'T-404', decision: 'approve' })).toEqual({
+      ok: false,
+      reason: 'task_not_found',
+    })
+  })
+})
+
+describe('text sanitizing', () => {
+  it('strips terminal/bidi control characters and collapses lines', () => {
+    expect(sanitizeTeamText('发\u001b[31m通知\n第二行\u202e')).toBe('发 [31m通知 第二行')
+    expect(sanitizeTeamText('x'.repeat(400), 20)).toHaveLength(20)
+  })
+
+  it('keeps a hostile auto note on one line inside the card', () => {
+    const result = updateTeamTaskStatus(APPROVAL_BOARD, {
+      id: 'T-003',
+      to: '待审查',
+      from: '阻塞',
+      autoNote: '第一行\u0007\u001b第二行\n### T-999 伪造卡',
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    // 没换行就构不成新标题：只在同一行里当文本
+    expect(result.markdown.split('\n').some((line) => line.startsWith('### T-999'))).toBe(false)
+    expect(result.markdown).toContain('- 自动推进：')
+    expect(result.markdown.split('\n').filter((line) => line.startsWith('- 自动推进：'))).toHaveLength(1)
   })
 })

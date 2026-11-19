@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react'
+import { toast } from 'sonner'
 import type { AppEvent } from '@shared/app-events'
 import type { TeamRun } from '@shared/team-board'
+import i18n from '@renderer/lib/i18n'
 import { ipcClient, onAppEvent } from '@renderer/lib/ipc-client'
 import { normalizeSessionFileKey, sessionFilesEqual } from '@renderer/lib/session-file-key'
 import { useUIStore } from '@renderer/stores/ui-store'
@@ -58,6 +60,36 @@ export function TeamBoardAutoSettle() {
 
   useEffect(() => {
     if (!workspaceId) return
+    let cancelled = false
+
+    // 看门狗 tick：派发超过 30 分钟没有活动就标超时并把卡移到「阻塞 / 待用户确认」。
+    // 主进程算，这里只负责隔一分钟叫一次；项目没初始化时静默。
+    const sweep = async () => {
+      if (document.visibilityState !== 'visible') return
+      try {
+        const response = await ipcClient.invoke('teamBoard.sweep', { workspaceId })
+        if (cancelled) return
+        const blocked = (response?.blocked || []) as string[]
+        if (!blocked.length) return
+        notifyTeamBoardChanged()
+        toast.message(i18n.t('team:sweepBlocked', { count: blocked.length }), {
+          description: blocked.join('、'),
+        })
+      } catch {
+        /* 未初始化 / 工作区不可用时静默 */
+      }
+    }
+
+    void sweep()
+    const timer = setInterval(() => void sweep(), 60_000)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [workspaceId])
+
+  useEffect(() => {
+    if (!workspaceId) return
     return onAppEvent((event) => {
       const outcome = outcomeOf(event)
       if (!outcome || !('sessionFile' in event) || typeof event.sessionFile !== 'string' || !event.sessionFile) return
@@ -76,7 +108,7 @@ export function TeamBoardAutoSettle() {
       // 先摘掉再调用：completion 和 settled 可能同一轮都到，避免重复落账。
       runsRef.current.delete(matchedKey)
       void ipcClient
-        .invoke('teamBoard.settleRun', { workspaceId, sessionFile: matched.sessionFile, outcome })
+        .invoke('teamBoard.settleRun', { workspaceId, sessionFile: matched.sessionFile, outcome, closedBy: 'host' })
         .then(() => notifyTeamBoardChanged())
         .catch(() => {})
     })

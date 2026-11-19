@@ -40,6 +40,14 @@ const ROLE_ALIASES: Record<string, TeamRole> = {
 export const TEAM_BLOCK_TYPES = ['待用户确认', '缺环境/工具', '外部依赖', '执行失败'] as const
 export type TeamBlockType = (typeof TEAM_BLOCK_TYPES)[number]
 
+/** 需要主人拍板的阻塞一律落到这个分型上，面板据此识别「待批准」。 */
+export const TEAM_APPROVAL_BLOCK_TYPE: TeamBlockType = '待用户确认'
+
+/** 卡片上的审批字段：`- 待批准：`（执行方申请）、`- 批准：` / `- 驳回：`（主人决定）。 */
+export const TEAM_APPROVAL_REQUEST_LABEL = '待批准'
+export const TEAM_APPROVAL_APPROVED_LABEL = '批准'
+export const TEAM_APPROVAL_DENIED_LABEL = '驳回'
+
 const LF = String.fromCharCode(10)
 const CRLF = String.fromCharCode(13) + LF
 
@@ -57,6 +65,21 @@ export function normalizeTeamStatus(value: unknown): TeamStatus {
 
 export function isTeamRole(value: unknown): value is TeamRole {
   return (TEAM_ROLES as readonly string[]).includes(String(value ?? ''))
+}
+
+/**
+ * 控制字符（含 NUL/ESC、DEL、双向文本标记）会进终端、日志和面板；一律清掉再落盘。
+ * 与 dsh-super-agent 的 approval/team 标签清洗保持同一口径。
+ */
+const UNSAFE_TEAM_TEXT = /[\u0000-\u001F\u007F-\u009F\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g
+
+/** 单行化 + 去控制字符 + 截断。写看板/写派发记录的非结构化文本都走这里。 */
+export function sanitizeTeamText(value: unknown, max = 300): string {
+  return String(value ?? '')
+    .replace(UNSAFE_TEAM_TEXT, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max)
 }
 
 export function isTeamTaskId(value: unknown): boolean {
@@ -86,6 +109,10 @@ export type TeamTask = {
   /** 最近一次宿主自动推进记录（`- 自动推进：`） */
   autoNote: string
   acceptance: TeamAcceptanceItem[]
+  /** 执行方申请的待批准动作（`- 待批准：`）；空串表示没有待批事项 */
+  approval: string
+  /** 最近一次批准/驳回记录（`- 批准：` / `- 驳回：`） */
+  approvalNote: string
   /** 卡片详情原文，用于复制派发包与「看板原文」 */
   raw: string
 }
@@ -125,6 +152,22 @@ export type TeamSessionMap = Partial<Record<TeamRole, TeamRoleSession>>
 
 export type TeamRunStatus = 'starting' | 'running' | 'done' | 'failed' | 'cancelled'
 
+/**
+ * 派发结果的类型化说法：结束状态之外还要回答「这轮是交付、失败、还是等触发」。
+ * 借鉴 dsh-super-agent 的 Assignment.report，避免只用一句 status 猜结论。
+ */
+export const TEAM_RUN_REPORT_KINDS = ['ready', 'failed', 'blocked', 'waiting', 'question'] as const
+export type TeamRunReportKind = (typeof TEAM_RUN_REPORT_KINDS)[number]
+
+export type TeamRunReport = {
+  kind: TeamRunReportKind
+  /** 一句话回执（不存长报告：证据留在会话与协作目录） */
+  text?: string
+  at: number
+  /** deliver：值得给主人看；hold：压住（等批准/暂停）；discard：不值得发 */
+  verdict?: 'deliver' | 'hold' | 'discard'
+}
+
 export type TeamRun = {
   id: string
   taskId: string
@@ -136,6 +179,53 @@ export type TeamRun = {
   endedAt?: number
   /** 宿主在会话结束时把卡片推进到的状态 */
   settledTo?: TeamStatus
+  /** 结束时写下的结构化回执 */
+  report?: TeamRunReport
+  /** 看门狗判定「超时无结束事件」的时间；只标记一次，用于面板提示 */
+  staleAt?: number
+  /** 主人/宿主主动结束这次派发（覆盖看门狗结论，避免再被标记） */
+  closedBy?: 'human' | 'host'
+}
+
+/** 默认超时：30 分钟没有结束事件且会话文件不再增长，就判定这轮卡住。 */
+export const TEAM_RUN_STALE_MS_DEFAULT = 30 * 60 * 1000
+
+export function isTeamRunActive(run: Pick<TeamRun, 'status'> | null | undefined): boolean {
+  return !!run && (run.status === 'starting' || run.status === 'running')
+}
+
+/**
+ * 面板展示用的阶段：从卡片状态 + 派发记录 + 审批字段推导，不由「模型最后一句话」决定。
+ * 卡片状态（markdown）仍是唯一真相；这里只是给同一份事实一个更细的读法。
+ */
+export type TeamStage =
+  | 'idle'
+  | 'queued'
+  | 'running'
+  | 'stale'
+  | 'awaiting-approval'
+  | 'awaiting-review'
+  | 'blocked'
+  | 'failed'
+  | 'implemented'
+  | 'accepted'
+
+export function deriveTeamStage(input: { task: TeamTask; run?: TeamRun | null; now?: number }): TeamStage {
+  const { task, run } = input
+  if (task.status === '已验收') return 'accepted'
+  if (task.approval) return 'awaiting-approval'
+  if (task.status === '阻塞') {
+    return task.blockType === TEAM_APPROVAL_BLOCK_TYPE ? 'awaiting-approval' : 'blocked'
+  }
+  if (task.status === '待审查') return 'awaiting-review'
+  if (task.status === '实现完成') return 'implemented'
+  if (isTeamRunActive(run)) {
+    if (run?.staleAt) return 'stale'
+    return run?.report?.kind === 'waiting' || run?.status === 'starting' ? 'queued' : 'running'
+  }
+  if (run?.status === 'failed' || run?.status === 'cancelled') return 'failed'
+  if (run?.report?.kind === 'ready') return 'awaiting-review'
+  return 'idle'
 }
 
 export type TeamState = {
@@ -315,6 +405,8 @@ function parseCard(section: string, index: IndexRow | undefined): TeamTask | nul
     blockType: fieldOf(section, '阻塞分型'),
     manualNote: fieldOf(section, '人工处理'),
     autoNote: fieldOf(section, '自动推进'),
+    approval: fieldOf(section, TEAM_APPROVAL_REQUEST_LABEL),
+    approvalNote: fieldOf(section, TEAM_APPROVAL_APPROVED_LABEL) || fieldOf(section, TEAM_APPROVAL_DENIED_LABEL),
     acceptance,
     raw: section.trim(),
   }
@@ -369,6 +461,8 @@ export function parseTeamBoard(markdown: string): TeamBoard {
       blockType: '',
       manualNote: '',
       autoNote: '',
+      approval: '',
+      approvalNote: '',
       acceptance: [],
       raw: '',
     })
@@ -443,9 +537,9 @@ export function updateTeamTaskStatus(markdown: string, input: TeamStatusWriteInp
 
   const at = input.at || new Date().toISOString()
   const manual = input.manual === true
-  const autoNote = String(input.autoNote ?? '').replace(/[\r\n]+/g, ' ').trim()
-  const reason = String(input.reason ?? '').replace(/[\r\n]+/g, ' ').trim()
-  const blockType = String(input.blockType ?? '').replace(/[\r\n]+/g, ' ').trim()
+  const autoNote = sanitizeTeamText(input.autoNote, 300)
+  const reason = sanitizeTeamText(input.reason, 1500)
+  const blockType = sanitizeTeamText(input.blockType, 40)
 
   let next = setField(section, '状态', `- 状态：${to}`)
   if (manual && from !== to) {
@@ -509,10 +603,81 @@ export function appendTeamTaskAutoNote(markdown: string, id: string, note: strin
   if (!range) return markdown
   const lines = md.split(LF)
   const section = lines.slice(range.start, range.end).join(LF)
-  const line = `- 自动推进：${at} · ${note.replace(/[\r\n]+/g, ' ').trim()}`
+  const line = `- 自动推进：${at} · ${sanitizeTeamText(note, 300)}`
   const next = setField(section, '自动推进', line, '状态')
   const rebuilt = [...lines.slice(0, range.start), ...next.split(LF), ...lines.slice(range.end)].join(LF)
   return rebuilt.split(LF).join(eol)
+}
+
+/* ---------------- 审批（卡片级 hold） ---------------- */
+
+export type TeamApprovalWriteInput = {
+  id: string
+  decision: 'approve' | 'deny'
+  /** 主人备注（批准时作为放行条件写回卡片） */
+  note?: string
+  at?: string
+  /** 乐观并发：写前要求卡片是这个状态 */
+  from?: string | null
+}
+
+export type TeamApprovalWriteResult =
+  | { ok: true; markdown: string; from: TeamStatus; to: TeamStatus; changed: boolean; request: string }
+  | { ok: false; reason: 'task_not_found' | 'no_pending_approval' | 'status_mismatch'; current?: TeamStatus }
+
+/**
+ * 批准/驳回卡片上的 `- 待批准：` 事项。
+ *
+ * 批准：清掉待批准字段，落一行 `- 批准：`，卡片从「阻塞」回到「进行中」（其它状态不动）；
+ * 驳回：落一行 `- 驳回：`，卡片留在/进入「阻塞」并标 `待用户确认`。
+ * 状态与索引行同步写回，写回职责仍由主进程的锁包住。
+ */
+export function resolveTeamApproval(markdown: string, input: TeamApprovalWriteInput): TeamApprovalWriteResult {
+  const raw = String(markdown ?? '')
+  const eol = raw.includes(CRLF) ? CRLF : LF
+  const md = normalizeEol(raw)
+  const id = String(input.id ?? '').trim()
+  const range = sectionRange(md, id)
+  if (!range) return { ok: false, reason: 'task_not_found' }
+  const lines = md.split(LF)
+  const section = lines.slice(range.start, range.end).join(LF)
+  const index = parseIndexRows(md).get(id)
+  const currentRaw = fieldOf(section, '状态') || index?.status || ''
+  const from = currentRaw ? normalizeTeamStatus(currentRaw) : null
+  if (!from) return { ok: false, reason: 'task_not_found' }
+  if (input.from !== undefined && input.from !== null && String(input.from).trim()) {
+    if (normalizeTeamStatus(input.from) !== from) return { ok: false, reason: 'status_mismatch', current: from }
+  }
+
+  const request = fieldOf(section, TEAM_APPROVAL_REQUEST_LABEL).trim()
+  if (!request) return { ok: false, reason: 'no_pending_approval', current: from }
+
+  const at = input.at || new Date().toISOString()
+  const note = sanitizeTeamText(input.note, 300)
+  const approve = input.decision === 'approve'
+  const to: TeamStatus = approve ? (from === '阻塞' ? '进行中' : from) : '阻塞'
+  const decisionLine = approve
+    ? `- ${TEAM_APPROVAL_APPROVED_LABEL}：${at} · ${note || `放行：${request}`}`
+    : `- ${TEAM_APPROVAL_DENIED_LABEL}：${at} · ${note || `驳回：${request}`}`
+
+  let next = removeField(section, TEAM_APPROVAL_REQUEST_LABEL)
+  next = removeField(next, TEAM_APPROVAL_APPROVED_LABEL)
+  next = removeField(next, TEAM_APPROVAL_DENIED_LABEL)
+  next = setField(next, approve ? TEAM_APPROVAL_APPROVED_LABEL : TEAM_APPROVAL_DENIED_LABEL, decisionLine, '状态')
+  if (to !== from) next = setField(next, '状态', `- 状态：${to}`)
+  if (to === '阻塞') {
+    next = setField(next, '阻塞分型', `- 阻塞分型：${TEAM_APPROVAL_BLOCK_TYPE}`, '状态')
+  } else {
+    next = removeField(next, '阻塞分型')
+  }
+
+  let rebuilt = [...lines.slice(0, range.start), ...next.split(LF), ...lines.slice(range.end)].join(LF)
+  if (index && to !== from) {
+    const updated = updateIndexRow(rebuilt, id, to)
+    if (!updated.found) return { ok: false, reason: 'task_not_found', current: from }
+    rebuilt = updated.markdown
+  }
+  return { ok: true, markdown: rebuilt.split(LF).join(eol), from, to, changed: true, request }
 }
 
 /* ---------------- 角色绑定 ---------------- */
@@ -649,7 +814,8 @@ export function buildTeamPrompt(input: TeamPromptInput): string {
     '## 工作约定（硬规则）',
     '',
     '- 只做这张卡/这段对话的范围；需要扩大范围、改需求、动权限或数据规则时，先停下说明，等确认。',
-    '- 不要修改 `看板/当前批次.md` 或 `角色配置.json`：看板由宿主记录派发与结果，手改会和面板状态打架。',
+    '- 看板只改自己这张卡的 `- 状态`、`- 阻塞分型`、`- 待批准` 与末尾回执；不要动索引行、其它卡或 `角色配置.json`，派发与落账由宿主写入。',
+    '- 需要主人拍板才能做的动作（外发消息、删数据、改权限、花钱、发布）：把卡片改成 `- 状态：阻塞` 加 `- 阻塞分型：待用户确认`，再写一行 `- 待批准：<一句话动作> · <为什么需要批准>`，然后停下等批准；不要自己代主人决定。',
     '- 结束时在回复末尾写两行：`交付摘要：…` 与 `验证：…（实际命令/截图路径；没做就写 unverified）`。',
     '- 缺环境、缺工具、需要用户决定时直接说清阻塞点和下一步，不要用「应该可以」代替实际验证。',
   )
@@ -688,7 +854,7 @@ export function appendTeamTask(
   draft: TeamTaskDraft,
   tasks: readonly TeamTask[] = parseTeamBoard(markdown).tasks,
 ): { ok: true; id: string; markdown: string } | { ok: false; reason: 'empty_title' } {
-  const title = String(draft.title ?? '').replace(/[\r\n]+/g, ' ').trim().slice(0, 200)
+  const title = sanitizeTeamText(draft.title, 200)
   if (!title) return { ok: false, reason: 'empty_title' }
   const raw = String(markdown ?? '')
   const eol = raw.includes(CRLF) ? CRLF : LF
@@ -696,7 +862,7 @@ export function appendTeamTask(
   const id = nextTeamTaskId(tasks)
   const status = normalizeTeamStatus(draft.status ?? '待办')
   const role = canonicalTeamRole(draft.role)
-  const summary = String(draft.note ?? '').replace(/[\r\n]+/g, ' ').trim()
+  const summary = sanitizeTeamText(draft.note, 300)
   const indexRow = `| ${id} | ${title} | ${role} | ${status} | ${summary} |`
 
   const lines = md.split(LF)
@@ -714,12 +880,15 @@ export function appendTeamTask(
     lines.push('', '| 编号 | 标题 | 角色 | 状态 | 一句话 |', '|------|------|------|------|--------|', indexRow)
   }
 
-  const dependsOn = (draft.dependsOn ?? []).map((dep) => String(dep).trim()).filter(Boolean)
-  const acceptance = (draft.acceptance ?? []).map((item) => String(item).trim()).filter(Boolean)
+  const dependsOn = (draft.dependsOn ?? []).map((dep) => sanitizeTeamText(dep, 20)).filter(Boolean)
+  const acceptance = (draft.acceptance ?? []).map((item) => sanitizeTeamText(item, 300)).filter(Boolean)
+  const wave = sanitizeTeamText(draft.wave, 80)
+  const input = sanitizeTeamText(draft.input, 2000)
+  const output = sanitizeTeamText(draft.output, 2000)
   const card: string[] = [`### ${id} ${title}`, '', `- 角色：${role}`, `- 状态：${status}`]
-  if (draft.wave?.trim()) card.push(`- 波次：${draft.wave.trim()}`)
-  if (draft.input?.trim()) card.push(`- 输入：${draft.input.trim()}`)
-  if (draft.output?.trim()) card.push(`- 产出：${draft.output.trim()}`)
+  if (wave) card.push(`- 波次：${wave}`)
+  if (input) card.push(`- 输入：${input}`)
+  if (output) card.push(`- 产出：${output}`)
   if (dependsOn.length) card.push(`- 依赖：${dependsOn.join('、')}`)
   if (summary) card.push(`- 备注：${summary}`)
   card.push('')
