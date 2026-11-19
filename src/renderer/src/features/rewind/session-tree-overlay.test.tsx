@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SessionTreeOverlay } from './session-tree-overlay'
 import { useUIStore } from '@renderer/stores/ui-store'
@@ -61,7 +61,9 @@ describe('SessionTreeOverlay interaction', () => {
     render(<SessionTreeOverlay open onClose={onClose} />)
 
     fireEvent.click(screen.getByRole('button', { name: /第一条用户消息/i }))
-    fireEvent.click(screen.getByRole('button', { name: /Ask again|重新提问/i }))
+    // 树上的主动作是「从此开子分支」（= 回到该轮之前 + 原文回填），Fork 新会话只是次按钮。
+    const detail = document.querySelector('[data-session-node-detail]') as HTMLElement
+    fireEvent.click(within(detail).getByRole('button', { name: /Branch from here|从此开子分支/i }))
     await rAF()
 
     expect(navigateSessionToEntry).toHaveBeenCalledWith('u1')

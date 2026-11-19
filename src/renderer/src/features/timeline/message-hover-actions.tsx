@@ -1,23 +1,21 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Copy, Check, Undo2, GitFork } from '@renderer/components/icons'
+import { Copy, Check, Undo2 } from '@renderer/components/icons'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@renderer/lib/utils'
 
-/** Hover actions for messages: copy, rewind, fork (user) */
+/** Hover actions for messages: copy + rewind. Fork lives in the session context menu / node detail. */
 function MessageHoverActionsImpl({
   text,
   timestamp,
   align,
   sessionEntryId,
   onRewind,
-  onFork,
 }: {
   text: string
   timestamp?: number
   align: 'left' | 'right'
   sessionEntryId?: string
   onRewind?: (entryId: string) => void
-  onFork?: (entryId: string) => void
 }) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
@@ -29,21 +27,6 @@ function MessageHoverActionsImpl({
   }
   return (
     <div className={cn('flex h-7 items-center gap-1.5', align === 'right' && 'flex-row-reverse justify-end')}>
-      {onFork && (
-        <button
-          type="button"
-          disabled={!sessionEntryId}
-          onClick={() => sessionEntryId && onFork(sessionEntryId)}
-          className="chrome-icon-btn flex h-6 w-6 items-center justify-center rounded-md text-foreground-secondary hover:text-primary disabled:opacity-35 disabled:pointer-events-none"
-          title={
-            sessionEntryId
-              ? t('timeline:forkFromHere', { defaultValue: '从此 Fork 新会话' })
-              : t('timeline:jumpNeedEntry')
-          }
-        >
-          <GitFork className="h-3.5 w-3.5" />
-        </button>
-      )}
       {onRewind && (
         <button
           type="button"

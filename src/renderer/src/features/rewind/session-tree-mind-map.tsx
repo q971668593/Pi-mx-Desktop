@@ -313,7 +313,7 @@ function NodeDetailDialog({
           <span className="text-[10px] text-muted-foreground">{t('timeline:mindMapChangeSource')}</span>
           <div className="flex items-center gap-2">
             {node.entryType === 'message' && node.role === 'user' && <button type="button" className="rounded-md border border-border px-3 py-1.5 text-[11px] hover:bg-muted" onClick={() => onFork(node.id)}><GitFork className="mr-1.5 inline h-3.5 w-3.5" />{t('timeline:treeForkNode')}</button>}
-            {node.entryType === 'message' && node.role === 'user' && !node.isLeaf && <button type="button" className="rounded-md bg-primary px-3 py-1.5 text-[11px] font-medium text-primary-foreground hover:opacity-90" onClick={() => onContinue(node.id)}>{t('timeline:mindMapReask')}</button>}
+            {node.entryType === 'message' && node.role === 'user' && !node.isLeaf && <button type="button" className="rounded-md bg-primary px-3 py-1.5 text-[11px] font-medium text-primary-foreground hover:opacity-90" onClick={() => onContinue(node.id)}>{t('timeline:treeBranchFromHere')}</button>}
             {node.entryType === 'message' && node.role === 'user' && safeReplyNode && !safeReplyNode.isLeaf && <button type="button" className="rounded-md border border-border px-3 py-1.5 text-[11px] hover:bg-muted" onClick={() => onContinue(safeReplyNode.id)}>{t('timeline:mindMapContinueFromReply')}</button>}
             {selectedIsSafeReply && !node.isLeaf && <button type="button" className="rounded-md bg-primary px-3 py-1.5 text-[11px] font-medium text-primary-foreground hover:opacity-90" onClick={() => onContinue(node.id)}>{t('timeline:mindMapContinueFromReply')}</button>}
           </div>
@@ -445,29 +445,51 @@ export function SessionTreeMindMap({
               if (!point) return null
               const childCount = children.get(node.id)?.length ?? 0
               const turnSummary = turnSummaries.get(node.id)
+              const onActivePath = activePath.has(node.id)
+              // Branching is the point of this panel: a user turn that already has a reply can
+              // sprout a sibling branch, so the card carries that action directly instead of
+              // hiding it behind the detail dialog (or behind "fork into a new session").
+              const canBranch = node.entryType === 'message' && node.role === 'user' && !node.isLeaf
               return (
-                <button
+                <div
                   key={node.id}
-                  type="button"
-                  data-map-node
-                  onClick={() => setSelected(node)}
-                  className={cn('absolute flex flex-col overflow-hidden rounded-xl border p-3 text-left shadow-sm transition-[box-shadow,border-color,transform] hover:z-10 hover:-translate-y-0.5 hover:shadow-lg focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary', nodeTone(node), activePath.has(node.id) && 'border-primary/55', node.isLeaf && 'ring-1 ring-primary/45')}
+                  className={cn('group/map-card absolute', !onActivePath && 'opacity-[0.66]')}
                   style={{ left: point.x, top: point.y, width: CARD_W, height: CARD_H }}
-                  title={sessionTreeLineTitle(node, t)}
                 >
-                  <span className="flex w-full items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
-                    {node.role === 'assistant' ? <Bot className="h-3.5 w-3.5 text-[var(--brand)]" /> : node.role === 'user' ? <span className="h-2 w-2 rounded-full bg-sky-500" /> : <GitBranch className="h-3.5 w-3.5" />}
-                    <span className="truncate">{node.role === 'user' ? t('timeline:mindMapQuestion') : node.role === 'assistant' ? t('timeline:treeRoleAssistant') : node.entryType}</span>
-                    {node.isLeaf && <span className="ml-auto rounded bg-primary/10 px-1.5 py-0.5 text-primary">{t('timeline:treeCurrentTag')}</span>}
-                    {childCount > 1 && <span className="ml-auto inline-flex items-center gap-0.5 text-primary"><GitBranch className="h-3 w-3" />{childCount}</span>}
-                  </span>
-                  <span className="mt-1 line-clamp-2 w-full text-[11px] leading-4 text-foreground">{sessionTreeLineTitle(node, t)}</span>
-                  {turnSummary?.answer && <span className="mt-1 line-clamp-2 w-full text-[10px] leading-4 text-foreground-secondary"><span className="font-medium text-[var(--brand)]">{t('timeline:mindMapAnswer')}: </span>{turnSummary.answer}</span>}
-                  <span className="mt-auto flex w-full items-center justify-between gap-2 text-[9px] text-muted-foreground">
-                    <span className="truncate">{node.timestamp ? readableTime(node.timestamp) : ''}</span>
-                    {turnSummary && turnSummary.hiddenCount > 0 && <span className="shrink-0">{t('timeline:mindMapCollapsedEntries', { count: turnSummary.hiddenCount })}</span>}
-                  </span>
-                </button>
+                  <button
+                    type="button"
+                    data-map-node
+                    onClick={() => setSelected(node)}
+                    className={cn('flex h-full w-full flex-col overflow-hidden rounded-xl border p-3 text-left shadow-sm transition-[box-shadow,border-color,transform] hover:z-10 hover:-translate-y-0.5 hover:shadow-lg focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary', nodeTone(node), onActivePath && 'border-primary/55', node.isLeaf && 'ring-1 ring-primary/45')}
+                    title={sessionTreeLineTitle(node, t)}
+                  >
+                    <span className="flex w-full items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
+                      {node.role === 'assistant' ? <Bot className="h-3.5 w-3.5 text-[var(--brand)]" /> : node.role === 'user' ? <span className="h-2 w-2 rounded-full bg-sky-500" /> : <GitBranch className="h-3.5 w-3.5" />}
+                      <span className="truncate">{node.role === 'user' ? t('timeline:mindMapQuestion') : node.role === 'assistant' ? t('timeline:treeRoleAssistant') : node.entryType}</span>
+                      {node.isLeaf && <span className="ml-auto rounded bg-primary/10 px-1.5 py-0.5 text-primary">{t('timeline:treeCurrentTag')}</span>}
+                      {childCount > 1 && <span className="ml-auto inline-flex items-center gap-0.5 text-primary"><GitBranch className="h-3 w-3" />{childCount}</span>}
+                    </span>
+                    <span className="mt-1 line-clamp-2 w-full text-[11px] leading-4 text-foreground">{sessionTreeLineTitle(node, t)}</span>
+                    {turnSummary?.answer && <span className="mt-1 line-clamp-2 w-full text-[10px] leading-4 text-foreground-secondary"><span className="font-medium text-[var(--brand)]">{t('timeline:mindMapAnswer')}: </span>{turnSummary.answer}</span>}
+                    <span className="mt-auto flex w-full items-center justify-between gap-2 text-[9px] text-muted-foreground">
+                      <span className="truncate">{node.timestamp ? readableTime(node.timestamp) : ''}</span>
+                      {turnSummary && turnSummary.hiddenCount > 0 && <span className="shrink-0">{t('timeline:mindMapCollapsedEntries', { count: turnSummary.hiddenCount })}</span>}
+                    </span>
+                  </button>
+                  {canBranch && (
+                    <div className="pointer-events-none absolute -top-3 right-1 z-20 opacity-0 transition-opacity group-hover/map-card:opacity-100 group-focus-within/map-card:opacity-100">
+                      <button
+                        type="button"
+                        className="pointer-events-auto inline-flex items-center gap-1 rounded-full border border-primary/45 bg-background px-2 py-0.5 text-[10px] font-medium text-primary shadow-sm hover:bg-primary hover:text-primary-foreground"
+                        title={t('timeline:treeBranchFromHereHint')}
+                        onClick={() => onContinue(node.id)}
+                      >
+                        <GitBranch className="h-3 w-3" />
+                        {t('timeline:treeBranchFromHere')}
+                      </button>
+                    </div>
+                  )}
+                </div>
               )
             })}
           </div>

@@ -24,7 +24,6 @@ import { sessionFilesEqual } from '@renderer/lib/session-file-key'
 import { getSessionNavigationToken, isSessionNavigationCurrent } from '@renderer/lib/session-navigation'
 import { fetchSessionHistoryOlder, fetchSessionHistoryTail } from '@renderer/lib/session-history'
 import { navigateSessionToEntry } from '@renderer/lib/session-rewind'
-import { forkSessionFromEntry } from '@renderer/lib/session-fork'
 import { resolveRewindTargetEntryId, isInterruptedAssistantRow } from '@shared/timeline-incomplete'
 import { OverlayScrollHost } from '@renderer/components/ui/overlay-scrollbar'
 import {
@@ -103,7 +102,6 @@ const TimelineItemBase = memo(function TimelineItem({
                 align="right"
                 sessionEntryId={rewindTargetFor(item)}
                 onRewind={(id) => void navigateSessionToEntry(id)}
-                onFork={(id) => void forkSessionFromEntry(id)}
               />
             ) : null
           }

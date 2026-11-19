@@ -74,4 +74,17 @@ describe('TreePanel user-only filter', () => {
     expect(requestTimelineViewEntry).not.toHaveBeenCalled()
     expect(navigateSessionToEntry).not.toHaveBeenCalled()
   })
+
+  // 「从此开子分支」是树上的主动作：不打开详情、直接回到该轮之前（原文回填输入框），
+  // 发送后即在同一 jsonl 里形成兄弟分支。Fork 到新会话降级到详情次按钮与侧栏右键。
+  it('branching straight from a question card rewinds to that turn', () => {
+    render(<TreePanel />)
+    const branchButtons = screen.getAllByRole('button', { name: '从此开子分支' })
+    expect(branchButtons.length).toBeGreaterThan(0)
+
+    fireEvent.click(branchButtons[0])
+
+    expect(navigateSessionToEntry).toHaveBeenCalledWith('u1')
+    expect(document.querySelector('[data-session-node-detail]')).toBeNull()
+  })
 })
