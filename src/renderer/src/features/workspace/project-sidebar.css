@@ -37,6 +37,13 @@
 .sidebar-worktree-row { margin-block: 1px; }
 .sidebar-project-header[draggable='true'], [data-session-file][draggable='true'] .sidebar-session-hit { cursor: grab; }
 .sidebar-project-header[draggable='true']:active, [data-session-file][draggable='true'] .sidebar-session-hit:active { cursor: grabbing; }
+/* A native drag source makes WebKit re-evaluate the cursor on every mousemove; when a child
+   answers with a different shape (arrow / text) the hand blinks on each move. Keep the whole
+   draggable subtree on one shape. Buttons keep their own cursor for click affordance. */
+[data-session-file][draggable='true'] { cursor: grab; }
+[data-session-file][draggable='true']:active { cursor: grabbing; }
+.sidebar-project-header[draggable='true'] :is(span, div, svg),
+[data-session-file][draggable='true'] .sidebar-session-hit :is(span, div, svg) { cursor: inherit; }
 .sidebar-drop-target[data-sorting='true'] { opacity: .42; }
 .sidebar-drop-target { position: relative; }
 .sidebar-drop-target[data-drop-edge]::after {

@@ -118,7 +118,9 @@ describe('ai activity glow', () => {
       skipTaskbar: true,
       hasShadow: false,
     }))
-    expect(win.setIgnoreMouseEvents).toHaveBeenCalledWith(true, { forward: true })
+    // Forwarding mouse moves makes the Windows cursor flicker over the app (electron#48035).
+    expect(win.setIgnoreMouseEvents).toHaveBeenCalledWith(true)
+    expect(win.setIgnoreMouseEvents).not.toHaveBeenCalledWith(true, { forward: true })
     expect(win.setAlwaysOnTop).toHaveBeenCalledWith(true, 'screen-saver')
     expect(win.showInactive).toHaveBeenCalled()
   })

@@ -119,8 +119,11 @@ async function ensureWindow(): Promise<BrowserWindow | null> {
   win = created
   winReady = false
   created.setMenu(null)
-  // Click-through, including pass-through of moves/clicks to whatever is underneath.
-  created.setIgnoreMouseEvents(true, { forward: true })
+  // Click-through. `forward: true` is deliberately NOT used: on Windows it makes the cursor
+  // flicker between the underlying element's cursor and the arrow on every mouse move
+  // (electron/electron#48035, status/confirmed; fixed upstream only by forwarding-aware cursor
+  // handling). This overlay never needs the forwarded moves — it has no interactive content.
+  created.setIgnoreMouseEvents(true)
   // Above full-screen apps and the agent-cursor overlay belongs to another process.
   created.setAlwaysOnTop(true, 'screen-saver')
   // Keep the indicator out of the agent's own screenshots where the OS supports it, so the blue
@@ -218,7 +221,8 @@ function showNow(): void {
     host.setBounds(bounds)
     host.setOpacity(0)
     opacity = 0
-    host.setIgnoreMouseEvents(true, { forward: true })
+    // No `forward: true`: see the note in ensureWindow (Windows cursor flicker).
+    host.setIgnoreMouseEvents(true)
     host.setAlwaysOnTop(true, 'screen-saver')
     if (!winReady) {
       // The overlay page failed to load: drop back to idle so the next action retries.
