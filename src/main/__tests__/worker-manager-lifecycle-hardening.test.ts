@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   fork: vi.fn(),
   runtime: { mode: 'host' as 'host' | 'wsl', distro: null as string | null },
   ledger: null as RunLedger | null,
+  overrides: { get: vi.fn((): Record<string, unknown> | null => null), clear: vi.fn(), set: vi.fn(), list: vi.fn(() => []) },
 }))
 vi.mock('../config-store', () => ({ configStore: { get: vi.fn(() => undefined) } }))
 vi.mock('../session-file-meta', () => ({
@@ -28,6 +29,7 @@ vi.mock('../worker-manager-pool', async (original) => ({
   forkWorkerForCwd: mocks.fork,
 }))
 vi.mock('../run-ledger-instance', () => ({ getRunLedger: () => mocks.ledger }))
+vi.mock('../session-model-overrides-instance', () => ({ getSessionModelOverrides: () => mocks.overrides }))
 
 import { WorkerManager } from '../worker-manager'
 import { attachWorkerHandlers, disposeWorkerSlot } from '../worker-manager-pool'
@@ -100,6 +102,8 @@ beforeEach(() => {
   mocks.runtime = { mode: 'host', distro: null }
   vi.mocked(readSessionMetaFromFile).mockResolvedValue({ cwd: '/workspace', sessionId: 'a' })
   vi.mocked(configStore.get).mockReset()
+  mocks.overrides.get.mockReset().mockReturnValue(null)
+  mocks.overrides.clear.mockReset()
 })
 afterEach(() => {
   vi.useRealTimers()
@@ -423,5 +427,28 @@ describe('R7 stopping an unresponsive worker', () => {
     await vi.advanceTimersByTimeAsync(100)
     await stopping
     expect(order).toEqual(['abort', 'dispose', 'kill'])
+  })
+})
+
+describe('deferred session model', () => {
+  it('applies the model picked while the session had no worker, then clears it', async () => {
+    const file = '/sessions/a.jsonl'
+    const sent: Message[] = []
+    mocks.overrides.get.mockReturnValue({ sessionFile: key(file), provider: 'magpie', modelId: 'deepseek', requestedAt: 1, thinkingLevel: 'high' })
+    mocks.fork.mockImplementation(async (_cwd: string, options?: { poolKey: string }) => ({
+      slot: makeSlot(options?.poolKey ?? key(file), (message, reply) => {
+        sent.push(message)
+        normalReply(message, reply)
+      }),
+      init: Promise.resolve({ sessionId: 'a' }),
+    }))
+    const { manager } = setup()
+
+    await manager.loadSession(file)
+
+    await vi.waitFor(() => expect(sent.some((message) => message.type === 'setModel')).toBe(true))
+    expect(sent.find((message) => message.type === 'setModel')).toMatchObject({ provider: 'magpie', modelId: 'deepseek', sessionFile: key(file) })
+    expect(sent.find((message) => message.type === 'setThinkingLevel')).toMatchObject({ level: 'high' })
+    await vi.waitFor(() => expect(mocks.overrides.clear).toHaveBeenCalledWith(key(file)))
   })
 })
