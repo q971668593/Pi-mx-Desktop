@@ -13,7 +13,9 @@ import { resolveActiveAgentDir } from '../../agent-dir'
 import { sessionPreviewProcess } from '../../session-preview-process'
 import { contextPreviewSchema } from '../schemas'
 import type { ModelEntry } from '../../active-sdk-models'
-import { modelThinkingLevels } from '@shared/model-thinking-levels'
+import { modelThinkingLevels, MODEL_THINKING_LEVELS } from '@shared/model-thinking-levels'
+import { getSessionModelOverrides } from '../../session-model-overrides-instance'
+import { readPiAgentGlobalSettingsFromDisk } from '../../pi-agent-settings-read'
 import {
   listAvailableModelsWithSdk,
   listCatalogModelsWithSdk,
@@ -123,6 +125,34 @@ export function registerModelRuntimeHandlers(): void {
     return { models }
   })
 
+  /**
+   * A model picked for a session with no live worker is recorded as a pending override and
+   * confirmed to the UI right away. Applying it requires loading the session transcript
+   * (measured 2266ms on a 54MB session), which must not be the price of picking a model.
+   */
+  function rememberModelForColdSession(provider: string, modelId: string, sessionFile: string) {
+    const catalog = modelsCatalogFromConfig(readModelsConfigRaw().config)
+    const entry = catalog.find((model) => model.provider === provider && model.id === modelId)
+    const levels = entry?.availableThinkingLevels
+    const boundMap = readPiAgentGlobalSettingsFromDisk()?.modelThinkingLevels
+    const bound = boundMap && typeof boundMap === 'object'
+      ? (boundMap as Record<string, unknown>)[`${provider}/${modelId}`]
+      : undefined
+    let thinkingLevel = typeof bound === 'string' ? bound : undefined
+    if (thinkingLevel && levels && !levels.includes(thinkingLevel as never)) {
+      // Keep the UI honest: never show a level the model will clamp away.
+      const order: readonly string[] = MODEL_THINKING_LEVELS
+      const rank = order.indexOf(thinkingLevel)
+      thinkingLevel = [...levels].reverse().find((level) => order.indexOf(String(level)) <= rank)
+    }
+    getSessionModelOverrides().set(sessionFile, provider, modelId)
+    return {
+      modelId: `${provider}/${modelId}`,
+      thinkingLevel,
+      availableThinkingLevels: levels,
+    }
+  }
+
   registerHandler('ipc:model.set', async (req) => {
     const sessionFile = String(req.sessionFile || '').trim() || undefined
     let provider: string
@@ -140,6 +170,9 @@ export function registerModelRuntimeHandlers(): void {
         provider = 'anthropic'
         modelId = raw
       }
+    }
+    if (sessionFile && !workerManager.hasLiveSession(sessionFile)) {
+      return rememberModelForColdSession(provider, modelId, sessionFile)
     }
     if (!workerManager.isRunning && !sessionFile) {
       const cwd = workerManager.cwd || configStore.get('currentProject')

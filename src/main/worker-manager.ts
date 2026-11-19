@@ -50,6 +50,8 @@ import { observeAppEventForCompletion, observeWorkerExitForCompletion } from './
 import { observeAiActivityGlow } from './ai-activity-glow'
 import { remoteTap } from './remote/tap'
 import { getRunLedger } from './run-ledger-instance'
+import { getSessionModelOverrides } from './session-model-overrides-instance'
+import { applyPendingSessionModel } from './apply-pending-session-model'
 
 interface InitResult extends WorkerInitResult {}
 
@@ -256,6 +258,7 @@ export class WorkerManager {
       // Bind live session on worker; a failed/cancelled load must reach the caller.
       await this.requestOnSlot(existing, 'loadSession', { sessionFile: sk })
       existing.sessionFile = sk
+      await this.applyPendingSessionModel(existing, sk)
       return this.initResultFromSlot(existing)
     }
 
@@ -274,6 +277,7 @@ export class WorkerManager {
       reusable.sessionFile = sk
       this.pool.set(sk, reusable)
       if (wasForeground) this.foregroundPoolKey = sk
+      await this.applyPendingSessionModel(reusable, sk)
       return this.initResultFromSlot(reusable)
     }
 
@@ -307,6 +311,10 @@ export class WorkerManager {
       throw error
     }
 
+    // A model chosen while this session had no worker is applied now that it does, so the
+    // session JSONL records the switch without having to boot a worker just to change a model.
+    await this.applyPendingSessionModel(slot, sk)
+
     evictIdleWorkers(this.pool, {
       foregroundKey: this.foregroundPoolKey,
       maxWorkers: readMaxSessionWorkers(),
@@ -314,6 +322,26 @@ export class WorkerManager {
     })
 
     return this.initResultFromSlot(slot)
+  }
+
+  /**
+   * Apply a model/thinking level the user picked while this session had no worker.
+   * Runs after the session is bound, so the switch lands in the session JSONL through the
+   * normal pi API — but selecting a model no longer has to boot a worker + parse a huge file.
+   */
+  private async applyPendingSessionModel(slot: WorkerSlot, sessionKey: string): Promise<void> {
+    await applyPendingSessionModel(
+      (type, data) => this.requestOnSlot(slot, type, data),
+      getSessionModelOverrides(),
+      sessionKey,
+    )
+  }
+
+  /** A session already bound to a live (not stopping) worker. */
+  hasLiveSession(sessionFile: string): boolean {
+    const key = normalizeSessionKey(sessionFile)
+    const slot = key ? this.pool.get(key) : undefined
+    return !!slot && !slot.stopping
   }
 
   private async initResultFromSlot(slot: WorkerSlot): Promise<InitResult> {
