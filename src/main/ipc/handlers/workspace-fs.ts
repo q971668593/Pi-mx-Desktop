@@ -4,7 +4,7 @@ import { shell } from 'electron'
 import log from 'electron-log'
 import { workspaceFsCopyFile, workspaceFsCreate, workspaceFsListDir, workspaceFsReadText, workspaceFsRename, workspaceFsWriteText } from '../../workspace-fs'
 import { resolveActionableImage } from '../../image-file-access'
-import { invalidateWorkspaceFileSearchIndex, primeWorkspaceFileSearchIndex, workspaceFsSearch } from '../../workspace-file-search'
+import { invalidateWorkspaceFileSearchIndex, primeWorkspaceFileSearchIndex, workspaceFsResolveFileNames, workspaceFsSearch } from '../../workspace-file-search'
 import { registerHandler, registerHandlerWithSchema } from '../registry'
 import { decideShellOpenAction } from '../../shell-open-safety'
 import { wslPathToWindows } from '@shared/wsl-path'
@@ -14,6 +14,7 @@ import {
   shellReadImagePreviewSchema,
   shellShowItemSchema,
   workspaceFsListDirSchema,
+  workspaceFsResolveFileNamesSchema,
   workspaceFsSearchSchema,
   workspaceFsReadTextSchema,
   workspaceFsWriteTextSchema,
@@ -93,6 +94,10 @@ export function registerWorkspaceFsHandlers(): void {
 
   registerHandlerWithSchema('ipc:workspace.fs.search', workspaceFsSearchSchema, async (req) => {
     return workspaceFsSearch(req)
+  })
+
+  registerHandlerWithSchema('ipc:workspace.fs.resolveFileNames', workspaceFsResolveFileNamesSchema, async (req) => {
+    return workspaceFsResolveFileNames(req.workspaceRoot, req.names)
   })
 
   registerHandlerWithSchema('ipc:workspace.fs.readText', workspaceFsReadTextSchema, async (req) => {

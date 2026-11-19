@@ -332,6 +332,7 @@ export interface IpcMethodMap {
   'workspace.ensureWorker': { request: WorkspaceEnsureWorkerRequest; response: WorkspaceEnsureWorkerResponse }
   'workspace.switch': { request: WorkspaceSwitchRequest; response: WorkspaceSwitchResponse }
   'workspace.fs.search': { request: WorkspaceFsSearchRequest; response: WorkspaceFsSearchResponse }
+  'workspace.fs.resolveFileNames': { request: { workspaceRoot: string; names: string[] }; response: { ok: boolean; error?: string; matches?: Record<string, string[]> } }
   'session.list': { request: SessionListRequest; response: SessionListResponse }
   'session.open': { request: SessionOpenRequest; response: SessionOpenResponse }
   'session.new': { request: SessionNewRequest; response: SessionNewResponse }

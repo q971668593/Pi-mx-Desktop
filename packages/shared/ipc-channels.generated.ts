@@ -274,6 +274,7 @@ export const IPC_INVOKE_CHANNELS = [
   'ipc:workspace.fs.listDir',
   'ipc:workspace.fs.readText',
   'ipc:workspace.fs.rename',
+  'ipc:workspace.fs.resolveFileNames',
   'ipc:workspace.fs.search',
   'ipc:workspace.fs.writeText',
   'ipc:workspace.isSandbox',

@@ -1,55 +1,34 @@
 import { memo, type ReactNode } from 'react'
-import { openReviewGitForPath, openWorkspaceRelativePath } from '@renderer/lib/open-workspace-path'
+import { splitPaths } from '@renderer/lib/file-path-text'
+import { FilePathChip } from '@renderer/features/timeline/file-path-chip'
 
-const PATH_RE =
-  /(?:^|[\s(])(@?)([\w@./-]+\.(?:ts|tsx|js|jsx|mjs|cjs|json|md|mdx|css|scss|html|vue|py|go|rs|java|kt|swift|yml|yaml|toml|xml|sql|sh|ps1|txt|lock))(?:[):,;.\s]|$)/gi
-
-function looksLikePath(segment: string): boolean {
-  if (!segment || segment.length < 3) return false
-  if (/^https?:\/\//i.test(segment)) return false
-  if (segment.includes('@') && !segment.startsWith('@renderer') && !segment.startsWith('@shared')) return false
-  return segment.includes('/') || /\.[a-z0-9]{1,6}$/i.test(segment)
-}
-
+/** Plain text with the file references it mentions turned into links (Files panel on click). */
 export const MarkdownPathText = memo(function MarkdownPathText({ text }: { text: string }) {
-  const parts: ReactNode[] = []
-  let last = 0
-  let m: RegExpExecArray | null
-  const re = new RegExp(PATH_RE.source, PATH_RE.flags)
-  while ((m = re.exec(text)) !== null) {
-    const prefix = m[0].charAt(0) === ' ' || m[0].charAt(0) === '(' ? m[0].charAt(0) : ''
-    const at = m[1]
-    const path = m[2]
-    const start = m.index + (prefix ? 1 : 0)
-    if (start > last) parts.push(text.slice(last, start))
-    const full = `${at}${path}`
-    if (looksLikePath(path)) {
-      parts.push(
-        <button
-          key={`${start}-${path}`}
-          type="button"
-          className="mx-0.5 inline rounded px-0.5 font-mono text-[12px] text-primary hover:underline"
-          onClick={(e) => {
-            e.preventDefault()
-            if (e.shiftKey) openReviewGitForPath(path)
-            else openWorkspaceRelativePath(path)
-          }}
-          title="Files · Shift+Review"
-        >
-          {full}
-        </button>,
-      )
-    } else {
-      parts.push(full)
-    }
-    last = m.index + m[0].length
-  }
-  if (last < text.length) parts.push(text.slice(last))
-  return <>{parts}</>
+  const segments = splitPaths(text)
+  if (segments.length === 1 && segments[0].kind === 'text') return <>{text}</>
+  return (
+    <>
+      {segments.map((segment, index) =>
+        segment.kind === 'path'
+          ? <FilePathChip key={`${index}-${segment.path}`} text={segment.path} variant="inline" />
+          : <span key={index}>{segment.text}</span>,
+      )}
+    </>
+  )
 })
 
+/**
+ * Paragraph children are strings only when the text has no inline formatting. Wrap the string
+ * runs and leave elements (bold, links, inline code) to their own renderers.
+ */
+export function enrichChildrenWithPaths(children: ReactNode): ReactNode {
+  if (typeof children === 'string') return <MarkdownPathText text={children} />
+  if (!Array.isArray(children)) return children
+  return children.map((child, index) =>
+    typeof child === 'string' ? <MarkdownPathText key={index} text={child} /> : child,
+  )
+}
+
 export function enrichPlainTextWithPaths(text: string): ReactNode {
-  const probe = new RegExp(PATH_RE.source, PATH_RE.flags)
-  if (!probe.test(text)) return text
   return <MarkdownPathText text={text} />
 }

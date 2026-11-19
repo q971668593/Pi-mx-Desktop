@@ -279,3 +279,34 @@ async function searchWithoutFd(scoped: WorkspaceFileSearchQuery, maxResults?: nu
   }
   return { ok: true, entries: rankWorkspaceFileSearchEntries(entries, scoped.query, maxResults) }
 }
+
+/**
+ * Resolve bare file names (an assistant table often lists just `清单.xlsx`) to workspace paths.
+ * Uses the same cached index as search: one `fd` walk, then a map lookup per name.
+ */
+export async function workspaceFsResolveFileNames(
+  workspaceRoot: string,
+  names: readonly string[],
+): Promise<{ ok: true; matches: Record<string, string[]> } | { ok: false; error: 'missing_root' }> {
+  const root = String(workspaceRoot || '')
+  if (!root.trim()) return { ok: false, error: 'missing_root' }
+  const matches: Record<string, string[]> = {}
+  const wanted = names.map((name) => String(name).trim()).filter(Boolean)
+  if (!wanted.length) return { ok: true, matches }
+  const index = await primeWorkspaceFileSearchIndex(root)
+  if (!index) return { ok: true, matches }
+  const byName = new Map<string, string[]>()
+  for (const entry of index) {
+    if (entry.isDirectory) continue
+    const key = process.platform === 'win32' ? entry.name.toLowerCase() : entry.name
+    const list = byName.get(key)
+    if (list) list.push(entry.path)
+    else byName.set(key, [entry.path])
+  }
+  for (const name of wanted) {
+    const key = process.platform === 'win32' ? name.toLowerCase() : name
+    // More than a handful of same-named files means the name is not a usable reference.
+    matches[name] = (byName.get(key) ?? []).slice(0, 5)
+  }
+  return { ok: true, matches }
+}

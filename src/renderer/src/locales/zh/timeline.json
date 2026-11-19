@@ -13,6 +13,10 @@
   "mermaidRendering": "正在渲染图表…",
   "mermaidError": "图表无法渲染：{{error}}",
   "copy": "复制",
+  "path": {
+    "openInFiles": "在右侧「文件」面板中打开",
+    "openFailed": "无法打开这个文件"
+  },
   "link": {
     "menu": "链接操作",
     "preview": "链接预览",

@@ -18,7 +18,9 @@ import {
   EMPTY_MARKDOWN_BLOCK_CACHE,
   type MarkdownBlockCache,
 } from '@renderer/features/timeline/markdown-blocks'
-import { MarkdownPathText } from '@renderer/features/timeline/markdown-inline-paths'
+import { enrichChildrenWithPaths } from '@renderer/features/timeline/markdown-inline-paths'
+import { FilePathChip } from '@renderer/features/timeline/file-path-chip'
+import { singleFilePath } from '@renderer/lib/file-path-text'
 import { ChatImageGallery } from '@renderer/features/timeline/chat-image'
 import { plainTextFromNode } from '@shared/chat-image-paths'
 import { MarkdownLink } from '@renderer/features/timeline/markdown-link'
@@ -279,6 +281,8 @@ const MarkdownView = memo(function MarkdownView({
           return <MermaidBlock code={raw} streaming={!!streaming} />
         }
         if (isInline) {
+          // A path in backticks is a file the assistant is pointing at: make it openable.
+          if (singleFilePath(raw)) return <FilePathChip text={raw} variant="inline" />
           return (
             <code
               className="rounded-sm px-1 py-px font-mono text-[0.88em] text-foreground/90"
@@ -289,6 +293,9 @@ const MarkdownView = memo(function MarkdownView({
             </code>
           )
         }
+        // A whole fenced block that is one path (the common "here is where the file is" shape)
+        // renders as a clickable path instead of a monospace box.
+        if (!streaming && singleFilePath(raw)) return <FilePathChip text={raw} variant="block" />
         return (
           <CodeBlock className={cn2} defaultExpanded={!!streaming}>
             {ch}
@@ -316,9 +323,15 @@ const MarkdownView = memo(function MarkdownView({
           {ch}
         </th>
       ),
-      td: ({ children: ch }: ComponentPropsWithoutRef<'td'>) => (
-        <td className="border border-border/40 px-2 py-1">{ch}</td>
-      ),
+      td: ({ children: ch }: ComponentPropsWithoutRef<'td'>) => {
+        // Tables of deliverables list bare names (`清单.xlsx`); make the name itself openable.
+        const text = plainTextFromNode(ch).trim()
+        return (
+          <td className="border border-border/40 px-2 py-1">
+            {singleFilePath(text) && text === plainTextFromNode(ch) ? <FilePathChip text={text} variant="inline" /> : ch}
+          </td>
+        )
+      },
       img: ({ src, alt }: ComponentPropsWithoutRef<'img'>) => (
         <img src={src} alt={alt} className="my-2 max-w-full rounded-md border border-border/40" />
       ),
@@ -345,7 +358,7 @@ const MarkdownView = memo(function MarkdownView({
         return (
           <>
             <p className="my-1 leading-relaxed">
-              {typeof ch === 'string' ? <MarkdownPathText text={ch} /> : ch}
+              {enrichChildrenWithPaths(ch)}
             </p>
             {text ? <ChatImageGallery text={text} /> : null}
           </>

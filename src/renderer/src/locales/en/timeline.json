@@ -13,6 +13,10 @@
   "mermaidRendering": "Rendering diagram…",
   "mermaidError": "Couldn't render this diagram: {{error}}",
   "copy": "Copy",
+  "path": {
+    "openInFiles": "Open in the Files panel",
+    "openFailed": "Could not open this file"
+  },
   "image": {
     "open": "Click to enlarge; right-click to copy, save, add to chat, or annotate",
     "openNamed": "Enlarge {{name}}",

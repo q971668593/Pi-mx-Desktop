@@ -26,6 +26,11 @@ export const workspaceFsSearchSchema = z.object({
   includeIgnored: z.boolean().optional(),
 })
 
+export const workspaceFsResolveFileNamesSchema = z.object({
+  workspaceRoot: z.string().min(1),
+  names: z.array(z.string().min(1).max(512)).min(1).max(20),
+})
+
 export const workspaceFsReadTextSchema = z.object({
   workspaceRoot: z.string(),
   path: z.string(),

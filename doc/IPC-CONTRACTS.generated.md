@@ -4,7 +4,7 @@
 > 事实源：`src/main/**/*.ts` 中的 `registerHandler` / `registerHandlerWithSchema` 调用。
 > 手写文档在 `doc/IPC-CONTRACTS.md`；本文件保证「代码里注册了什么」与「文档里写了什么」不会漂移。
 
-- invoke 通道：**286** 个（唯一）
+- invoke 通道：**287** 个（唯一）
 - main → renderer 事件通道：**12** 个（唯一）
 - 非字面量注册：**0** 处
 - 动态事件通道（通道名非常量，未收录）：**7** 处
@@ -19,7 +19,7 @@
 | `browser` | 35 |
 | `gitBoard` | 31 |
 | `session` | 22 |
-| `workspace` | 20 |
+| `workspace` | 21 |
 | `extensions` | 14 |
 | `desktop` | 11 |
 | `teamBoard` | 10 |
@@ -172,7 +172,7 @@
 | `ipc:session.tree` | registerHandlerWithSchema | `src/main/ipc/handlers/session.ts` |
 | `ipc:session.turnSnapshot` | registerHandlerWithSchema | `src/main/ipc/handlers/session.ts` |
 
-### workspace（20）
+### workspace（21）
 
 | 通道 | 注册方式 | 注册位置 |
 | --- | --- | --- |
@@ -183,6 +183,7 @@
 | `ipc:workspace.fs.listDir` | registerHandlerWithSchema | `src/main/ipc/handlers/workspace-fs.ts` |
 | `ipc:workspace.fs.readText` | registerHandlerWithSchema | `src/main/ipc/handlers/workspace-fs.ts` |
 | `ipc:workspace.fs.rename` | registerHandlerWithSchema | `src/main/ipc/handlers/workspace-fs.ts` |
+| `ipc:workspace.fs.resolveFileNames` | registerHandlerWithSchema | `src/main/ipc/handlers/workspace-fs.ts` |
 | `ipc:workspace.fs.search` | registerHandlerWithSchema | `src/main/ipc/handlers/workspace-fs.ts` |
 | `ipc:workspace.fs.writeText` | registerHandlerWithSchema | `src/main/ipc/handlers/workspace-fs.ts` |
 | `ipc:workspace.isSandbox` | registerHandler | `src/main/ipc/handlers/workspace.ts` |
