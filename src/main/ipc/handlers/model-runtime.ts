@@ -15,6 +15,7 @@ import { contextPreviewSchema } from '../schemas'
 import type { ModelEntry } from '../../active-sdk-models'
 import { modelThinkingLevels, MODEL_THINKING_LEVELS } from '@shared/model-thinking-levels'
 import { getSessionModelOverrides } from '../../session-model-overrides-instance'
+import { normalizeSessionKey } from '../../worker-session-key'
 import { readPiAgentGlobalSettingsFromDisk } from '../../pi-agent-settings-read'
 import {
   listAvailableModelsWithSdk,
@@ -145,7 +146,9 @@ export function registerModelRuntimeHandlers(): void {
       const rank = order.indexOf(thinkingLevel)
       thinkingLevel = [...levels].reverse().find((level) => order.indexOf(String(level)) <= rank)
     }
-    getSessionModelOverrides().set(sessionFile, provider, modelId)
+    // Same key the worker pool and the apply step use (separators / drive letter normalized),
+    // otherwise a re-rendered `C:/x/y.jsonl` would never match the pool key `C:\\x\\y.jsonl`.
+    getSessionModelOverrides().set(normalizeSessionKey(sessionFile), provider, modelId)
     return {
       modelId: `${provider}/${modelId}`,
       thinkingLevel,

@@ -59,6 +59,7 @@ vi.mock('../../active-sdk-models', async (importOriginal) => ({
 }))
 
 import { registerModelRuntimeHandlers } from './model-runtime'
+import { normalizeSessionKey } from '../../worker-session-key'
 
 const hostModel = { id: 'windows-only', name: 'Windows', provider: 'host-provider' }
 const wslModel = { id: 'wsl-model', name: 'WSL', provider: 'wsl-provider' }
@@ -161,7 +162,7 @@ describe('model.set on a session without a live worker', () => {
     mocks.workerManager.hasLiveSession.mockReturnValue(false)
     const result = await setModel({ sessionFile: '/sessions/a.jsonl', provider: 'magpie', modelId: 'deepseek' })
     expect(result).toMatchObject({ modelId: 'magpie/deepseek' })
-    expect(mocks.overrides.set).toHaveBeenCalledWith('/sessions/a.jsonl', 'magpie', 'deepseek')
+    expect(mocks.overrides.set).toHaveBeenCalledWith(normalizeSessionKey('/sessions/a.jsonl'), 'magpie', 'deepseek')
     // Selecting a model must never boot a worker (that is what made it slow).
     expect(mocks.workerManager.start).not.toHaveBeenCalled()
     expect(mocks.workerManager.setModelWithThinking).not.toHaveBeenCalled()
