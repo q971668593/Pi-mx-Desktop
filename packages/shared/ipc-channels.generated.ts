@@ -82,7 +82,6 @@ export const IPC_INVOKE_CHANNELS = [
   'ipc:desktop.setBadge',
   'ipc:desktop.setSleepBlock',
   'ipc:desktop.status',
-  'ipc:desktop.whichPi',
   'ipc:dialog:openDirectory',
   'ipc:dialog:openFiles',
   'ipc:dialog:saveImage',

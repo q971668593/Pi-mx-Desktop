@@ -23,6 +23,7 @@
     "start": "electron-vite preview",
     "test:scripts": "node scripts/run-contract-tests.mjs",
     "gen:ipc": "node scripts/generate-ipc-channels.mjs",
+    "check:i18n": "node scripts/check-i18n-parity.mjs",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
     "selfcheck": "node scripts/selfcheck.mjs",

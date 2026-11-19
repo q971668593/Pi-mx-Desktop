@@ -4,7 +4,7 @@
 > 事实源：`src/main/**/*.ts` 中的 `registerHandler` / `registerHandlerWithSchema` 调用。
 > 手写文档在 `doc/IPC-CONTRACTS.md`；本文件保证「代码里注册了什么」与「文档里写了什么」不会漂移。
 
-- invoke 通道：**287** 个（唯一）
+- invoke 通道：**286** 个（唯一）
 - main → renderer 事件通道：**12** 个（唯一）
 - 非字面量注册：**0** 处
 - 动态事件通道（通道名非常量，未收录）：**7** 处
@@ -21,7 +21,7 @@
 | `session` | 22 |
 | `workspace` | 20 |
 | `extensions` | 14 |
-| `desktop` | 12 |
+| `desktop` | 11 |
 | `teamBoard` | 10 |
 | `mcp` | 9 |
 | `remote` | 8 |
@@ -216,7 +216,7 @@
 | `ipc:extensions.translate` | registerHandler | `src/main/ipc/handlers/extensions.ts` |
 | `ipc:extensions.updatePackage` | registerHandler | `src/main/ipc/handlers/extensions.ts` |
 
-### desktop（12）
+### desktop（11）
 
 | 通道 | 注册方式 | 注册位置 |
 | --- | --- | --- |
@@ -231,7 +231,6 @@
 | `ipc:desktop.setBadge` | registerHandler | `src/main/ipc/handlers/desktop-chrome.ts` |
 | `ipc:desktop.setSleepBlock` | registerHandler | `src/main/ipc/handlers/desktop-chrome.ts` |
 | `ipc:desktop.status` | registerHandler | `src/main/ipc/handlers/desktop-chrome.ts` |
-| `ipc:desktop.whichPi` | registerHandler | `src/main/ipc/handlers/desktop-chrome.ts` |
 
 ### teamBoard（10）
 

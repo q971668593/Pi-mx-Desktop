@@ -370,7 +370,6 @@ export interface IpcMethodMap {
   'python.installLatest': { request: {}; response: PythonRuntimeStatusResponse }
   'python.openDownloads': { request: {}; response: { ok: boolean } }
   'sdk.installGlobalCli': { request: { version: string }; response: { ok: boolean; active?: { kind: 'global'; version: string }; error?: string } }
-  'desktop.whichPi': { request: {}; response: { ok: boolean; path: string; globalAvailable: boolean; globalPath: string } }
   'extensions.setEnabled': { request: ExtensionsSetEnabledRequest; response: ExtensionsSetEnabledResponse }
   'registry.refresh': { request: RegistryRefreshRequest; response: RegistryRefreshResponse }
   'settings.get': { request: SettingsGetRequest; response: SettingsGetResponse }
