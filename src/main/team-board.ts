@@ -576,10 +576,12 @@ export function sweepTeamRuns(
   }
 
   const blocked: string[] = []
-  if (fresh.length) {
+  if (stale.length) {
     const board = parseTeamBoard(textFile(join(spec, TEAM_BOARD_RELATIVE_PATH)) ?? '')
     const minutes = Math.round(staleMs / 60_000)
-    for (const run of fresh) {
+    // 遍历所有超时记录而不是只遍历刚标记的：上一次看板写失败时（锁冲突）下一 tick 还能补上。
+    // 已经在阻塞道的卡不会被再写一次。
+    for (const run of stale) {
       const task = board.tasks.find((item) => item.id === run.taskId)
       if (!task || task.status !== '进行中' || task.approval) continue
       const result = setTeamTaskStatusInSpec(spec, workspaceId, {

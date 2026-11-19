@@ -13,6 +13,7 @@ import {
   buildTeamRoleIntro,
   canonicalTeamRole,
   isTeamRole,
+  sanitizeTeamText,
   splitTeamModel,
   type TeamRole,
   type TeamStatus,
@@ -348,7 +349,7 @@ export function registerTeamBoardHandlers(): void {
       const run = [...snapshot.runs].reverse().find((item) => item.taskId === taskId)
       if (!run) throw new Error('这张卡还没有派发记录，先在卡片里派发开工')
       if (!existsSync(run.sessionFile)) throw new Error('这次派发的会话文件已不存在，只能先结束这次派发')
-      const guidance = text.replace(/\s+/g, ' ').trim()
+      const guidance = sanitizeTeamText(text, 1500)
       await workerManager.sendPrompt(
         `主人插话：${guidance}\n\n按这条指引继续这张卡；如果它改变了范围或验收标准，先说明影响再动手。`,
         run.sessionFile,
