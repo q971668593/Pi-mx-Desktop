@@ -90,7 +90,8 @@ export function registerSettingsHandlers(): void {
 
     try {
       const result = await checkGitHubReleaseUpdate()
-      if (!result.ok) return { status: 'error' }
+      // Only a stable enum crosses IPC: the raw attempt detail can carry proxy URLs / credentials.
+      if (!result.ok) return { status: 'error', reason: result.errorReason ?? 'unknown' }
       if (!result.hasUpdate || !result.latestVersion) {
         return {
           status: 'up-to-date',
@@ -110,7 +111,7 @@ export function registerSettingsHandlers(): void {
       }
       return { status: 'available', update }
     } catch {
-      return { status: 'error' }
+      return { status: 'error', reason: 'unknown' }
     }
   })
 

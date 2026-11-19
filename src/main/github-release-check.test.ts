@@ -26,6 +26,7 @@ import {
   checkGitHubReleaseUpdate,
   classifyAssetName,
   pickDownloadAsset,
+  updateCheckFailureReason,
 } from './github-release-check'
 
 describe('pickDownloadAsset architecture (#97)', () => {
@@ -134,5 +135,21 @@ describe('checkGitHubReleaseUpdate network wiring', () => {
         },
       ],
     })
+  })
+})
+
+describe('updateCheckFailureReason', () => {
+  it('classifies api.github.com rate limiting so the UI can say why', () => {
+    expect(updateCheckFailureReason('latest_http_403')).toBe('rate_limit')
+    expect(updateCheckFailureReason('atom_http_429')).toBe('rate_limit')
+  })
+
+  it('separates timeouts, blocked networks and missing releases', () => {
+    expect(updateCheckFailureReason('TimeoutError: The operation was aborted due to timeout')).toBe('timeout')
+    expect(updateCheckFailureReason('fetch failed')).toBe('network')
+    expect(updateCheckFailureReason('getaddrinfo ENOTFOUND api.github.com')).toBe('network')
+    expect(updateCheckFailureReason('no_release')).toBe('no_release')
+    expect(updateCheckFailureReason('atom_http_500')).toBe('http')
+    expect(updateCheckFailureReason('')).toBe('unknown')
   })
 })

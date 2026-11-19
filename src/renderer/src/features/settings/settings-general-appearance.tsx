@@ -174,6 +174,10 @@ export function GeneralSettings() {
     })
   }
 
+  // 「检查失败」后面要说清为什么：GitHub 限流、网络不通、还是仓库没发版。
+  const updateFailReasonLabel = (reason: unknown) =>
+    t(`settings:general.updateFailReason_${typeof reason === 'string' && reason ? reason : 'unknown'}`)
+
   const handleCheckUpdate = async () => {
     const attempt = ++updateCheckAttemptRef.current
     setCheckingUpdate(true)
@@ -194,12 +198,12 @@ export function GeneralSettings() {
       } else if (result.status === 'up-to-date') {
         setUpdateCheck(t('settings:general.updateLatest', { version: result.latestVersion }))
       } else {
-        setUpdateCheck(t('settings:general.updateCheckFailed'))
+        setUpdateCheck(t('settings:general.updateCheckFailedReason', { reason: updateFailReasonLabel(result.reason) }))
       }
       setCheckingUpdate(false)
     } catch {
       if (!mountedRef.current || attempt !== updateCheckAttemptRef.current) return
-      setUpdateCheck(t('settings:general.updateCheckFailed'))
+      setUpdateCheck(t('settings:general.updateCheckFailedReason', { reason: updateFailReasonLabel('unknown') }))
       setCheckingUpdate(false)
     }
   }

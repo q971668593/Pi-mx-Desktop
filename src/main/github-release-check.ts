@@ -1,6 +1,6 @@
 import { app, net } from 'electron'
 import log from 'electron-log'
-import type { AppUpdateAsset, AppUpdateAssetKind } from '@shared/app-update'
+import type { AppUpdateAsset, AppUpdateAssetKind, AppUpdateCheckFailureReason } from '@shared/app-update'
 import { fetchLatestGitHubRelease, type GhAsset } from './github-release-fetch'
 import { emitOperationEvent } from './operation-events'
 
@@ -17,6 +17,44 @@ export type GitHubReleaseCheckResult = {
   downloadName: string | null
   assets: AppUpdateAsset[]
   error?: string
+  /** Raw attempt detail from the fetch layer (e.g. `latest_http_403`, `atom_http_500`). */
+  errorDetail?: string
+  /** Classified failure, so the UI can say why instead of a bare "check failed". */
+  errorReason?: UpdateCheckFailureReason
+}
+
+export type UpdateCheckFailureReason = AppUpdateCheckFailureReason
+
+/**
+ * `api.github.com` only allows 60 unauthenticated requests per hour per IP, and a blocked
+ * network fails differently (DNS / reset / timeout). Classify the attempt detail once here
+ * so the settings page can show a reason the user can act on.
+ */
+export function updateCheckFailureReason(detail: string): UpdateCheckFailureReason {
+  const text = String(detail || '').toLowerCase()
+  if (!text) return 'unknown'
+  if (text.includes('no_release')) return 'no_release'
+  if (text.includes('http_403') || text.includes('http_429')) return 'rate_limit'
+  if (
+    text.includes('timeout') ||
+    text.includes('timed out') ||
+    text.includes('etimedout') ||
+    text.includes('aborted')
+  ) {
+    return 'timeout'
+  }
+  if (
+    text.includes('enotfound') ||
+    text.includes('eai_again') ||
+    text.includes('econnrefused') ||
+    text.includes('econnreset') ||
+    text.includes('fetch failed') ||
+    text.includes('network')
+  ) {
+    return 'network'
+  }
+  if (/http_\d{3}/.test(text)) return 'http'
+  return 'unknown'
 }
 
 function repoSlug(): string {
@@ -217,6 +255,8 @@ export async function checkGitHubReleaseUpdate(): Promise<GitHubReleaseCheckResu
       downloadName: null,
       assets: [],
       error: fetched.error,
+      errorDetail: fetched.detail,
+      errorReason: updateCheckFailureReason(fetched.detail),
     }
   }
 

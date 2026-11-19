@@ -108,14 +108,24 @@ describe('manual update check terminal result', () => {
       latestVersion: null,
       hasUpdate: false,
       error: 'Unable to read GitHub Releases: proxy http://user:secret@example.test',
+      errorDetail: 'latest_http_403',
+      errorReason: 'rate_limit',
     })
 
-    await expect(mocks.handlers.get('ipc:app.checkUpdate')!({})).resolves.toEqual({ status: 'error' })
+    const result = await mocks.handlers.get('ipc:app.checkUpdate')!({})
+
+    // 只有固定枚举能过 IPC：原始网络错误可能带代理地址和账号密码。
+    expect(result).toEqual({ status: 'error', reason: 'rate_limit' })
+    expect(JSON.stringify(result)).not.toContain('secret')
+    expect(JSON.stringify(result)).not.toContain('latest_http_403')
   })
 
   it('returns error when the release check rejects', async () => {
     mocks.checkGitHubReleaseUpdate.mockRejectedValue(new Error('network failure'))
 
-    await expect(mocks.handlers.get('ipc:app.checkUpdate')!({})).resolves.toEqual({ status: 'error' })
+    await expect(mocks.handlers.get('ipc:app.checkUpdate')!({})).resolves.toEqual({
+      status: 'error',
+      reason: 'unknown',
+    })
   })
 })

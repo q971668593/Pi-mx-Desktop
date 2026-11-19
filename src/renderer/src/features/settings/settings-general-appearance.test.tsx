@@ -172,12 +172,22 @@ describe('GeneralSettings manual update feedback', () => {
     expect(mocks.showAppUpdateDialog).not.toHaveBeenCalled()
   })
 
-  it('renders a failed terminal result without exposing network details', async () => {
+  it('renders a failed terminal result with a classified reason, never the raw network detail', async () => {
+    mocks.invoke.mockImplementation((method: string) => {
+      if (method === 'settings.get') return Promise.resolve({ settings: {} })
+      return Promise.resolve({ status: 'error', reason: 'rate_limit' })
+    })
     render(<GeneralSettings />)
 
     clickCheckUpdate()
 
-    expect(await screen.findByText('settings:general.updateCheckFailed')).toBeInTheDocument()
+    expect(
+      await screen.findByText(
+        'settings:general.updateCheckFailedReason:{"reason":"settings:general.updateFailReason_rate_limit"}',
+      ),
+    ).toBeInTheDocument()
+    // 限流的原始响应和代理地址只留在主进程日志里，不进界面。
+    expect(document.body.textContent).not.toContain('http_403')
     expect(checkUpdateButton()).toHaveAttribute('aria-busy', 'false')
   })
 

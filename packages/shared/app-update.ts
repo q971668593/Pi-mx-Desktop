@@ -21,10 +21,19 @@ export type AppUpdateAvailableInfo = {
   assets: AppUpdateAsset[]
 }
 
+/** Why a check failed — a stable enum so the renderer never sees raw network text. */
+export type AppUpdateCheckFailureReason =
+  | 'rate_limit'
+  | 'timeout'
+  | 'network'
+  | 'no_release'
+  | 'http'
+  | 'unknown'
+
 export type AppUpdateCheckResult =
   | { status: 'available'; update: AppUpdateAvailableInfo }
   | { status: 'up-to-date'; currentVersion: string; latestVersion: string }
-  | { status: 'error' }
+  | { status: 'error'; reason?: AppUpdateCheckFailureReason }
 
 export type AppUpdateDownloadProgress = {
   phase: 'downloading' | 'launching' | 'done' | 'error'
