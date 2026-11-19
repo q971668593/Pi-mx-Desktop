@@ -284,9 +284,10 @@ toast 提示出来；主进程不持有定时器。
 
 ### 7.8 仍未做（有意留下的下一步）
 
-- **agent 侧结构化工具**（`team_task_create/status/report/approve_request`）：目前靠提示词
-  约定 + markdown 字段，够用但没有参数校验和角色守卫；要做得更硬，应该写成 pi 扩展
+- **agent 侧结构化工具**（`team_task_create/status/report/approve_request`）：目前靠
+  `00-总入口.md` 里的「看板卡格式 / 待批准约定」+ 派发提示词的硬规则，agent 能按格式建卡、
+  改状态、申请批准、写回执，但没有参数校验和角色守卫。要做得更硬，应该写成 pi 扩展
   （`.pi/extensions/team-board.ts`），并复用 dsh-super-agent 的「角色守卫 + 双格式解析 +
-  永远抛带原因的 UserError」写法。
+  永远抛带原因的 UserError」写法；在那之前，宁可让格式写在协议文件里，也不要半成品的工具。
 - **轮次归档 / 任务合同 / 验收指纹**：仍按第一轮的口径不迁移。
 - **面板实时推送**：仍是 8 秒轮询 + 事件刷新够用；多窗口并发改最多 8 秒延迟。

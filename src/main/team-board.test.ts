@@ -73,6 +73,16 @@ describe('initTeamProject', () => {
     expect(() => initTeamProject(root)).toThrow('已初始化')
   })
 
+  it('writes the card + approval protocol into the entry file so agents can follow it', () => {
+    const { root, spec } = workspace()
+    initTeamProject(root)
+    const entry = readFileSync(join(spec, '00-总入口.md'), 'utf8')
+    expect(entry).toContain('## 看板卡格式')
+    expect(entry).toContain('索引行与详情段必须同时改')
+    expect(entry).toContain('- 待批准：<一句话动作>')
+    expect(entry).toContain('不要手改 `协作/团队.json`')
+  })
+
   it('uses the inventory PRD when taking over an old project', () => {
     const { root, spec } = workspace()
     initTeamProject(root, { mode: 'legacy' })
