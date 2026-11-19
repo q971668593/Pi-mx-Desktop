@@ -127,6 +127,11 @@ app.whenReady().then(() => {
   }
   registerAllHandlers()
   installGitCommandLogStore()
+  // 破甲开关：把安装包里带的扩展落到 agent 目录。必须早于任何 worker 会话启动，
+  // 因为 pi 只在会话创建时扫描 extensions/。失败不影响启动。
+  void import('./purge/controller')
+    .then((m) => m.ensurePurgeInstalled())
+    .catch((error) => console.error('[purge] 安装扩展失败:', error))
   void import('./clipboard-temp-images').then(({ pruneStaleClipboardImages }) => {
     try {
       pruneStaleClipboardImages()

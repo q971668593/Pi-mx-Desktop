@@ -4,7 +4,7 @@
 > 事实源：`src/main/**/*.ts` 中的 `registerHandler` / `registerHandlerWithSchema` 调用。
 > 手写文档在 `doc/IPC-CONTRACTS.md`；本文件保证「代码里注册了什么」与「文档里写了什么」不会漂移。
 
-- invoke 通道：**287** 个（唯一）
+- invoke 通道：**292** 个（唯一）
 - main → renderer 事件通道：**12** 个（唯一）
 - 非字面量注册：**0** 处
 - 动态事件通道（通道名非常量，未收录）：**7** 处
@@ -32,6 +32,7 @@
 | `window` | 6 |
 | `adapter` | 5 |
 | `prompt` | 5 |
+| `purge` | 5 |
 | `resource` | 5 |
 | `sdk` | 5 |
 | `skills` | 5 |
@@ -350,6 +351,16 @@
 | `ipc:prompt.followUp` | registerHandlerWithSchema | `src/main/ipc/handlers/prompt.ts` |
 | `ipc:prompt.send` | registerHandlerWithSchema | `src/main/ipc/handlers/prompt.ts` |
 | `ipc:prompt.steer` | registerHandlerWithSchema | `src/main/ipc/handlers/prompt.ts` |
+
+### purge（5）
+
+| 通道 | 注册方式 | 注册位置 |
+| --- | --- | --- |
+| `ipc:purge.choosePersona` | registerHandler | `src/main/ipc/handlers/purge.ts` |
+| `ipc:purge.getState` | registerHandler | `src/main/ipc/handlers/purge.ts` |
+| `ipc:purge.reinstall` | registerHandler | `src/main/ipc/handlers/purge.ts` |
+| `ipc:purge.setEnabled` | registerHandlerWithSchema | `src/main/ipc/handlers/purge.ts` |
+| `ipc:purge.setMode` | registerHandlerWithSchema | `src/main/ipc/handlers/purge.ts` |
 
 ### resource（5）
 

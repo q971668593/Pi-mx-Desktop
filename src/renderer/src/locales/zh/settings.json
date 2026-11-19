@@ -22,7 +22,8 @@
     "adapters": "适配器",
     "voice": "语音",
     "mobile": "手机连接",
-    "usage": "用量"
+    "usage": "用量",
+    "purge": "破甲"
   },
   "general": {
     "title": "常规",
@@ -1335,5 +1336,42 @@
     "projectSearch": "搜索项目",
     "temporaryChats": "临时对话",
     "noProjects": "还没有打开过项目。"
+  },
+  "purge": {
+    "description": "接管 pi 的系统提示词：开启后当前会话下一条消息就换成本地人设，不再走 pi 自带的身份与拒绝话术。只换提示词，不 patch 程序本体。",
+    "switchSection": "开关",
+    "enableLabel": "启用破甲",
+    "enableHint": "开关直接写 config.json，扩展每轮请求前读一次 —— 拨完对当前会话的下一句立刻生效，不用重启。",
+    "badgeOn": "生效中",
+    "badgeOff": "已关闭",
+    "modeLabel": "接管强度",
+    "modeHint": {
+      "strict": "strict：只发人设 + 工作目录，宿主提示词整段丢弃。最彻底，但 AGENTS.md / skills 列表也跟着没了。",
+      "replace": "replace：人设在前，宿主提示词切掉身份句和 <docs> 文档段，工具规则保留。日常推荐。",
+      "append": "append：人设挂在宿主提示词前面，宿主提示词一字不动。最温和。"
+    },
+    "mode": {
+      "strict": "strict · 只留人设",
+      "replace": "replace · 清身份段",
+      "append": "append · 只挂人头"
+    },
+    "personaSection": "人设",
+    "personaHint": "破甲文案本身就是这个人设文件。装完自带你 DSH 用的那份；也可以换成自己的 markdown。",
+    "choosePersona": "导入人设",
+    "personaImported": "人设已导入",
+    "personaFile": "人设文件",
+    "personaChars": "{{chars}} 字符",
+    "personaMissing": "未找到人设文件",
+    "extensionFile": "扩展文件",
+    "extensionOk": "已安装",
+    "extensionMissing": "未安装",
+    "configFile": "配置文件",
+    "configHint": "扩展与设置页共用这一份状态",
+    "needReinstall": "扩展还没落到 agent 目录：点右上「重新安装」，然后重启一次 Pi mx。",
+    "needPersona": "还没有人设文件：点「导入人设」选一个 markdown，或者点「重新安装」从安装包补一份。",
+    "reinstall": "重新安装",
+    "reinstalled": "扩展已重新安装",
+    "refresh": "刷新状态",
+    "footer": "状态存在 ~/.pi/agent/purge/config.json，退出 app 不会自动关闭；想彻底还原就关掉开关并删除 extensions/pi-app-purge.ts。"
   }
 }

@@ -5,7 +5,7 @@ import { useUIStore } from '@renderer/stores/ui-store'
 import { ExtensionConfigSubpage } from '@renderer/features/extension-ui/extension-config-subpage'
 import { ModelsSettingsPanel } from '@renderer/features/settings/models-settings-panel'
 import { SlidersHorizontal, Palette, Cpu, Puzzle, Zap, MessageSquareText, Mic,
-  Cable, ChevronLeft, LayoutPanelLeft, Boxes, Search, X, Plug, Network, Smartphone, type AppIconComponent, Activity } from '@renderer/components/icons'
+  Cable, ChevronLeft, LayoutPanelLeft, Boxes, Search, X, Plug, Network, Smartphone, ShieldCheck, type AppIconComponent, Activity } from '@renderer/components/icons'
 import { SkillsSettingsPanel } from '@renderer/features/settings/skills-settings-panel'
 import { McpSettingsPanel } from '@renderer/features/settings/mcp-settings-panel'
 import { ModelRoutingPanel } from '@renderer/features/settings/model-routing-panel'
@@ -27,8 +27,9 @@ import { GeneralSettings, AppearanceSettings, PiSettings } from '@renderer/featu
 import { ExtensionsSettings } from '@renderer/features/settings/settings-extensions-panel'
 import { SettingsSearchContext } from './settings-page-shared'
 import { AdaptersSettings } from '@renderer/features/settings/settings-adapters-panel'
+import { PurgeSettings } from '@renderer/features/settings/purge-settings-panel'
 
-type SettingsPage = 'general' | 'appearance' | 'rightPanels' | 'pi' | 'models' | 'skills' | 'prompts' | 'extensions' | 'mcp' | 'routing' | 'adapters' | 'voice' | 'mobile' | 'usage'
+type SettingsPage = 'general' | 'appearance' | 'rightPanels' | 'pi' | 'models' | 'skills' | 'prompts' | 'extensions' | 'mcp' | 'routing' | 'adapters' | 'voice' | 'mobile' | 'usage' | 'purge'
 
 type NavGroup = { key: string; labelKey: string; pages: { key: SettingsPage; icon: AppIconComponent }[] }
 
@@ -49,6 +50,7 @@ const NAV_GROUPS: NavGroup[] = [
     labelKey: 'settings:nav.groupAgent',
     pages: [
       { key: 'pi', icon: Cpu },
+      { key: 'purge', icon: ShieldCheck },
       { key: 'models', icon: Boxes },
       { key: 'routing', icon: Network },
       { key: 'voice', icon: Mic },
@@ -163,6 +165,7 @@ export function SettingsPage() {
             {page === 'appearance' && <AppearanceSettings />}
             {page === 'rightPanels' && <RightPanelsSettings />}
             {page === 'pi' && <PiSettings />}
+            {page === 'purge' && <PurgeSettings />}
             {page === 'models' && <ModelsSettingsPanel />}
             {page === 'skills' && <SkillsSettingsPanel />}
             {page === 'prompts' && <PromptsSettingsPanel />}

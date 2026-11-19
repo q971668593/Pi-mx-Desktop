@@ -22,7 +22,8 @@
     "adapters": "Adapters",
     "voice": "Voice",
     "mobile": "Mobile",
-    "usage": "Usage"
+    "usage": "Usage",
+    "purge": "Purge"
   },
   "general": {
     "title": "General",
@@ -1340,5 +1341,42 @@
     "projectSearch": "Search projects",
     "temporaryChats": "Temporary chats",
     "noProjects": "No projects opened yet."
+  },
+  "purge": {
+    "description": "Takes over pi's system prompt: once enabled, the next message in this session runs on your local persona instead of pi's built-in identity and refusal wording. Prompt-only — the app itself is not patched.",
+    "switchSection": "Switch",
+    "enableLabel": "Enable purge",
+    "enableHint": "The switch writes config.json; the extension re-reads it before every request, so it applies to the next message in this session without a restart.",
+    "badgeOn": "Active",
+    "badgeOff": "Off",
+    "modeLabel": "Takeover strength",
+    "modeHint": {
+      "strict": "strict: persona + working directory only, the host prompt is dropped. Strongest, but AGENTS.md / skills list go with it.",
+      "replace": "replace: persona first, host prompt without its identity line and <docs> block; tool rules stay. Good default.",
+      "append": "append: persona prepended, host prompt untouched. Mildest."
+    },
+    "mode": {
+      "strict": "strict · persona only",
+      "replace": "replace · strip identity",
+      "append": "append · prepend only"
+    },
+    "personaSection": "Persona",
+    "personaHint": "The persona file is the prompt itself. The installer ships the one you use in DSH; you can swap in your own markdown.",
+    "choosePersona": "Import persona",
+    "personaImported": "Persona imported",
+    "personaFile": "Persona file",
+    "personaChars": "{{chars}} chars",
+    "personaMissing": "Persona file not found",
+    "extensionFile": "Extension file",
+    "extensionOk": "Installed",
+    "extensionMissing": "Not installed",
+    "configFile": "Config file",
+    "configHint": "Shared state between the extension and this page",
+    "needReinstall": "The extension is not in the agent directory yet: press \"Reinstall\", then restart Pi mx once.",
+    "needPersona": "No persona file yet: press \"Import persona\" and pick a markdown, or \"Reinstall\" to copy the bundled one.",
+    "reinstall": "Reinstall",
+    "reinstalled": "Extension reinstalled",
+    "refresh": "Refresh",
+    "footer": "State lives in ~/.pi/agent/purge/config.json and survives quitting the app. To restore stock behaviour, turn this off and delete extensions/pi-app-purge.ts."
   }
 }

@@ -315,6 +315,34 @@ export interface AppDownloadUpdateResponse {
   error?: string
 }
 
+// ── Purge（破甲开关：接管 pi 的系统提示词） ──
+export type PurgeMode = 'strict' | 'replace' | 'append'
+export interface PurgeState {
+  enabled: boolean
+  mode: PurgeMode
+  /** 人设文件绝对路径；空字符串 = 默认 <agentDir>/purge/persona.md */
+  source: string
+  configFile: string
+  extensionFile: string
+  extensionInstalled: boolean
+  personaFile: string
+  personaExists: boolean
+  personaChars: number
+  /** 安装包里是否带了人设 */
+  bundledPersona: boolean
+  error?: string
+}
+export interface PurgeGetStateRequest {}
+export type PurgeGetStateResponse = PurgeState
+export interface PurgeSetEnabledRequest { enabled: boolean }
+export type PurgeSetEnabledResponse = PurgeState
+export interface PurgeSetModeRequest { mode: PurgeMode }
+export type PurgeSetModeResponse = PurgeState
+export interface PurgeReinstallRequest {}
+export interface PurgeReinstallResponse extends PurgeState { personaInstalled?: boolean }
+export interface PurgeChoosePersonaRequest {}
+export type PurgeChoosePersonaResponse = PurgeState
+
 // ── Events ──
 export interface EventsSubscribeRequest { channels?: string[] }
 export interface EventsSubscribeResponse { subscriptionId: string }
@@ -375,6 +403,11 @@ export interface IpcMethodMap {
   'registry.refresh': { request: RegistryRefreshRequest; response: RegistryRefreshResponse }
   'settings.get': { request: SettingsGetRequest; response: SettingsGetResponse }
   'settings.set': { request: SettingsSetRequest; response: SettingsSetResponse }
+  'purge.getState': { request: PurgeGetStateRequest; response: PurgeGetStateResponse }
+  'purge.setEnabled': { request: PurgeSetEnabledRequest; response: PurgeSetEnabledResponse }
+  'purge.setMode': { request: PurgeSetModeRequest; response: PurgeSetModeResponse }
+  'purge.reinstall': { request: PurgeReinstallRequest; response: PurgeReinstallResponse }
+  'purge.choosePersona': { request: PurgeChoosePersonaRequest; response: PurgeChoosePersonaResponse }
   'app.checkUpdate': { request: AppCheckUpdateRequest; response: AppCheckUpdateResponse }
   'app.getPendingUpdate': {
     request: AppGetPendingUpdateRequest

@@ -44,6 +44,11 @@ extraResources:
     to: chrome-extension
     filter:
       - "**/*"
+  # 破甲开关：内置扩展（build 时由 scripts/purge-persona.mjs 补上 persona.md）
+  - from: resources/purge
+    to: purge
+    filter:
+      - "**/*"
 
 win:
   target:

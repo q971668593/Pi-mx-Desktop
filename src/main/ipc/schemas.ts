@@ -9,6 +9,15 @@ export const shellOpenPathSchema = z.object({
   path: z.string().min(1).max(4096),
 })
 
+// ── 破甲开关（设置 › Agent › 破甲） ──
+export const purgeSetEnabledSchema = z.object({
+  enabled: z.boolean(),
+})
+
+export const purgeSetModeSchema = z.object({
+  mode: z.enum(['strict', 'replace', 'append']),
+})
+
 export const shellShowItemSchema = z.object({
   path: z.string().min(1).max(4096),
 })
