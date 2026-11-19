@@ -13,7 +13,7 @@
 | `npm run test:scripts` | 99 文件 / 304 例全绿 | ~10s |
 | `npm run test:unit` | 429 文件 / 2508 例，**1 例偶发红** | 173.6s |
 
-> 复测（修掉下述 S3/S6 后，含 team-board）：**437 文件 / 2615 例全绿，182s**；`test:scripts` 101 文件 / 306 例全绿。
+> 复测（修掉下述 S3/S6 后，含 team-board 与 S8–S12）：**437 文件 / 2616 例全绿，191s**；`test:scripts` 101 文件 / 306 例全绿；`typecheck` / `lint` / `build` 全绿。
 >
 > 排查提示：vitest 的 `Error: STACK_TRACE_ERROR` 不是代码崩溃，而是**测试超时**（`withTimeout` 把 stack 指向那个哨兵异常）。默认 5s 在满载 Windows 上役不住真实 git 子进程。
 
@@ -38,7 +38,12 @@
 | S11 | i18n 键漂移无人看守 | 全仓没有双语对齐检查；`team.json` 曾出现只在中文本地化里有的 key（英文用户看到原始 `team:roles.unassigned`） | 新增 `scripts/check-i18n-parity.mjs`（复数后缀归一化后比对）+ 门禁测试，已用探针键验证能红；`npm run check:i18n` 可单独跑 |
 | S12 | 死通道 `ipc:desktop.whichPi` | 只存在于注册点、生成白名单、生成文档，全仓 **0 调用方**（渲染层、e2e、扩展都不会调） | 删除 handler + 契约条目并重生成（286 通道）；契约测试继续保证「注册 ⊆ 白名单 ⊆ 注册」 |
 
-新增单测 40 例（路径越界、大小写、尾随点/空格、`javascript:`/`data:`、`.app` 目录、UNC/WSL 路径），`lint` 5 条 warning 清零。
+新增单测约 90 例（路径越界/大小写/尾随点/`javascript:`/`data:`/`.app` 目录，端口解析与 server 命令判定，待生效模型的写入/应用/失败保留，i18n 对齐），`lint` 0 warning。
+
+> 光标问题的排查方法（可复用）：用 PowerShell 采样 `GetCursorInfo` 的 `hCursor`，再用
+> `SetCursorPos` 沿元素扫一条线，统计 handle 切换次数。注意两点：必须用
+> `-WindowStyle Hidden` 起 PowerShell（否则控制台抢焦点会让所有区域都"闪"），
+> 且要 `SetForegroundWindow` 把被测窗口置前，否则采到的是别的窗口的光标。
 
 ## 2.1 终端不再抢端口：设计约定（S9）
 
