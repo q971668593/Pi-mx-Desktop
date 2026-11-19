@@ -7,6 +7,7 @@ import { workspacePathsEqual } from '@shared/workspace-path'
 import { getSessionNavigationToken, isSessionNavigationCurrent } from '@renderer/lib/session-navigation'
 import { sessionFilesEqual } from '@renderer/lib/session-file-key'
 import { reportVisibleSession } from '@renderer/lib/visible-session-report'
+import { mergePendingSessionRows, pinPendingSessionRow } from '@renderer/lib/pending-session-rows'
 
 /** 侧栏「新会话」：仅占位，不碰 Worker */
 export function enterNewSessionPlaceholder(): void {
@@ -47,6 +48,9 @@ export async function materializePendingNewSession(
     reportVisibleSession(sessionFile)
   }
   insertSessionRowOptimistically(workspaceId, { sessionId, sessionFile, title })
+  // The sidebar must not wait for model/thinking application (or the rest of the turn): the row is
+  // pinned now and the list catches up in the background.
+  void refreshNewSessionInList(workspaceId)
   // The caller still needs the file when creation finishes in the background.
   onSessionCreated?.(sessionFile)
   if (ownsView) {
@@ -89,8 +93,6 @@ export async function materializePendingNewSession(
     void refreshComposerRunDisplay()
   }
 
-  // The sidebar list only needs to show the new row; never hold the first prompt for it.
-  void refreshNewSessionInList(workspaceId, { sessionId, sessionFile, title })
   return sessionFile
 }
 
@@ -99,10 +101,9 @@ function insertSessionRowOptimistically(
   created: { sessionId: string; sessionFile?: string; title: string },
 ): void {
   const store = useUIStore.getState()
-  if (store.sessionsWorkspace && !workspacePathsEqual(store.sessionsWorkspace, workspaceId)) return
-  const current = store.sessions ?? []
-  if (current.some((s) => s.sessionId === created.sessionId)) return
-  const row = {
+  // Pin first: even when the store currently shows another workspace, the row must survive the
+  // next list refresh for its own workspace.
+  const pinned = {
     sessionId: created.sessionId,
     sessionFile: created.sessionFile,
     title: created.title,
@@ -111,39 +112,20 @@ function insertSessionRowOptimistically(
     lastUserMessageAt: Date.now(),
     messageCount: 0,
     modelId: '',
-  }
-  store.setSessions([row as SessionItem, ...current], workspaceId)
+  } as SessionItem
+  pinPendingSessionRow(workspaceId, pinned)
+  if (store.sessionsWorkspace && !workspacePathsEqual(store.sessionsWorkspace, workspaceId)) return
+  const current = store.sessions ?? []
+  if (current.some((s) => s.sessionId === created.sessionId)) return
+  // No merge here: the row is the pin, and a merge would be free to treat its own title as settled.
+  store.setSessions([pinned, ...current], workspaceId)
 }
 
-async function refreshNewSessionInList(
-  workspaceId: string,
-  created: { sessionId: string; sessionFile?: string; title: string },
-): Promise<void> {
-  const store = useUIStore.getState()
-  const { sessionId, sessionFile, title } = created
-  const listRes = await ipcClient.invoke('session.list', { workspaceId }).catch(() => null)
-  let sessions = (listRes?.sessions || []) as Array<{
-    sessionId: string
-    sessionFile?: string
-    title?: string
-    updatedAt?: number
-  }>
-  const row = {
-    sessionId,
-    sessionFile,
-    title,
-    updatedAt: Date.now(),
-    lastUserMessageAt: Date.now(),
-    messageCount: 0,
-    modelId: '',
-  }
-  const inList = sessions.some((s) => s.sessionId === sessionId)
-  if (!inList) {
-    sessions = [row as SessionItem, ...sessions]
-  } else {
-    sessions = sessions.map((s) =>
-      s.sessionId === sessionId ? { ...s, sessionFile: sessionFile ?? s.sessionFile, title } : s,
-    )
-  }
-  store.setSessions(sessions as SessionItem[], workspaceId)
+async function refreshNewSessionInList(workspaceId: string): Promise<void> {
+  // `refresh: true` bypasses the list-process cache that was filled before the session existed.
+  const listRes = await ipcClient.invoke('session.list', { workspaceId, refresh: true }).catch(() => null)
+  // A failed enumeration must not blank the sidebar: the optimistic rows stay pinned anyway.
+  if (!listRes) return
+  const list = (listRes.sessions || []) as SessionItem[]
+  useUIStore.getState().setSessions(mergePendingSessionRows(list, workspaceId), workspaceId)
 }

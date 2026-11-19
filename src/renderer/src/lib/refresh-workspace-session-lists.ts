@@ -2,6 +2,7 @@ import { ipcClient } from '@renderer/lib/ipc-client'
 import { uniqueWorkspacePaths, workspacePathKey } from '@shared/workspace-path'
 import type { SessionItem } from '@renderer/features/workspace/project-sidebar-types'
 import { useUIStore } from '@renderer/stores/ui-store'
+import { mergePendingSessionRows } from '@renderer/lib/pending-session-rows'
 
 function isSandboxPath(path: string) {
   return path.replace(/\\/g, '/').includes('sandbox-workspaces/')
@@ -39,7 +40,9 @@ export async function loadWorkspaceSessionList(workspaceId: string): Promise<Ses
   const listPromise = (async () => {
     try {
       const listRes = await ipcClient.invoke('session.list', { workspaceId, refresh: true })
-      const list: SessionItem[] = listRes?.sessions || []
+      // A session created moments ago may not be indexed by the list process yet; dropping it here
+      // is what made a new conversation disappear from the sidebar until the project was clicked.
+      const list: SessionItem[] = mergePendingSessionRows(listRes?.sessions || [], workspaceId)
       useUIStore.getState().setSessions(list, workspaceId)
       // Result publication only — never a refresh trigger.
       window.dispatchEvent(

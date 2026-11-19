@@ -152,7 +152,9 @@ describe('new session model preselection', () => {
       'MODEL_NOT_FOUND',
     )
     expect(invoke).not.toHaveBeenCalledWith('thinkingLevel.set', expect.anything())
-    expect(invoke).not.toHaveBeenCalledWith('session.list', expect.anything())
+    // The conversation exists even though the model was rejected: it must still reach the sidebar
+    // (a row that only appears after a successful model switch is the bug we are fixing).
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('session.list', expect.objectContaining({ refresh: true })))
   })
 
   it('rejects materialization when the Worker confirms a different model', async () => {
@@ -169,7 +171,7 @@ describe('new session model preselection', () => {
       'Model selection was not confirmed: openai/different-model',
     )
     expect(invoke).not.toHaveBeenCalledWith('thinkingLevel.set', expect.anything())
-    expect(invoke).not.toHaveBeenCalledWith('session.list', expect.anything())
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('session.list', expect.objectContaining({ refresh: true })))
   })
 
   it('rejects creation without a session file before changing the selected session', async () => {
