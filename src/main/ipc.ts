@@ -4,6 +4,7 @@ import { registerWorkspaceHandlers } from './ipc/handlers/workspace'
 import { registerSessionHandlers } from './ipc/handlers/session'
 import { registerPromptHandlers } from './ipc/handlers/prompt'
 import { registerSessionGoalHandlers } from './ipc/handlers/session-goal'
+import { registerPromptInjectHandlers } from './ipc/handlers/prompt-inject'
 import { registerSettingsHandlers } from './ipc/handlers/settings'
 import { registerWindowControlHandlers } from './ipc/handlers/window-controls'
 import { registerTerminalHandlers } from './ipc/handlers/terminal'
@@ -42,6 +43,7 @@ export function registerAllHandlers(): void {
   registerSessionHandlers()
   registerPromptHandlers()
   registerSessionGoalHandlers()
+  registerPromptInjectHandlers()
   registerSettingsHandlers()
   registerWindowControlHandlers()
   registerTerminalHandlers()

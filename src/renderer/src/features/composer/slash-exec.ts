@@ -18,7 +18,7 @@ import { draftModelThinking } from './thinking-level-actions'
 /** App-native builtins handled directly in the renderer (not forwarded as plain prompt text). */
 const APP_BUILTIN = new Set([
   'model', 'thinking', 'clear', 'compact', 'new', 'fork', 'clone',
-  'help', 'settings', 'review', 'run', 'tree', 'skills', 'prompts',
+  'help', 'settings', 'review', 'run', 'tree', 'skills', 'prompts', 'purge',
 ])
 
 export function isExecutableBuiltin(input: string): boolean {
@@ -198,6 +198,33 @@ export async function executeSlashCommand(
     case 'run': { setActivePanel('run'); toast.info('已切换到 Run 面板'); return true }
     case 'tree': { setActivePanel('tree'); return true }
     case 'settings': { toast.info('请从左侧栏打开设置'); return true }
+    case 'purge': {
+      const workspaceId = useUIStore.getState().currentWorkspace || ''
+      try {
+        if (arg === 'off' || arg === 'revert') {
+          await ipcClient.invoke('promptInject.revert', { workspaceId })
+          toast.success('提示词注入已关闭，标记块已摘除')
+        } else if (arg === 'status') {
+          const result = (await ipcClient.invoke('promptInject.get', { workspaceId })) as {
+            state: { enabled: boolean; injected: boolean; scope: string; targetPath: string }
+          }
+          toast.info(
+            `提示词注入：${result.state.enabled ? '启用' : '停用'} · ${result.state.injected ? '已注入' : '未注入'} · ${result.state.scope === 'project' ? '当前项目' : '全局'}`,
+            { description: result.state.targetPath },
+          )
+        } else {
+          const result = (await ipcClient.invoke('promptInject.save', { workspaceId, enabled: true })) as {
+            state: { text: string }
+          }
+          if (!result.state.text.trim()) toast.info('还没有写提示词内容，请到 设置 → 提示词注入 里填写')
+          else toast.success('已写入，新会话生效')
+        }
+      } catch (e) {
+        console.error('/purge failed:', e)
+        toast.error('提示词注入操作失败', { description: errorMessage(e) })
+      }
+      return true
+    }
     case 'skills':
     case 'prompts':
     case 'help': {

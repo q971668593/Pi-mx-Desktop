@@ -18,6 +18,25 @@ export const purgeSetModeSchema = z.object({
   mode: z.enum(['strict', 'replace', 'append']),
 })
 
+// ── 提示词注入（设置 › Agent › 提示词注入） ──
+const promptInjectWorkspaceId = z.string().max(4096).optional()
+
+export const promptInjectTargetSchema = z.object({
+  workspaceId: promptInjectWorkspaceId,
+})
+
+export const promptInjectSaveSchema = z.object({
+  workspaceId: promptInjectWorkspaceId,
+  enabled: z.boolean().optional(),
+  text: z.string().max(200_000).optional(),
+  scope: z.enum(['global', 'project']).optional(),
+})
+
+export const promptInjectRestoreBackupSchema = z.object({
+  workspaceId: promptInjectWorkspaceId,
+  name: z.string().min(1).max(200),
+})
+
 export const shellShowItemSchema = z.object({
   path: z.string().min(1).max(4096),
 })

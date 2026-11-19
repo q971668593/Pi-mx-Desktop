@@ -10,6 +10,15 @@ import { bindSecretStoreBacking } from './secret-store'
 import { nextRecentProjects } from './recent-projects'
 import { defaultAppLanguage } from './default-language'
 
+export type PromptInjectScope = 'global' | 'project'
+
+/** 个人版：把用户自己写的提示词段写进 APPEND_SYSTEM.md（带标记块，可还原） */
+export interface PromptInjectConfig {
+  enabled: boolean
+  text: string
+  scope: PromptInjectScope
+}
+
 export interface StoreSchema {
   recentProjects: string[]
   /** 侧栏项目列表固定顺序（不随打开而置顶）；false = 最近使用排序（默认） */
@@ -37,6 +46,8 @@ export interface StoreSchema {
   rightPanelOrder: string[]
   /** 侧栏对话名跟随最新一条用户消息 */
   sessionTitleFollowsLatest: boolean
+  /** 个人版提示词注入：写入 APPEND_SYSTEM.md 的标记块 */
+  promptInject: PromptInjectConfig
   /** 界面语言（设置保存后写入） */
   language: 'zh' | 'en'
   /** 启动时打开上次项目 */
@@ -140,6 +151,7 @@ const store = new Store<StoreSchema>({
     },
     rightPanelOrder: [],
     sessionTitleFollowsLatest: false,
+    promptInject: { enabled: false, text: '', scope: 'global' },
     language: defaultAppLanguage(),
     autoOpenLastProject: true,
     autoCheckRegistryUpdates: true,

@@ -5,7 +5,7 @@ import { useUIStore } from '@renderer/stores/ui-store'
 import { ExtensionConfigSubpage } from '@renderer/features/extension-ui/extension-config-subpage'
 import { ModelsSettingsPanel } from '@renderer/features/settings/models-settings-panel'
 import { SlidersHorizontal, Palette, Cpu, Puzzle, Zap, MessageSquareText, Mic,
-  Cable, ChevronLeft, LayoutPanelLeft, Boxes, Search, X, Plug, Network, Smartphone, ShieldCheck, type AppIconComponent, Activity } from '@renderer/components/icons'
+  Cable, ChevronLeft, LayoutPanelLeft, Boxes, Search, X, Plug, Network, Smartphone, ShieldCheck, Sparkles, type AppIconComponent, Activity } from '@renderer/components/icons'
 import { SkillsSettingsPanel } from '@renderer/features/settings/skills-settings-panel'
 import { McpSettingsPanel } from '@renderer/features/settings/mcp-settings-panel'
 import { ModelRoutingPanel } from '@renderer/features/settings/model-routing-panel'
@@ -17,6 +17,7 @@ import {
   SettingsNavItem,
 } from '@renderer/features/settings/settings-shell'
 import { RightPanelsSettings } from '@renderer/features/settings/right-panels-settings'
+import { PromptInjectSettings } from '@renderer/features/settings/prompt-inject-settings'
 import { VoiceSettingsPanel } from '@renderer/features/settings/voice-settings-panel'
 import { MobileSettingsPanel } from '@renderer/features/settings/mobile-settings-panel'
 import { UsageSettingsPanel } from '@renderer/features/settings/usage-settings-panel'
@@ -29,7 +30,7 @@ import { SettingsSearchContext } from './settings-page-shared'
 import { AdaptersSettings } from '@renderer/features/settings/settings-adapters-panel'
 import { PurgeSettings } from '@renderer/features/settings/purge-settings-panel'
 
-type SettingsPage = 'general' | 'appearance' | 'rightPanels' | 'pi' | 'models' | 'skills' | 'prompts' | 'extensions' | 'mcp' | 'routing' | 'adapters' | 'voice' | 'mobile' | 'usage' | 'purge'
+type SettingsPage = 'general' | 'appearance' | 'rightPanels' | 'pi' | 'models' | 'skills' | 'prompts' | 'promptInject' | 'extensions' | 'mcp' | 'routing' | 'adapters' | 'voice' | 'mobile' | 'usage' | 'purge'
 
 type NavGroup = { key: string; labelKey: string; pages: { key: SettingsPage; icon: AppIconComponent }[] }
 
@@ -52,6 +53,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'pi', icon: Cpu },
       { key: 'purge', icon: ShieldCheck },
       { key: 'models', icon: Boxes },
+      { key: 'promptInject', icon: Sparkles },
       { key: 'routing', icon: Network },
       { key: 'voice', icon: Mic },
     ],
@@ -69,7 +71,7 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ]
 
-const WIDE_PAGES: SettingsPage[] = ['rightPanels', 'pi', 'models', 'skills', 'prompts', 'extensions', 'mcp', 'routing', 'adapters', 'voice']
+const WIDE_PAGES: SettingsPage[] = ['rightPanels', 'pi', 'models', 'skills', 'prompts', 'promptInject', 'extensions', 'mcp', 'routing', 'adapters', 'voice']
 
 export function SettingsPage() {
   const { t } = useTranslation()
@@ -169,6 +171,7 @@ export function SettingsPage() {
             {page === 'models' && <ModelsSettingsPanel />}
             {page === 'skills' && <SkillsSettingsPanel />}
             {page === 'prompts' && <PromptsSettingsPanel />}
+            {page === 'promptInject' && <PromptInjectSettings />}
             {page === 'extensions' && <ExtensionsSettings />}
             {page === 'mcp' && <McpSettingsPanel />}
             {page === 'routing' && <ModelRoutingPanel />}

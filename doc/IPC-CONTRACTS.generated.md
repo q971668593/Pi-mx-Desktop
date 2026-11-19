@@ -4,7 +4,7 @@
 > 事实源：`src/main/**/*.ts` 中的 `registerHandler` / `registerHandlerWithSchema` 调用。
 > 手写文档在 `doc/IPC-CONTRACTS.md`；本文件保证「代码里注册了什么」与「文档里写了什么」不会漂移。
 
-- invoke 通道：**296** 个（唯一）
+- invoke 通道：**300** 个（唯一）
 - main → renderer 事件通道：**12** 个（唯一）
 - 非字面量注册：**0** 处
 - 动态事件通道（通道名非常量，未收录）：**7** 处
@@ -39,6 +39,7 @@
 | `terminal` | 5 |
 | `extension` | 4 |
 | `git` | 4 |
+| `promptInject` | 4 |
 | `python` | 4 |
 | `shell` | 4 |
 | `clipboard` | 3 |
@@ -423,6 +424,15 @@
 | `ipc:git.branches` | registerHandlerWithSchema | `src/main/ipc/handlers/git-branches.ts` |
 | `ipc:git.restoreStash` | registerHandlerWithSchema | `src/main/ipc/handlers/git-branches.ts` |
 | `ipc:git.switchBranch` | registerHandlerWithSchema | `src/main/ipc/handlers/git-branches.ts` |
+
+### promptInject（4）
+
+| 通道 | 注册方式 | 注册位置 |
+| --- | --- | --- |
+| `ipc:promptInject.get` | registerHandlerWithSchema | `src/main/ipc/handlers/prompt-inject.ts` |
+| `ipc:promptInject.restoreBackup` | registerHandlerWithSchema | `src/main/ipc/handlers/prompt-inject.ts` |
+| `ipc:promptInject.revert` | registerHandlerWithSchema | `src/main/ipc/handlers/prompt-inject.ts` |
+| `ipc:promptInject.save` | registerHandlerWithSchema | `src/main/ipc/handlers/prompt-inject.ts` |
 
 ### python（4）
 

@@ -48,7 +48,8 @@
     "new": "New session",
     "fork": "Fork a new session from a user message",
     "clone": "Clone current branch into a new session",
-    "tree": "Open session tree panel"
+    "tree": "Open session tree panel",
+    "purge": "Prompt injection: on / status / off"
   },
   "toast": {
       "compactingWait": "The context is being compacted. Your text is kept — send it again in a moment.",
