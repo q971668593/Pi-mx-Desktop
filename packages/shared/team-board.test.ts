@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  appendTeamTask,
   buildTeamPrompt,
   normalizeTeamRoleBindings,
   normalizeTeamStatus,
@@ -212,9 +213,89 @@ describe('buildTeamPrompt', () => {
     expect(prompt).toContain('# 角色：前端')
     expect(prompt).toContain('覆盖空态、加载、失败')
     expect(prompt).toContain('当前批次：订单模块')
-    expect(prompt).toContain('### T-001 登录页')
+    expect(prompt).toContain('T-001 登录页')
     expect(prompt).toContain('- [ ] 账号密码可登录')
     expect(prompt).toContain('不要修改 `看板/当前批次.md`')
     expect(prompt).toContain('交付摘要')
+  })
+})
+
+describe('appendTeamTask', () => {
+  it('adds the next numbered card to both the index and the detail area', async () => {
+    const board = `# 看板：当前批次
+
+## 批次信息
+
+- 当前批次：订单模块
+- 目标：完成下单
+
+## 任务索引
+
+| 编号 | 标题 | 角色 | 状态 | 一句话 |
+|------|------|------|------|--------|
+| T-001 | 登录页 | 前端 | 进行中 | 登录 |
+
+---
+
+## 卡片详情
+
+### T-001 登录页
+
+- 角色：前端
+- 状态：进行中
+
+---
+
+## 归档规则
+
+保留。
+`
+    const result = appendTeamTask(board, {
+      title: '支付回调',
+      role: '后端',
+      acceptance: ['回调幂等', '失败可重试'],
+      output: 'src/api/pay.ts',
+      note: '等商户号',
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.id).toBe('T-002')
+    expect(result.markdown).toContain('| T-002 | 支付回调 | 后端 | 待办 | 等商户号 |')
+    expect(result.markdown).toContain('### T-002 支付回调')
+    expect(result.markdown).toContain('- [ ] 回调幂等')
+    // 新卡在详情区（第一个 --- 之前），不是归档规则后面
+    const detail = result.markdown.split('## 归档规则')[0]
+    expect(detail).toContain('### T-002 支付回调')
+    expect(result.markdown.split('## 归档规则')[1]).not.toContain('### T-002')
+  })
+
+  it('rejects an empty title', () => {
+    expect(appendTeamTask('', { title: '  ', role: '前端' })).toEqual({ ok: false, reason: 'empty_title' })
+  })
+})
+
+describe('index-only cards', () => {
+  it('creates a detail section before changing an old card that only lives in the index', () => {
+    const old = `# 看板
+
+## 批次信息
+
+- 当前批次：老项目
+- 目标：接管
+
+| 编号 | 标题 | 角色 | 状态 | 一句话 |
+|---|---|---|---|---|
+| T-009 | 盘点代码 | 质量测试 | 待办 | 没有详情段 |
+
+## 归档规则
+
+保留。
+`
+    const result = updateTeamTaskStatus(old, { id: 'T-009', to: '进行中', from: '待办', autoNote: '开工' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.markdown).toContain('### T-009 盘点代码')
+    expect(result.markdown).toContain('- 状态：进行中')
+    expect(result.markdown.indexOf('### T-009')).toBeLessThan(result.markdown.indexOf('## 归档规则'))
   })
 })

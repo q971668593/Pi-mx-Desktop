@@ -9,6 +9,7 @@ import {
   Network,
   PanelRight,
   Terminal,
+  Users,
   normalizeLegacyIconName,
   resolveAppIcon,
   type AppIconComponent,
@@ -25,6 +26,7 @@ const CORE_PANEL_ICONS: Record<string, AppIconComponent> = {
   files: FolderTree,
   terminal: Terminal,
   git: GitCommitHorizontal,
+  team: Users,
   browser: Globe,
   intercom: Network,
 }

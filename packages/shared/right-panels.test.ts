@@ -3,14 +3,16 @@ import {
   CORE_RIGHT_PANEL_CATALOG,
   defaultCoreRightPanelPrefs,
   firstEnabledPanel,
+  normalizeRightPanelOrder,
   normalizeRightPanelPrefs,
 } from './right-panels'
 
 describe('defaultCoreRightPanelPrefs', () => {
-  it('enables files, git, terminal, browser and run by default', () => {
+  it('enables files, git, team, terminal, browser and run by default', () => {
     const prefs = defaultCoreRightPanelPrefs()
     expect(prefs.files).toBe(true)
     expect(prefs.git).toBe(true)
+    expect(prefs.team).toBe(true)
     expect(prefs.terminal).toBe(true)
     expect(prefs.browser).toBe(true)
     expect(prefs.run).toBe(true)
@@ -19,10 +21,11 @@ describe('defaultCoreRightPanelPrefs', () => {
     expect(prefs.tree).toBe(false)
   })
 
-  it('keeps the catalog order files → git → terminal → browser → run → review → context → tree', () => {
+  it('keeps the catalog order files → git → team → terminal → browser → run → review → context → tree', () => {
     expect(CORE_RIGHT_PANEL_CATALOG.map((item) => item.id)).toEqual([
       'files',
       'git',
+      'team',
       'terminal',
       'browser',
       'run',
@@ -42,10 +45,27 @@ describe('CORE_RIGHT_PANEL_CATALOG tree icon', () => {
   })
 })
 
+describe('normalizeRightPanelOrder', () => {
+  it('inserts a new core panel at its catalog position instead of the end', () => {
+    const order = ['files', 'git', 'terminal', 'browser', 'run', 'review', 'context', 'tree']
+    expect(normalizeRightPanelOrder(order, CORE_RIGHT_PANEL_CATALOG)).toEqual([
+      'files',
+      'git',
+      'team',
+      'terminal',
+      'browser',
+      'run',
+      'review',
+      'context',
+      'tree',
+    ])
+  })
+})
+
 describe('normalizeRightPanelPrefs', () => {
   it('falls back to files+run when all panels disabled', () => {
     const prefs = normalizeRightPanelPrefs(
-      { review: false, run: false, context: false, tree: false, files: false, terminal: false, git: false, browser: false },
+      { review: false, run: false, context: false, tree: false, files: false, terminal: false, git: false, browser: false, team: false },
       CORE_RIGHT_PANEL_CATALOG,
     )
     expect(prefs.files).toBe(true)
@@ -61,6 +81,7 @@ describe('normalizeRightPanelPrefs', () => {
     const prefs = normalizeRightPanelPrefs({ files: true, run: true }, CORE_RIGHT_PANEL_CATALOG)
     expect(prefs.terminal).toBe(true)
     expect(prefs.git).toBe(true)
+    expect(prefs.team).toBe(true)
     expect(prefs.files).toBe(true)
   })
 })

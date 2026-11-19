@@ -4,6 +4,9 @@
  * 数据真相仍是项目里的 `.文档/开发规范/看板/当前批次.md`（与 DSH flow-board
  * 插件同一套 markdown 格式）。这里只放纯函数：解析、状态写回、角色绑定归一化、
  * 派发提示词组装。主进程负责落盘，渲染层负责展示；shared 不许 import electron/node。
+ *
+ * 解析刻意不用正则模板拼接：字段按行读，标题按前缀判断。换行符（CRLF/LF）
+ * 也用常量表示，避免转义层把 `\n` 吃成 `n`。
  */
 
 export const TEAM_SPEC_RELATIVE_DIR = '.文档/开发规范'
@@ -37,15 +40,16 @@ const ROLE_ALIASES: Record<string, TeamRole> = {
 export const TEAM_BLOCK_TYPES = ['待用户确认', '缺环境/工具', '外部依赖', '执行失败'] as const
 export type TeamBlockType = (typeof TEAM_BLOCK_TYPES)[number]
 
+const LF = String.fromCharCode(10)
+const CRLF = String.fromCharCode(13) + LF
+
 export function canonicalTeamRole(value: unknown): string {
   const role = String(value ?? '').trim()
   return ROLE_ALIASES[role] ?? role
 }
 
 export function normalizeTeamStatus(value: unknown): TeamStatus {
-  const status = String(value ?? '')
-    .replace(/[（(].*$/, '')
-    .trim()
+  const status = String(value ?? '').replace(/[（(].*$/, '').trim()
   const alias = STATUS_ALIASES[status]
   if (alias) return alias
   return (TEAM_STATUSES as readonly string[]).includes(status) ? (status as TeamStatus) : '待办'
@@ -53,6 +57,15 @@ export function normalizeTeamStatus(value: unknown): TeamStatus {
 
 export function isTeamRole(value: unknown): value is TeamRole {
   return (TEAM_ROLES as readonly string[]).includes(String(value ?? ''))
+}
+
+export function isTeamTaskId(value: unknown): boolean {
+  const id = String(value ?? '')
+  if (!id.startsWith('T-') || id.length < 3) return false
+  for (const char of id.slice(2)) {
+    if (char < '0' || char > '9') return false
+  }
+  return true
 }
 
 export type TeamAcceptanceItem = { text: string; done: boolean }
@@ -161,56 +174,129 @@ export function teamProgress(tasks: readonly TeamTask[]): TeamProgress {
 
 /* ---------------- 看板 markdown 解析 ---------------- */
 
-const CARD_SECTION = /^### (?=T-\d+)/m
-const CARD_ID = /^(T-\d+)\s*(.*)$/
-const INDEX_ROW = /^\|\s*(T-\d+)\s*\|/
+type IndexRow = { id: string; title: string; role: string; status: string; summary: string }
 
-function fieldPattern(label: string): RegExp {
-  return new RegExp(`^-\\s*${label}\\s*[：:]\\s*(.*)$`)
+/** 读取 `- 字段：值` 行的字段名；不是字段行返回 null。 */
+function fieldNameOf(line: string): string | null {
+  const text = line.trim()
+  if (!text.startsWith('- ')) return null
+  const rest = text.slice(2)
+  const full = rest.indexOf('：')
+  const half = rest.indexOf(':')
+  const colon = full >= 0 ? full : half
+  if (colon <= 0) return null
+  return rest.slice(0, colon).trim()
 }
 
-function fieldOf(section: string, label: string): string {
-  return fieldPattern(label).exec(section)?.[1]?.trim() ?? ''
+function fieldValueOf(line: string): string {
+  const text = line.trim()
+  const rest = text.slice(2)
+  const full = rest.indexOf('：')
+  const half = rest.indexOf(':')
+  const colon = full >= 0 ? full : half
+  return colon < 0 ? '' : rest.slice(colon + 1).trim()
+}
+
+function fieldOf(text: string, label: string): string {
+  for (const line of text.split(LF)) {
+    if (fieldNameOf(line) !== label) continue
+    return fieldValueOf(line)
+  }
+  return ''
+}
+
+function setField(section: string, label: string, nextLine: string, afterLabel?: string): string {
+  const lines = section.split(LF)
+  const index = lines.findIndex((line) => fieldNameOf(line) === label)
+  if (index >= 0) {
+    lines[index] = nextLine
+    return lines.join(LF)
+  }
+  if (afterLabel) {
+    const anchor = lines.findIndex((line) => fieldNameOf(line) === afterLabel)
+    if (anchor >= 0) {
+      lines.splice(anchor + 1, 0, nextLine)
+      return lines.join(LF)
+    }
+  }
+  return [...lines, nextLine].join(LF)
+}
+
+function removeField(section: string, label: string): string {
+  return section
+    .split(LF)
+    .filter((line) => fieldNameOf(line) !== label)
+    .join(LF)
+}
+
+function isAcceptanceLine(line: string): boolean {
+  const text = line.trim()
+  if (!text.startsWith('- [') && !text.startsWith('* [')) return false
+  const box = text.charAt(3)
+  return box === ' ' || box === 'x' || box === 'X'
+}
+
+/** 卡片详情段 = `### T-xxx` 到下一个三级标题或二级标题（不含）。 */
+function sectionRange(markdown: string, id: string): { start: number; end: number } | null {
+  const lines = markdown.split(LF)
+  const heading = `### ${id}`
+  let start = -1
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (start < 0) {
+      if (line.startsWith(heading) && (line.length === heading.length || line.charAt(heading.length) === ' ' || line.charAt(heading.length) === String.fromCharCode(9))) start = i
+      continue
+    }
+    if (line.startsWith('### ') || line.startsWith('## ')) return { start, end: i }
+  }
+  return start < 0 ? null : { start, end: lines.length }
 }
 
 function sectionOf(markdown: string, id: string): string | null {
-  const pattern = new RegExp(`^### ${escapeRegExp(id)}(?:\\s|$)[\\s\\S]*?(?=^### T-\\d+|^## |$(?![\\s\\S]))`, 'm')
-  return pattern.exec(markdown)?.[0] ?? null
+  const range = sectionRange(markdown, id)
+  if (!range) return null
+  return markdown.split(LF).slice(range.start, range.end).join(LF)
 }
 
-export function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+function parseIndexLine(line: string): IndexRow | null {
+  const trimmed = line.trim()
+  if (!trimmed.startsWith('|')) return null
+  const cells = trimmed.split('|').map((cell) => cell.trim())
+  // | 编号 | 标题 | 角色 | 状态 | 一句话 |
+  const id = cells[1] ?? ''
+  if (!isTeamTaskId(id)) return null
+  return {
+    id,
+    title: cells[2] ?? '',
+    role: cells[3] ?? '',
+    status: cells[4] ?? '',
+    summary: cells[5] ?? '',
+  }
 }
-
-type IndexRow = { id: string; title: string; role: string; status: string; summary: string }
 
 function parseIndexRows(markdown: string): Map<string, IndexRow> {
   const rows = new Map<string, IndexRow>()
-  for (const line of markdown.split('\n')) {
-    const id = INDEX_ROW.exec(line)?.[1]
-    if (!id || rows.has(id)) continue
-    const cells = line.replace(/^\|/, '').replace(/\|$/, '').split('|').map((cell) => cell.trim())
-    // | 编号 | 标题 | 角色 | 状态 | 一句话 |
-    rows.set(id, {
-      id,
-      title: cells[1] ?? '',
-      role: cells[2] ?? '',
-      status: cells[3] ?? '',
-      summary: cells[4] ?? '',
-    })
+  for (const line of markdown.split(LF)) {
+    const row = parseIndexLine(line)
+    if (!row || rows.has(row.id)) continue
+    rows.set(row.id, row)
   }
   return rows
 }
 
 function parseCard(section: string, index: IndexRow | undefined): TeamTask | null {
-  const head = CARD_ID.exec(section.split('\n')[0]?.replace(/^###\s*/, '') ?? '')
-  if (!head) return null
-  const id = head[1]
-  const title = head[2].trim() || index?.title || id
+  const firstLine = section.split(LF)[0] ?? ''
+  if (!firstLine.startsWith('### ')) return null
+  const rest = firstLine.slice(4).trim()
+  const space = rest.indexOf(' ')
+  const id = space < 0 ? rest : rest.slice(0, space)
+  if (!isTeamTaskId(id)) return null
+  const title = (space < 0 ? '' : rest.slice(space + 1).trim()) || index?.title || id
   const acceptance: TeamAcceptanceItem[] = []
-  for (const line of section.split('\n')) {
-    const match = /^\s*[-*]\s*\[([ xX])\]\s*(.+)$/.exec(line)
-    if (match) acceptance.push({ text: match[2].trim(), done: match[1].toLowerCase() === 'x' })
+  for (const line of section.split(LF)) {
+    if (!isAcceptanceLine(line)) continue
+    const text = line.trim().slice(5).trim()
+    if (text) acceptance.push({ text, done: line.trim().charAt(3).toLowerCase() === 'x' })
   }
   const status = fieldOf(section, '状态') || index?.status || ''
   return {
@@ -221,8 +307,8 @@ function parseCard(section: string, index: IndexRow | undefined): TeamTask | nul
     wave: fieldOf(section, '波次'),
     input: fieldOf(section, '输入'),
     output: fieldOf(section, '产出') || fieldOf(section, '输出'),
-    dependsOn: (fieldOf(section, '依赖') || '')
-      .split(/[、,，;；\s]+/)
+    dependsOn: fieldOf(section, '依赖')
+      .split(/[、,，;； ]+/)
       .map((item) => item.trim())
       .filter(Boolean),
     note: fieldOf(section, '备注'),
@@ -239,20 +325,32 @@ function parseCard(section: string, index: IndexRow | undefined): TeamTask | nul
  * 也会被读出来（状态可改，详情为空），避免看板升级后老项目直接失明。
  */
 export function parseTeamBoard(markdown: string): TeamBoard {
-  const md = String(markdown ?? '').replace(/\r\n?/g, '\n')
+  const md = normalizeEol(String(markdown ?? ''))
   const batch = fieldOf(md, '当前批次') || fieldOf(md, '批次') || '当前批次'
   const goal = fieldOf(md, '目标')
   const index = parseIndexRows(md)
   const tasks: TeamTask[] = []
   const seen = new Set<string>()
+  const lines = md.split(LF)
 
-  for (const section of md.split(CARD_SECTION).slice(1)) {
-    const id = CARD_ID.exec(section.replace(/^###\s*/, ''))?.[1]
-    if (!id || seen.has(id)) continue
-    const card = parseCard(section, index.get(id))
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i].startsWith('### ')) continue
+    const headingRest = lines[i].slice(4).trim()
+    const space = headingRest.indexOf(' ')
+    const id = space < 0 ? headingRest : headingRest.slice(0, space)
+    if (!isTeamTaskId(id) || seen.has(id)) continue
+    let end = lines.length
+    for (let j = i + 1; j < lines.length; j++) {
+      if (lines[j].startsWith('### ') || lines[j].startsWith('## ')) {
+        end = j
+        break
+      }
+    }
+    const card = parseCard(lines.slice(i, end).join(LF), index.get(id))
     if (!card) continue
     seen.add(id)
     tasks.push(card)
+    i = end - 1
   }
 
   for (const row of index.values()) {
@@ -281,8 +379,12 @@ export function parseTeamBoard(markdown: string): TeamBoard {
 }
 
 function taskNumber(id: string): number {
-  const match = /^T-(\d+)$/.exec(id)
-  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER
+  const value = Number(id.slice(2))
+  return Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER
+}
+
+function normalizeEol(text: string): string {
+  return text.split(CRLF).join(LF).split(String.fromCharCode(13)).join(LF)
 }
 
 /* ---------------- 状态写回 ---------------- */
@@ -307,19 +409,30 @@ export type TeamStatusWriteResult =
   | { ok: false; reason: 'task_not_found' | 'status_mismatch' | 'index_row_missing'; current?: TeamStatus }
 
 /**
- * 原子地改一张卡的状态：同时更新卡片详情与任务索引行，追加/替换人工处理或
- * 自动推进记录，并在进入/离开「已验收」时勾选/清空验收清单。
- * 返回新的 markdown（保留原文件的换行风格），由主进程负责加锁落盘。
+ * 改一张卡的状态：同时更新卡片详情与任务索引行，追加/替换人工处理或自动推进记录，
+ * 并在进入/离开「已验收」时勾选/清空验收清单。返回新的 markdown（保留原文件换行风格），
+ * 由主进程负责加锁落盘。
  */
 export function updateTeamTaskStatus(markdown: string, input: TeamStatusWriteInput): TeamStatusWriteResult {
   const raw = String(markdown ?? '')
-  const eol = raw.includes('\r\n') ? '\r\n' : '\n'
-  let md = raw.replace(/\r\n?/g, '\n')
+  const eol = raw.includes(CRLF) ? CRLF : LF
+  let md = normalizeEol(raw)
   const id = String(input.id ?? '').trim()
   const to = normalizeTeamStatus(input.to)
-  const section = sectionOf(md, id)
-  if (!section) return { ok: false, reason: 'task_not_found' }
+  let range = sectionRange(md, id)
+  if (!range) {
+    // 老看板可能只有索引行、没有卡片详情段：就地补一段再改，别让卡片在面板里变成只读。
+    const indexRow = parseIndexRows(md).get(id)
+    if (!indexRow) return { ok: false, reason: 'task_not_found' }
+    const synthetic = `### ${id} ${indexRow.title || id}${LF}${LF}- 角色：${canonicalTeamRole(indexRow.role) || '未分配'}${LF}- 状态：${normalizeTeamStatus(indexRow.status)}${LF}`
+    const archiveAt = md.indexOf(`${LF}## 归档规则`)
+    md = archiveAt >= 0 ? `${md.slice(0, archiveAt)}${LF}${synthetic}${md.slice(archiveAt)}` : `${md}${LF}${synthetic}`
+    range = sectionRange(md, id)
+  }
+  if (!range) return { ok: false, reason: 'task_not_found' }
 
+  const lines = md.split(LF)
+  const section = lines.slice(range.start, range.end).join(LF)
   const index = parseIndexRows(md).get(id)
   const currentRaw = fieldOf(section, '状态') || index?.status || ''
   const from = currentRaw ? normalizeTeamStatus(currentRaw) : null
@@ -330,67 +443,76 @@ export function updateTeamTaskStatus(markdown: string, input: TeamStatusWriteInp
 
   const at = input.at || new Date().toISOString()
   const manual = input.manual === true
-  const autoNote = String(input.autoNote ?? '').trim()
+  const autoNote = String(input.autoNote ?? '').replace(/[\r\n]+/g, ' ').trim()
   const reason = String(input.reason ?? '').replace(/[\r\n]+/g, ' ').trim()
   const blockType = String(input.blockType ?? '').replace(/[\r\n]+/g, ' ').trim()
 
-  let next = section.replace(/^- 状态[：:][^\n]*$/m, `- 状态：${to}`)
-
+  let next = setField(section, '状态', `- 状态：${to}`)
   if (manual && from !== to) {
-    const note = `- 人工处理：${at} · ${from} → ${to} · ${reason || (to === '已验收' ? '用户在面板确认已人工验证' : '用户在面板调整状态')}${to === '已验收' ? '（人工验收，原自动报告保留）' : ''}`
-    next = replaceOrAppendLine(next, '人工处理', note, '状态')
+    const suffix = to === '已验收' ? '（人工验收，原自动报告保留）' : ''
+    const note = `- 人工处理：${at} · ${from} → ${to} · ${reason || (to === '已验收' ? '用户在面板确认已人工验证' : '用户在面板调整状态')}${suffix}`
+    next = setField(next, '人工处理', note, '状态')
   }
   if (autoNote) {
-    next = replaceOrAppendLine(next, '自动推进', `- 自动推进：${at} · ${from} → ${to} · ${autoNote}`, '状态')
+    next = setField(next, '自动推进', `- 自动推进：${at} · ${from} → ${to} · ${autoNote}`, '状态')
   }
   if (to === '阻塞' && blockType) {
-    next = replaceOrAppendLine(next, '阻塞分型', `- 阻塞分型：${blockType}`, '状态')
+    next = setField(next, '阻塞分型', `- 阻塞分型：${blockType}`, '状态')
   } else if (to !== '阻塞') {
-    next = next.replace(/^- 阻塞分型[：:][^\n]*\n?/m, '')
+    next = removeField(next, '阻塞分型')
   }
-  if (to === '已验收') next = next.replace(/^(\s*[-*]\s*)\[ \]/gm, '$1[x]')
-  else if (from === '已验收') next = next.replace(/^(\s*[-*]\s*)\[[xX]\]/gm, '$1[ ]')
 
-  // 末尾补一个空行，避免下一段标题/分隔线被吞进详情段（flow-board 原格式同样留白）。
-  if (!next.endsWith('\n')) next += '\n'
-  md = md.replace(section, next)
+  next = next
+    .split(LF)
+    .map((line) => {
+      if (!isAcceptanceLine(line)) return line
+      if (to === '已验收') return line.replace('[ ]', '[x]')
+      if (from === '已验收') return line.replace('[x]', '[ ]').replace('[X]', '[ ]')
+      return line
+    })
+    .join(LF)
+
+  md = [...lines.slice(0, range.start), ...next.split(LF), ...lines.slice(range.end)].join(LF)
 
   if (index) {
-    const withIndex = updateIndexRow(md, id, to)
-    if (withIndex === md && normalizeTeamStatus(index.status) !== to) {
+    const updated = updateIndexRow(md, id, to)
+    if (!updated.found && normalizeTeamStatus(index.status) !== to) {
       return { ok: false, reason: 'index_row_missing', current: from }
     }
-    md = withIndex
+    md = updated.markdown
   }
 
-  return { ok: true, markdown: md.replace(/\n/g, eol), from, changed: from !== to || manual || !!autoNote }
+  return { ok: true, markdown: md.split(LF).join(eol), from, changed: from !== to || manual || !!autoNote }
 }
 
-function replaceOrAppendLine(section: string, label: string, line: string, afterLabel: string): string {
-  const pattern = fieldPattern(label)
-  if (pattern.test(section)) return section.replace(pattern, () => line)
-  const anchor = fieldPattern(afterLabel)
-  if (!anchor.test(section)) return `${section.trimEnd()}\n${line}\n`
-  return section.replace(anchor, (match) => `${match}\n${line}`)
+function updateIndexRow(markdown: string, id: string, status: TeamStatus): { markdown: string; found: boolean } {
+  const lines = markdown.split(LF)
+  for (let i = 0; i < lines.length; i++) {
+    const row = parseIndexLine(lines[i])
+    if (!row || row.id !== id) continue
+    const cells = lines[i].split('|')
+    // 末尾带不带 `|` 都要能改；状态列固定在第 4 个单元格（索引 4）。
+    if (cells.length < 7) return { markdown, found: false }
+    cells[4] = ` ${status} `
+    lines[i] = cells.join('|')
+    return { markdown: lines.join(LF), found: true }
+  }
+  return { markdown, found: false }
 }
 
-function updateIndexRow(markdown: string, id: string, status: TeamStatus): string {
-  const row = new RegExp(`^\\|\\s*${escapeRegExp(id)}\\s*\\|[^\\n]*$`, 'm')
-  return markdown.replace(row, (line) => {
-    const cells = line.replace(/^\|/, '').replace(/\|$/, '').split('|')
-    if (cells.length < 5) return line
-    cells[3] = ` ${status} `
-    return `|${cells.join('|')}|`
-  })
-}
-
-/** 只做一次自动回执（不人工改状态），供派发/会话结束使用。 */
+/** 只做一次自动回执（不改状态），供派发失败等场景追加记录。 */
 export function appendTeamTaskAutoNote(markdown: string, id: string, note: string, at = new Date().toISOString()): string {
-  const section = sectionOf(String(markdown ?? '').replace(/\r\n?/g, '\n'), id)
-  if (!section) return markdown
+  const raw = String(markdown ?? '')
+  const eol = raw.includes(CRLF) ? CRLF : LF
+  const md = normalizeEol(raw)
+  const range = sectionRange(md, id)
+  if (!range) return markdown
+  const lines = md.split(LF)
+  const section = lines.slice(range.start, range.end).join(LF)
   const line = `- 自动推进：${at} · ${note.replace(/[\r\n]+/g, ' ').trim()}`
-  const next = replaceOrAppendLine(section, '自动推进', line, '状态')
-  return markdown.replace(section, next)
+  const next = setField(section, '自动推进', line, '状态')
+  const rebuilt = [...lines.slice(0, range.start), ...next.split(LF), ...lines.slice(range.end)].join(LF)
+  return rebuilt.split(LF).join(eol)
 }
 
 /* ---------------- 角色绑定 ---------------- */
@@ -416,10 +538,10 @@ export function defaultTeamRoleBindings(): TeamRoleBinding[] {
 
 /**
  * 归一化成固定的五角色：旧七角色配置（产品经理/UI审查/测试）自动收敛，
- * 缺失角色补默认值，重复角色只保留第一条；停用请用 enabled，不要删角色。
+ * 缺失角色补默认值；停用请用 enabled，不要删角色。
  */
 export function normalizeTeamRoleBindings(value: unknown): TeamRoleBinding[] {
-  const defaults = new Map(defaultTeamRoleBindings().map((binding) => [binding.role, binding]))
+  const byRole = new Map<TeamRole, TeamRoleBinding>(defaultTeamRoleBindings().map((binding) => [binding.role, binding]))
   const input = Array.isArray(value) ? value : []
   const seen = new Set<TeamRole>()
   for (const item of input) {
@@ -428,11 +550,11 @@ export function normalizeTeamRoleBindings(value: unknown): TeamRoleBinding[] {
     const role = canonicalTeamRole(record.role)
     if (!isTeamRole(role) || seen.has(role)) continue
     seen.add(role)
-    const base = defaults.get(role)!
+    const base = byRole.get(role)!
     const model = typeof record.model === 'string' ? record.model.trim() : ''
     const effort = typeof record.effort === 'string' ? record.effort.trim().toLowerCase() : ''
     const note = typeof record.note === 'string' ? record.note.trim() : ''
-    defaults.set(role, {
+    byRole.set(role, {
       role,
       model,
       effort: /^[a-z][a-z0-9_-]*$/.test(effort) ? effort : '',
@@ -441,7 +563,7 @@ export function normalizeTeamRoleBindings(value: unknown): TeamRoleBinding[] {
       directEnabled: record.directEnabled !== false,
     })
   }
-  return TEAM_ROLES.map((role) => defaults.get(role)!)
+  return TEAM_ROLES.map((role) => byRole.get(role)!)
 }
 
 /** `provider/modelId` → 可直接交给 pi 的两段；模型 id 本身允许带 `/`。 */
@@ -531,5 +653,110 @@ export function buildTeamPrompt(input: TeamPromptInput): string {
     '- 结束时在回复末尾写两行：`交付摘要：…` 与 `验证：…（实际命令/截图路径；没做就写 unverified）`。',
     '- 缺环境、缺工具、需要用户决定时直接说清阻塞点和下一步，不要用「应该可以」代替实际验证。',
   )
-  return lines.join('\n')
+  return lines.join(LF)
+}
+
+/* ---------------- 新建任务卡 ---------------- */
+
+export type TeamTaskDraft = {
+  title: string
+  role: string
+  status?: TeamStatus
+  wave?: string
+  input?: string
+  output?: string
+  note?: string
+  dependsOn?: string[]
+  acceptance?: string[]
+}
+
+export function nextTeamTaskId(tasks: readonly TeamTask[]): string {
+  let max = 0
+  for (const task of tasks) {
+    const value = Number(task.id.slice(2))
+    if (Number.isFinite(value) && value > max) max = value
+  }
+  return `T-${String(max + 1).padStart(3, '0')}`
+}
+
+/**
+ * 在 markdown 末尾追加一张任务卡与索引行。看板由人工/AI 共同维护时，面板也必须能
+ * 建卡，否则「派发」之前还得让用户手改 markdown。返回新 markdown 与编号。
+ */
+export function appendTeamTask(
+  markdown: string,
+  draft: TeamTaskDraft,
+  tasks: readonly TeamTask[] = parseTeamBoard(markdown).tasks,
+): { ok: true; id: string; markdown: string } | { ok: false; reason: 'empty_title' } {
+  const title = String(draft.title ?? '').replace(/[\r\n]+/g, ' ').trim().slice(0, 200)
+  if (!title) return { ok: false, reason: 'empty_title' }
+  const raw = String(markdown ?? '')
+  const eol = raw.includes(CRLF) ? CRLF : LF
+  let md = normalizeEol(raw)
+  const id = nextTeamTaskId(tasks)
+  const status = normalizeTeamStatus(draft.status ?? '待办')
+  const role = canonicalTeamRole(draft.role)
+  const summary = String(draft.note ?? '').replace(/[\r\n]+/g, ' ').trim()
+  const indexRow = `| ${id} | ${title} | ${role} | ${status} | ${summary} |`
+
+  const lines = md.split(LF)
+  let lastIndexRow = -1
+  let separatorRow = -1
+  for (let i = 0; i < lines.length; i++) {
+    if (parseIndexLine(lines[i])) lastIndexRow = i
+    if (separatorRow < 0 && lines[i].trim().startsWith('|--')) separatorRow = i
+  }
+  if (lastIndexRow >= 0) {
+    lines.splice(lastIndexRow + 1, 0, indexRow)
+  } else if (separatorRow >= 0) {
+    lines.splice(separatorRow + 1, 0, indexRow)
+  } else {
+    lines.push('', '| 编号 | 标题 | 角色 | 状态 | 一句话 |', '|------|------|------|------|--------|', indexRow)
+  }
+
+  const dependsOn = (draft.dependsOn ?? []).map((dep) => String(dep).trim()).filter(Boolean)
+  const acceptance = (draft.acceptance ?? []).map((item) => String(item).trim()).filter(Boolean)
+  const card: string[] = [`### ${id} ${title}`, '', `- 角色：${role}`, `- 状态：${status}`]
+  if (draft.wave?.trim()) card.push(`- 波次：${draft.wave.trim()}`)
+  if (draft.input?.trim()) card.push(`- 输入：${draft.input.trim()}`)
+  if (draft.output?.trim()) card.push(`- 产出：${draft.output.trim()}`)
+  if (dependsOn.length) card.push(`- 依赖：${dependsOn.join('、')}`)
+  if (summary) card.push(`- 备注：${summary}`)
+  card.push('')
+  if (acceptance.length) {
+    for (const item of acceptance) card.push(`- [ ] ${item}`)
+  } else {
+    card.push('- [ ] （补充可验证的验收标准）')
+  }
+
+  const built = lines.join(LF)
+  const cardText = card.join(LF)
+  const archiveIndex = built.indexOf(`${LF}## 归档规则`)
+  let insertAt = archiveIndex
+  if (archiveIndex >= 0) {
+    // 卡片详情在最后一个 `---` 之前结束：把新卡插在详情区末尾，而不是归档规则前。
+    const separator = built.slice(0, archiveIndex).lastIndexOf(`${LF}---`)
+    if (separator >= 0) insertAt = separator
+  }
+  const head = (insertAt >= 0 ? built.slice(0, insertAt) : built).replace(new RegExp(String.fromCharCode(10) + '+$'), '')
+  const tail = insertAt >= 0 ? built.slice(insertAt).replace(new RegExp('^' + String.fromCharCode(10) + '+'), '') : ''
+  md = `${head}${LF}${LF}${cardText}${LF}${tail ? `${LF}${tail}` : ''}`
+
+  return { ok: true, id, markdown: md.split(LF).join(eol) }
+}
+
+/**
+ * 角色坞「直接对话」的开场白：只交代身份、项目路径和等待任务，
+ * 不把任务卡的硬规则整段倒进聊天（那些在派发提示词里）。
+ */
+export function buildTeamRoleIntro(input: { role: string; batch: string; goal: string; specRelativeDir?: string }): string {
+  const role = canonicalTeamRole(input.role)
+  const spec = input.specRelativeDir || TEAM_SPEC_RELATIVE_DIR
+  return [
+    `你是本项目团队的${role}。`,
+    `项目规范目录：${spec}（相对项目根目录）。当前批次：${input.batch || '当前批次'}${input.goal ? `；本轮目标：${input.goal}` : ''}。`,
+    '先读 `00-总入口.md` 与 `PRD.md` 里与你职责相关的章节（存在才读），然后等待用户的具体任务；不要主动改代码。',
+    '用户给任务时，先确认范围与验收标准；需要扩范围、改需求或用户决定时停下说明。',
+    '不要修改看板或角色配置：派发与结果由面板记录。',
+  ].join(LF)
 }

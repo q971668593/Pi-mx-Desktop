@@ -117,7 +117,9 @@
     "gitDesc": "分支、提交记录和同步",
     "browser": "浏览器",
     "browserDesc": "内置浏览器（实验）",
-    "unregistered": "未注册面板: {{id}}"
+    "unregistered": "未注册面板: {{id}}",
+    "team": "工作团队",
+    "teamDesc": "五角色协作看板：任务泳道拖拽改状态、一键派发后台开工"
   },
   "settings": {
     "title": "设置",

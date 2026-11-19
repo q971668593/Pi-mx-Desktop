@@ -7,6 +7,7 @@ import { ProjectSidebar } from '@renderer/features/workspace/project-sidebar'
 import { MainColRightPanelToggle } from '@renderer/components/app/main-col-right-panel-toggle'
 import { MainColumnWithTimelineScroll } from '@renderer/components/app/main-column-with-timeline-scroll'
 import { GoalBar } from '@renderer/features/goal/goal-bar'
+import { TeamBoardAutoSettle } from '@renderer/features/team-board/team-board-auto-settle'
 import { InterruptedRunBanner } from '@renderer/features/run/interrupted-run-banner'
 import { installGoalAutoLoop } from '@renderer/features/goal/goal-auto-loop'
 import { ComposerDock } from '@renderer/components/app/composer-dock'
@@ -385,6 +386,7 @@ export default function App() {
           className="app-viewport flex flex-col overflow-hidden text-foreground"
           style={{ background: 'var(--surface-sidebar)' }}
         >
+          <TeamBoardAutoSettle />
           <TopBar
             onBack={() => {
               useUIStore.getState().requestExtensionConfig(null)
@@ -416,6 +418,7 @@ export default function App() {
         style={{ background: 'var(--surface-sidebar)' }}
       >
         <ImmersiveChrome projectName={projectName} />
+        <TeamBoardAutoSettle />
         <MainLayoutShell
           left={
             <Sidebar>

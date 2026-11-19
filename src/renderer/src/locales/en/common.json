@@ -120,7 +120,9 @@
     "gitDesc": "Branches, commits and sync",
     "browser": "Browser",
     "browserDesc": "Built-in browser (experimental)",
-    "unregistered": "Unregistered panel: {{id}}"
+    "unregistered": "Unregistered panel: {{id}}",
+    "team": "Team",
+    "teamDesc": "Five-role board: drag lanes to change status, dispatch roles in background"
   },
   "settings": {
     "title": "Settings",

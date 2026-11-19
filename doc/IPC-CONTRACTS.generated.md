@@ -4,7 +4,7 @@
 > 事实源：`src/main/**/*.ts` 中的 `registerHandler` / `registerHandlerWithSchema` 调用。
 > 手写文档在 `doc/IPC-CONTRACTS.md`；本文件保证「代码里注册了什么」与「文档里写了什么」不会漂移。
 
-- invoke 通道：**277** 个（唯一）
+- invoke 通道：**287** 个（唯一）
 - main → renderer 事件通道：**12** 个（唯一）
 - 非字面量注册：**0** 处
 - 动态事件通道（通道名非常量，未收录）：**7** 处
@@ -22,6 +22,7 @@
 | `workspace` | 20 |
 | `extensions` | 14 |
 | `desktop` | 12 |
+| `teamBoard` | 10 |
 | `mcp` | 9 |
 | `remote` | 8 |
 | `app` | 7 |
@@ -231,6 +232,21 @@
 | `ipc:desktop.setSleepBlock` | registerHandler | `src/main/ipc/handlers/desktop-chrome.ts` |
 | `ipc:desktop.status` | registerHandler | `src/main/ipc/handlers/desktop-chrome.ts` |
 | `ipc:desktop.whichPi` | registerHandler | `src/main/ipc/handlers/desktop-chrome.ts` |
+
+### teamBoard（10）
+
+| 通道 | 注册方式 | 注册位置 |
+| --- | --- | --- |
+| `ipc:teamBoard.activeRuns` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
+| `ipc:teamBoard.dispatch` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
+| `ipc:teamBoard.init` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
+| `ipc:teamBoard.prompt` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
+| `ipc:teamBoard.roleSession` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
+| `ipc:teamBoard.roles.save` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
+| `ipc:teamBoard.settleRun` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
+| `ipc:teamBoard.snapshot` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
+| `ipc:teamBoard.task.create` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
+| `ipc:teamBoard.taskStatus` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
 
 ### mcp（9）
 

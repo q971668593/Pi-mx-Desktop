@@ -28,6 +28,7 @@ import { registerModelRouterHandlers } from './ipc/handlers/model-routers'
 import { registerRemoteHandlers } from './ipc/handlers/remote'
 import { registerLinkHandlers } from './ipc/handlers/links'
 import { registerWorkspaceTaskHandlers } from './ipc/handlers/workspace-tasks'
+import { registerTeamBoardHandlers } from './ipc/handlers/team-board'
 
 export { registerHandler, sendEvent } from './ipc/registry'
 
@@ -36,6 +37,7 @@ export function registerAllHandlers(): void {
   registerWorkspaceFsHandlers()
   registerWorkspaceHandlers()
   registerWorkspaceTaskHandlers()
+  registerTeamBoardHandlers()
   registerSessionHandlers()
   registerPromptHandlers()
   registerSessionGoalHandlers()

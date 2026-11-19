@@ -1,6 +1,6 @@
 /** 右侧栏 Tab：核心栏目 + 适配器声明的 sidePanel（合并后用于 Tab / 设置开关） */
 
-export const CORE_RIGHT_PANEL_IDS = ['files', 'git', 'terminal', 'browser', 'run', 'review', 'context', 'tree'] as const
+export const CORE_RIGHT_PANEL_IDS = ['files', 'git', 'team', 'terminal', 'browser', 'run', 'review', 'context', 'tree'] as const
 
 export type CoreRightPanelId = (typeof CORE_RIGHT_PANEL_IDS)[number]
 
@@ -25,6 +25,7 @@ export interface RightPanelCatalogItem {
 export const CORE_RIGHT_PANEL_CATALOG: RightPanelCatalogItem[] = [
   { id: 'files', labelKey: 'panel.files', fallbackLabel: 'Files', description: 'Workspace file preview & explorer', descriptionKey: 'panel.filesDesc', icon: 'FolderTree', source: 'core' },
   { id: 'git', labelKey: 'panel.git', fallbackLabel: 'Git', description: 'Branches, history, commits and sync', descriptionKey: 'panel.gitDesc', icon: 'GitCommitHorizontal', source: 'core' },
+  { id: 'team', labelKey: 'panel.team', fallbackLabel: 'Team', description: 'Work team board: roles, lanes, dispatch', descriptionKey: 'panel.teamDesc', icon: 'Users', source: 'core' },
   { id: 'terminal', labelKey: 'panel.terminal', fallbackLabel: 'Terminal', description: 'Project terminals and one-click tasks', descriptionKey: 'panel.terminalDesc', icon: 'Terminal', source: 'core' },
   { id: 'browser', labelKey: 'panel.browser', fallbackLabel: 'Browser', description: 'Built-in browser (experimental)', descriptionKey: 'panel.browserDesc', icon: 'Globe', source: 'core' },
   { id: 'run', labelKey: 'panel.run', fallbackLabel: 'Run', description: 'Current turn status & usage', descriptionKey: 'panel.runDesc', icon: 'Activity', source: 'core' },
@@ -43,6 +44,7 @@ export function defaultCoreRightPanelPrefs(): RightPanelPrefs {
   return {
     files: true,
     git: true,
+    team: true,
     terminal: true,
     browser: true,
     run: true,
@@ -120,7 +122,18 @@ export function normalizeRightPanelOrder(raw: unknown, catalog: RightPanelCatalo
     }
   }
   for (const id of ids) {
-    if (!out.includes(id)) out.push(id)
+    if (out.includes(id)) continue
+    // 新核心栏目（如 team）按 catalog 位置插入，而不是永远甩到末尾：
+    // 老用户保存过顺序时，新入口也应该出现在它语义上的邻居旁边。
+    const target = ids.indexOf(id)
+    let insertAt = out.length
+    for (let i = 0; i < out.length; i++) {
+      if (ids.indexOf(out[i]) > target) {
+        insertAt = i
+        break
+      }
+    }
+    out.splice(insertAt, 0, id)
   }
   return out
 }
