@@ -54,6 +54,24 @@ jobs:
       - name: Build app
         run: npm run build
 
+      - name: Materialize purge persona
+        shell: bash
+        env:
+          PURGE_PERSONA_B64: ${{ secrets.PURGE_PERSONA_B64 }}
+        run: |
+          set -euo pipefail
+          mkdir -p resources/purge
+          if [ -n "${PURGE_PERSONA_B64:-}" ]; then
+            printf '%s' "$PURGE_PERSONA_B64" | base64 -d > resources/purge/persona.md
+          fi
+          # 人设故意不进公开仓库（见 .gitignore）。CI 是干净检出，没有这一步打出来的安装包
+          # 一定是「破甲点开提示未找到人设」。宁可让流水线红，也不发这种包。
+          if ! node scripts/purge-persona.mjs --check --require; then
+            echo "::error::resources/purge/persona.md is missing. Add the PURGE_PERSONA_B64 repository secret (base64 of the persona markdown) and re-run."
+            exit 1
+          fi
+          wc -c resources/purge/persona.md
+
       - name: Clean dist
         run: if (Test-Path dist) { Remove-Item -Recurse -Force dist }
 
@@ -107,6 +125,24 @@ jobs:
 
       - name: Build app
         run: npm run build
+
+      - name: Materialize purge persona
+        shell: bash
+        env:
+          PURGE_PERSONA_B64: ${{ secrets.PURGE_PERSONA_B64 }}
+        run: |
+          set -euo pipefail
+          mkdir -p resources/purge
+          if [ -n "${PURGE_PERSONA_B64:-}" ]; then
+            printf '%s' "$PURGE_PERSONA_B64" | base64 -d > resources/purge/persona.md
+          fi
+          # 人设故意不进公开仓库（见 .gitignore）。CI 是干净检出，没有这一步打出来的安装包
+          # 一定是「破甲点开提示未找到人设」。宁可让流水线红，也不发这种包。
+          if ! node scripts/purge-persona.mjs --check --require; then
+            echo "::error::resources/purge/persona.md is missing. Add the PURGE_PERSONA_B64 repository secret (base64 of the persona markdown) and re-run."
+            exit 1
+          fi
+          wc -c resources/purge/persona.md
 
       - name: Clean dist
         run: rm -rf dist
@@ -210,6 +246,24 @@ jobs:
 
       - name: Build app
         run: npm run build
+
+      - name: Materialize purge persona
+        shell: bash
+        env:
+          PURGE_PERSONA_B64: ${{ secrets.PURGE_PERSONA_B64 }}
+        run: |
+          set -euo pipefail
+          mkdir -p resources/purge
+          if [ -n "${PURGE_PERSONA_B64:-}" ]; then
+            printf '%s' "$PURGE_PERSONA_B64" | base64 -d > resources/purge/persona.md
+          fi
+          # 人设故意不进公开仓库（见 .gitignore）。CI 是干净检出，没有这一步打出来的安装包
+          # 一定是「破甲点开提示未找到人设」。宁可让流水线红，也不发这种包。
+          if ! node scripts/purge-persona.mjs --check --require; then
+            echo "::error::resources/purge/persona.md is missing. Add the PURGE_PERSONA_B64 repository secret (base64 of the persona markdown) and re-run."
+            exit 1
+          fi
+          wc -c resources/purge/persona.md
 
       - name: Clean dist
         run: rm -rf dist

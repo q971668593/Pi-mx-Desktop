@@ -1363,6 +1363,13 @@
       "replace": "replace: persona first, host prompt without its identity line and <docs> block; tool rules stay. Good default.",
       "append": "append: persona prepended, host prompt untouched. Mildest."
     },
+    "modeRecommended": "Recommended",
+    "modeCompareTitle": "How the three modes differ",
+    "modeCompare": {
+      "strict": "Persona + cwd only; the host prompt is dropped entirely (AGENTS.md and the skills list too)",
+      "replace": "Persona first; identity and doc sections of the host prompt are cut, tool rules kept",
+      "append": "Persona prepended to the host prompt; the host prompt is untouched"
+    },
     "mode": {
       "strict": "strict · persona only",
       "replace": "replace · strip identity",

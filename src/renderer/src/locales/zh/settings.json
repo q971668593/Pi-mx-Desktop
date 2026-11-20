@@ -1358,6 +1358,13 @@
       "replace": "replace：人设在前，宿主提示词切掉身份句和 <docs> 文档段，工具规则保留。日常推荐。",
       "append": "append：人设挂在宿主提示词前面，宿主提示词一字不动。最温和。"
     },
+    "modeRecommended": "推荐",
+    "modeCompareTitle": "三档差在哪",
+    "modeCompare": {
+      "strict": "只发人设 + 工作目录；宿主提示词整段丢弃（AGENTS.md、skills 列表也没了）",
+      "replace": "人设在前，宿主提示词切掉身份句与文档段；工具规则保留",
+      "append": "人设挂在宿主提示词前面，宿主提示词一字不动"
+    },
     "mode": {
       "strict": "strict · 只留人设",
       "replace": "replace · 清身份段",

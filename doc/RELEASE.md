@@ -11,6 +11,22 @@
 4. 提交 `release: vX.Y.Z — …` 并打 tag `vX.Y.Z` 推送；CI 构建安装包，并用 `generate-release-notes.mjs` 写入 Release body。
 5. 若 CI body 不理想，在 GitHub Release 页手动改成正式说明。
 
+## 破甲人设（CI 必读）
+
+`resources/purge/persona.md` 故意不进公开仓库（`.gitignore`），但**安装包里必须有**，否则破甲页会显示「安装包没带人设」。
+
+- CI 是干净检出，因此 `build-win / build-mac / build-linux` 里有一道 `Materialize purge persona`：
+  从仓库 secret `PURGE_PERSONA_B64` 解出 `resources/purge/persona.md`，解不出来就**让流水线失败**（不发缺人设的包）。
+- 配 secret（在有那份 md 的机器上执行，直接进剪贴板，不会经过聊天/日志）：
+
+  ```powershell
+  [Convert]::ToBase64String([IO.File]::ReadAllBytes('F:\maxv\PI\pi-app\resources\purge\persona.md')) | Set-Clipboard
+  ```
+
+  然后 GitHub → Settings → Secrets and variables → Actions → New repository secret → 名字 `PURGE_PERSONA_B64`，值粘剪贴板内容。
+- 本地打包不受影响：`npm run package:win` 会先跑 `purge:persona:require`（生成不出人设就中止）。
+- 判定一个安装包带不带人设：`7z l` 打开 `$PLUGINSDIR/app-64.7z`，看 `resources\purge\persona.md` 是否存在。
+
 ## 应用内更新
 
 - 启动后后台检查 GitHub `releases/latest`（设置「自动检查更新」可关；失败静默，不弹窗）。
