@@ -10,6 +10,14 @@ vi.mock('./registry', () => ({
   registerHandler: (channel: string, handler: (request: Record<string, unknown>) => Promise<unknown>) => {
     mocks.handlers.set(channel, handler)
   },
+  // 真的 registry 先跑 zod；测试直接拿 handler，避免每个用例都造合法请求体。
+  registerHandlerWithSchema: (
+    channel: string,
+    _schema: unknown,
+    handler: (request: Record<string, unknown>) => Promise<unknown>,
+  ) => {
+    mocks.handlers.set(channel, handler)
+  },
 }))
 
 vi.mock('../wsl/detection', () => ({

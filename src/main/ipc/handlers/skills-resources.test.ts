@@ -38,6 +38,14 @@ vi.mock('../registry', () => ({
   registerHandler: (channel: string, handler: (request: Record<string, unknown>) => Promise<unknown>) => {
     mocks.handlers.set(channel, handler)
   },
+  // 真的 registry 会先跑 zod；测试直接跳过校验拿到 handler，行为与旧 registerHandler 一致。
+  registerHandlerWithSchema: (
+    channel: string,
+    _schema: unknown,
+    handler: (request: Record<string, unknown>) => Promise<unknown>,
+  ) => {
+    mocks.handlers.set(channel, handler)
+  },
 }))
 vi.mock('../../worker-manager', () => ({
   workerManager: Object.assign(mocks.workerManager, {

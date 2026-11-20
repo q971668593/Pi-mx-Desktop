@@ -374,6 +374,7 @@ export function ShortcutsHelpSheet({
     { keys: formatShortcut(bindings.completionNotification), label: t('common:shortcuts.completionNotification') },
     { keys: 'Esc Esc', label: t('common:shortcuts.sessionTree') },
     { keys: 'Alt ↑', label: t('common:shortcuts.restoreQueue') },
+    { keys: 'Ctrl/⌘ ↵', label: t('common:shortcuts.flushQueue') },
     { keys: 'Esc', label: t('common:shortcuts.stopOrDismiss') },
   ]
 

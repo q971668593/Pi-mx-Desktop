@@ -31,7 +31,11 @@ vi.mock('../registry', () => ({
     channel: string,
     handler: (request: Record<string, unknown>) => Promise<unknown>,
   ) => mocks.handlers.set(channel, handler),
-  registerHandlerWithSchema: vi.fn(),
+  registerHandlerWithSchema: (
+    channel: string,
+    _schema: unknown,
+    handler: (request: Record<string, unknown>) => Promise<unknown>,
+  ) => mocks.handlers.set(channel, handler),
 }))
 vi.mock('../../worker-manager', () => ({
   workerManager: {

@@ -11,7 +11,7 @@ import { authorizeTrustedSessionFile } from '../../trusted-workspace'
 import { getAgentRuntimeConfig, isWslRuntimeActive } from '../../wsl/runtime-config'
 import { resolveActiveAgentDir } from '../../agent-dir'
 import { sessionPreviewProcess } from '../../session-preview-process'
-import { contextPreviewSchema } from '../schemas'
+import { contextPreviewSchema, modelListSchema, modelSetSchema, runtimeGetStateSchema, thinkingLevelSetSchema } from '../schemas'
 import type { ModelEntry } from '../../active-sdk-models'
 import { modelThinkingLevels, MODEL_THINKING_LEVELS } from '@shared/model-thinking-levels'
 import { getSessionModelOverrides } from '../../session-model-overrides-instance'
@@ -54,7 +54,7 @@ async function listModelsOffThread(scope: 'available' | 'catalog'): Promise<read
 }
 
 export function registerModelRuntimeHandlers(): void {
-  registerHandler('ipc:model.list', async (req) => {
+  registerHandlerWithSchema('ipc:model.list', modelListSchema, async (req) => {
     const scope = req?.scope === 'available' ? 'available' : req?.scope === 'settings' ? 'settings' : 'catalog'
     const mapRegistry = (models: readonly ModelEntry[]) =>
       models.map((m) => ({
@@ -156,7 +156,7 @@ export function registerModelRuntimeHandlers(): void {
     }
   }
 
-  registerHandler('ipc:model.set', async (req) => {
+  registerHandlerWithSchema('ipc:model.set', modelSetSchema, async (req) => {
     const sessionFile = String(req.sessionFile || '').trim() || undefined
     let provider: string
     let modelId: string
@@ -190,14 +190,15 @@ export function registerModelRuntimeHandlers(): void {
     thinkingLevel: 'medium',
   }))
 
-  registerHandler('ipc:thinkingLevel.set', async (req) => {
+  registerHandlerWithSchema('ipc:thinkingLevel.set', thinkingLevelSetSchema, async (req) => {
     const sessionFile = String(req.sessionFile || '').trim()
     if (!sessionFile) throw new Error('SESSION_FILE_REQUIRED')
-    await workerManager.setThinkingLevel(req.level, sessionFile)
-    return { level: req.level }
+    const level = String(req.level ?? '').trim()
+    await workerManager.setThinkingLevel(level, sessionFile)
+    return { level }
   })
 
-  registerHandler('ipc:runtime.getState', async (req) => {
+  registerHandlerWithSchema('ipc:runtime.getState', runtimeGetStateSchema, async (req) => {
     const workspaceId = String(req?.workspaceId || '').trim()
     const sessionFile = String(req?.sessionFile || '').trim()
     const stateOpts = { includeTools: req?.includeTools === true }

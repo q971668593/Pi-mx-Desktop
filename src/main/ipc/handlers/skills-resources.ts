@@ -1,6 +1,7 @@
 import { existsSync } from 'fs'
 import { resolve } from 'path'
-import { registerHandler } from '../registry'
+import { registerHandler, registerHandlerWithSchema } from '../registry'
+import { resourcePathSchema, resourceRestoreSchema, resourceWriteSchema, skillSetEnabledSchema, skillTransferSchema } from '../schemas'
 import { workerManager } from '../../worker-manager'
 import { configStore } from '../../config-store'
 import {
@@ -67,7 +68,7 @@ export function registerSkillsResourceHandlers(): void {
     return { ...catalog, candidates, skills: candidates }
   })
 
-  registerHandler('ipc:skills.setEnabled', async (req) => {
+  registerHandlerWithSchema('ipc:skills.setEnabled', skillSetEnabledSchema, async (req) => {
     const key = String(req.key || '')
     if (!key || !workerManager.isRunning) return { ok: false, error: 'SKILL_RUNTIME_NOT_READY' }
     try {
@@ -110,7 +111,7 @@ export function registerSkillsResourceHandlers(): void {
     }
   })
 
-  registerHandler('ipc:skills.transfer', async (req) => {
+  registerHandlerWithSchema('ipc:skills.transfer', skillTransferSchema, async (req) => {
     if (!workerManager.isRunning) return { ok: false, error: 'SKILL_RUNTIME_NOT_READY' }
     try {
       const result = await workerManager.transferSkill(
@@ -204,7 +205,7 @@ export function registerSkillsResourceHandlers(): void {
     }
   })
 
-  registerHandler('ipc:resource.read', async (req) => {
+  registerHandlerWithSchema('ipc:resource.read', resourcePathSchema, async (req) => {
     const path = String(req.path || '')
     if (!path) return { error: 'missing path' }
     if (path === 'pi-desktop://system-prompt-preview') {
@@ -270,7 +271,7 @@ export function registerSkillsResourceHandlers(): void {
     }
   })
 
-  registerHandler('ipc:resource.write', async (req) => {
+  registerHandlerWithSchema('ipc:resource.write', resourceWriteSchema, async (req) => {
     const path = String(req.path || '')
     if (path.startsWith('pi-desktop://')) return { ok: false, error: '只读预览不可保存' }
     const content = String(req.content ?? '')
@@ -285,12 +286,12 @@ export function registerSkillsResourceHandlers(): void {
     }
   })
 
-  registerHandler('ipc:resource.revisions', async (req) => {
+  registerHandlerWithSchema('ipc:resource.revisions', resourcePathSchema, async (req) => {
     const path = String(req.path || '')
     return { revisions: path ? listRevisions(path) : [] }
   })
 
-  registerHandler('ipc:resource.restore', async (req) => {
+  registerHandlerWithSchema('ipc:resource.restore', resourceRestoreSchema, async (req) => {
     const path = String(req.path || '')
     const revisionId = String(req.revisionId || '')
     if (!path || !revisionId) return { ok: false }
@@ -304,7 +305,7 @@ export function registerSkillsResourceHandlers(): void {
     }
   })
 
-  registerHandler('ipc:resource.revision.read', async (req) => {
+  registerHandlerWithSchema('ipc:resource.revision.read', resourceRestoreSchema, async (req) => {
     try {
       return { content: readRevision(String(req.path), String(req.revisionId)) }
     } catch (e: unknown) {

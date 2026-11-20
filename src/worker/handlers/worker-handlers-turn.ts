@@ -202,6 +202,44 @@ export async function handleClearqueue(msg: WorkerIncomingMessage, reply: Worker
         return
 }
 
+/**
+ * 立即发送排队消息（“主动立即发送”，否则继续挂到合适的时机）。
+ *
+ * pi 的队列有两档：steer 在“当前工具批次结束、下一次 LLM 调用前”投递，followUp 要等整轮结束。
+ * 所以“立即”的两种含义：
+ *  - 正在跑：把全部排队消息提升为 steer，落地在最靠前的可投递点（不杀当前工具调用，不丢活）；
+ *  - 已空闲：直接当成一轮新 prompt 发出去，立刻开始。
+ */
+export async function handleFlushqueue(msg: WorkerIncomingMessage, reply: WorkerReply): Promise<void> {
+  const session = st.session
+  if (!session) {
+    reply({ type: 'flushQueue-done', flushed: 0, mode: 'none' })
+    return
+  }
+  const cleared = session.clearQueue()
+  const texts = [...(cleared.steering || []), ...(cleared.followUp || [])]
+    .map((text) => String(text ?? '').trim())
+    .filter(Boolean)
+  if (!texts.length) {
+    reply({ type: 'flushQueue-done', flushed: 0, mode: 'none' })
+    return
+  }
+  const busy = session.isStreaming || st.agentTurnActive
+  if (busy) {
+    try {
+      for (const text of texts) await session.steer(text)
+      reply({ type: 'flushQueue-done', flushed: texts.length, mode: 'steer' })
+    } catch (e: unknown) {
+      reply({ type: 'flushQueue-done', flushed: 0, mode: 'error', error: errorMessage(e) })
+    }
+    return
+  }
+  reply({ type: 'flushQueue-done', flushed: texts.length, mode: 'prompt' })
+  // 空闲时直接开一轮：复用 handlePrompt 的运行账本、run 事件与错误处理。
+  await handlePrompt({ ...msg, type: 'prompt', text: texts.join('\n\n') }, () => {})
+  return
+}
+
 
 export async function handleExtensionUiResponse(msg: WorkerIncomingMessage, reply: WorkerReply): Promise<void> {
         st.uiBridge?.handleExtensionUIResponse(msg.response as ExtensionUIResponse)

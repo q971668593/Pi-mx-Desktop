@@ -6,6 +6,7 @@ import { terminalProfiles, terminals } from '../../terminal/terminal-service'
 import { authorizeProjectCwd } from '../../trusted-workspace'
 import { commandLine, isPathInside, shellSetup, type TaskLaunch } from '../../workspace-tasks'
 
+import { terminalCreateSchema, terminalKillSchema, terminalProfilesSchema, terminalResizeSchema } from '../schemas'
 const runSchema = z.object({
   cwd: z.string().min(1),
   profileId: z.string().optional(),
@@ -18,11 +19,11 @@ const runSchema = z.object({
 }).strict()
 
 export function registerTerminalHandlers(): void {
-  registerHandler('ipc:terminal.profiles', async (req) => {
+  registerHandlerWithSchema('ipc:terminal.profiles', terminalProfilesSchema, async (req) => {
     const refresh = (req as { refresh?: boolean } | null)?.refresh === true
     return { profiles: terminalProfiles(refresh) }
   })
-  registerHandler('ipc:terminal.create', async (req) => {
+  registerHandlerWithSchema('ipc:terminal.create', terminalCreateSchema, async (req) => {
     const r = (req ?? {}) as { profileId?: string; cwd?: string; workspace?: string; rawCommand?: string; cols?: number; rows?: number }
     const all = terminalProfiles()
     const profile = all.find((p) => p.id === r.profileId) ?? all[0]
@@ -60,12 +61,12 @@ export function registerTerminalHandlers(): void {
       return { ok: false, error: error instanceof Error ? error.message : String(error), created }
     }
   })
-  registerHandler('ipc:terminal.resize', async (req) => {
+  registerHandlerWithSchema('ipc:terminal.resize', terminalResizeSchema, async (req) => {
     const r = (req ?? {}) as { id?: string; cols?: number; rows?: number }
     if (r.id) terminals().resize(r.id, Number(r.cols), Number(r.rows))
     return { ok: true }
   })
-  registerHandler('ipc:terminal.kill', async (req) => {
+  registerHandlerWithSchema('ipc:terminal.kill', terminalKillSchema, async (req) => {
     const id = (req as { id?: string } | null)?.id
     if (id) terminals().kill(id)
     return { ok: true }

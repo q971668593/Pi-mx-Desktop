@@ -330,6 +330,10 @@ export interface PurgeState {
   personaChars: number
   /** 安装包里是否带了人设 */
   bundledPersona: boolean
+  /** 实际找到的安装包人设文件；空串 = 没找到 */
+  bundledPersonaFile: string
+  /** 首选查找目录（安装包资源目录），用来解释「为什么找不到」 */
+  bundledDir: string
   error?: string
 }
 export interface PurgeGetStateRequest {}

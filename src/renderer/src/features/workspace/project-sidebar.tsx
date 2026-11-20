@@ -37,7 +37,8 @@ import { moveSidebarItem, useSidebarReorder } from './sidebar-reorder'
 import './project-sidebar.css'
 
 const TEMP_CHATS_OPEN_KEY = 'pi-desktop:sidebar-temp-chats-open'
-const HIDDEN_PROJECTS_KEY = 'pi-desktop:hidden-projects'
+/** 旧版把隐藏项目存在 localStorage，现已迁到主进程 hiddenWorktrees；此键只用于一次性迁移。 */
+const LEGACY_HIDDEN_PROJECTS_KEY = 'pi-desktop:hidden-projects'
 const MANUAL_PROJECT_ORDER_KEY = 'pi-desktop:project-manual-order'
 /** 展开的项目（记住用户手动的展开/折叠，重启后还原，应用自己不会折叠） */
 const EXPANDED_PROJECTS_KEY = 'pi-desktop:expanded-projects'
@@ -114,9 +115,13 @@ export function ProjectSidebar({
   const [sandboxes, setSandboxes] = useState<SandboxEntry[]>([])
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set(readPathList(EXPANDED_PROJECTS_KEY)))
   const [recentProjectsFixedOrder, setRecentProjectsFixedOrder] = useState(false)
-  const [hiddenProjects, setHiddenProjects] = useState(() => readPathList(HIDDEN_PROJECTS_KEY))
+  /** 隐藏项目：主进程 hiddenWorktrees 是唯一事实源，这里存一份组件可见的副本。 */
+  const hiddenProjects = useUIStore((s) => s.hiddenProjects)
+  const setHiddenProjects = useUIStore((s) => s.setHiddenProjects)
   const [manualOrder, setManualOrder] = useState(() => readPathList(MANUAL_PROJECT_ORDER_KEY))
   const [hiddenOpen, setHiddenOpen] = useState(false)
+  /** 用户当场隐藏了「正在打开的那个项目」：只有这种情况才允许当前项目从侧栏消失。 */
+  const [explicitlyHiddenWhileActive, setExplicitlyHiddenWhileActive] = useState<Set<string>>(() => new Set())
   const fixedOrderRef = useRef(false)
   // Temporary chats start collapsed (remembered); they open by themselves when the active
   // conversation lives there (new temp chat / opened sandbox) so it is never hidden.
@@ -136,6 +141,14 @@ export function ProjectSidebar({
   const [sessionScope, setSessionScope] = useState<'project' | 'all'>('project')
   const scopeLabel = t(sessionScope === 'project' ? 'common:sidebar.thisProject' : 'common:sidebar.allProjects')
   const searchActive = sessionQuery.trim().length > 0
+  /** 当前工作区默认不被隐藏/读不到过滤掉，除非用户刚刚亲手隐藏了它。 */
+  const keepVisibleWhileActive = useCallback(
+    (path: string) =>
+      !!currentWorkspace
+      && workspacePathsEqual(path, currentWorkspace)
+      && !explicitlyHiddenWhileActive.has(workspacePathKey(currentWorkspace)),
+    [currentWorkspace, explicitlyHiddenWhileActive],
+  )
   const projectPaths = useMemo(() => {
     const order = projectFolderOrder(
       recentProjects.filter((path) => !isSandboxPath(path)),
@@ -149,8 +162,12 @@ export function ProjectSidebar({
         return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (bi < 0 ? Number.MAX_SAFE_INTEGER : bi)
       })
       : order
-    return sorted.filter((path) => !hiddenProjects.some((hidden) => workspacePathsEqual(hidden, path)))
-  }, [recentProjects, currentWorkspace, recentProjectsFixedOrder, manualOrder, hiddenProjects])
+    // 当前工作区不被「还没同步过来的旧隐藏列表」吞掉（隐藏列表与 workspace.open 是两条 IPC，
+    // 读到旧列表会让正在干活的项目彻底消失）；但用户当场点了隐藏就要真的收起。
+    return sorted.filter((path) =>
+      keepVisibleWhileActive(path) || !hiddenProjects.some((hidden) => workspacePathsEqual(hidden, path)),
+    )
+  }, [recentProjects, currentWorkspace, recentProjectsFixedOrder, manualOrder, hiddenProjects, explicitlyHiddenWhileActive])
 
   const setOrderMode = (fixed: boolean) => {
     fixedOrderRef.current = fixed
@@ -161,30 +178,58 @@ export function ProjectSidebar({
       toast.error('保存排序设置失败，请重试')
     })
   }
+  // 进入某个项目就撤掉「当场隐藏」的记录：之后它若还残留在旧隐藏列表里，
+  // 也要靠 keepVisibleWhileActive 兜住，而不是被同一次点击永久豁免。
+  useEffect(() => {
+    if (!currentKey) return
+    setExplicitlyHiddenWhileActive((previous) => {
+      if (!previous.has(currentKey)) return previous
+      const next = new Set(previous)
+      next.delete(currentKey)
+      return next
+    })
+  }, [currentKey])
   const hideProjects = (paths: string[]) => {
-    const next = uniqueWorkspacePaths([...hiddenProjects, ...paths])
-    setHiddenProjects(next)
-    savePathList(HIDDEN_PROJECTS_KEY, next)
+    const targets = uniqueWorkspacePaths(paths.filter(Boolean))
+    if (!targets.length) return
+    if (currentWorkspace && targets.some((target) => workspacePathsEqual(target, currentWorkspace))) {
+      setExplicitlyHiddenWhileActive((previous) => new Set(previous).add(workspacePathKey(currentWorkspace)))
+    }
+    // 立即隐藏（乐观更新），再以主进程返回的列表校准
+    setHiddenProjects([...hiddenProjects, ...targets])
+    void ipcClient
+      .invoke('project.hide', { paths: targets })
+      .then((res) => {
+        if (Array.isArray(res?.hiddenProjects)) setHiddenProjects(res.hiddenProjects)
+        window.dispatchEvent(new CustomEvent('pi-desktop:settings-changed', { detail: { key: 'hiddenWorktrees' } }))
+      })
+      .catch(() => toast.error('隐藏项目失败，请重试'))
   }
   const restoreProject = async (path: string) => {
-    if (!recentProjects.some((item) => workspacePathsEqual(item, path))) {
-      const recent = capRecentProjects(uniqueWorkspacePaths([path, ...recentProjects]))
-      try {
-        await ipcClient.invoke('settings.set', { key: 'recentProjects', value: recent })
-        useUIStore.setState({ recentProjects: recent })
-      } catch { toast.error('恢复项目失败，请重试'); return }
+    try {
+      // 恢复交给主进程：放回 MRU 并解除隐藏，避免渲染进程拿旧列表整表覆盖冲掉刚加的项目。
+      const res = await ipcClient.invoke('project.restoreRecent', { path })
+      if (res?.ok === false) throw new Error(res?.error || 'restore failed')
+      if (Array.isArray(res?.recentProjects)) useUIStore.setState({ recentProjects: res.recentProjects })
+      if (Array.isArray(res?.hiddenProjects)) setHiddenProjects(res.hiddenProjects)
+      else setHiddenProjects(hiddenProjects.filter((item) => !workspacePathsEqual(item, path)))
+      window.dispatchEvent(new CustomEvent('pi-desktop:settings-changed', { detail: { key: 'hiddenWorktrees' } }))
+    } catch {
+      toast.error('恢复项目失败，请重试')
     }
-    const next = hiddenProjects.filter((item) => !workspacePathsEqual(item, path))
-    setHiddenProjects(next)
-    savePathList(HIDDEN_PROJECTS_KEY, next)
   }
   const worktrees = useProjectWorktrees(projectPaths)
   const projectGroups = useMemo(() => groupSidebarProjects(
-    projectPaths.filter((path) => !worktrees.missingPaths.has(workspacePathKey(path))), worktrees.listings,
+    // 当前工作区不进 missingPaths 的过滤：盘还没就绪时也不能把正在干活的项目从侧栏摘掉
+    projectPaths.filter((path) => keepVisibleWhileActive(path) || !worktrees.missingPaths.has(workspacePathKey(path))),
+    worktrees.listings,
   ).map((group) => ({
     ...group,
-    projects: group.projects.filter((project) => !hiddenProjects.some((hidden) => workspacePathsEqual(hidden, project.path))),
-  })).filter((group) => group.projects.length > 0), [projectPaths, worktrees.listings, worktrees.missingPaths, hiddenProjects])
+    projects: group.projects.filter((project) =>
+      keepVisibleWhileActive(project.path)
+      || !hiddenProjects.some((hidden) => workspacePathsEqual(hidden, project.path)),
+    ),
+  })).filter((group) => group.projects.length > 0), [projectPaths, worktrees.listings, worktrees.missingPaths, hiddenProjects, keepVisibleWhileActive])
   const projectKey = (group: (typeof projectGroups)[number]) =>
     projectPaths.find((path) => group.projects.some((project) => workspacePathsEqual(path, project.path))) || group.projects[0].path
   const projectDrag = useSidebarReorder((source, target, after) => {
@@ -326,10 +371,35 @@ export function ProjectSidebar({
     return () => window.removeEventListener('pi-desktop:sandboxes-changed', onChanged)
   }, [refreshSandboxes])
 
+  /** 仅采纳最新一次重读的结果：迟到的旧响应不能把刚添加/刚恢复的项目冲掉。 */
+  const reloadSeqRef = useRef(0)
+  const hiddenMigrationRef = useRef(false)
+
+  /** 旧版 localStorage 隐藏列表 → 主进程 hiddenWorktrees 的一次性迁移。 */
+  const migrateLegacyHiddenProjects = useCallback(() => {
+    if (hiddenMigrationRef.current) return
+    hiddenMigrationRef.current = true
+    let legacy: string[] = []
+    try {
+      const raw = localStorage.getItem(LEGACY_HIDDEN_PROJECTS_KEY)
+      legacy = raw ? readPathList(LEGACY_HIDDEN_PROJECTS_KEY) : []
+      if (raw) localStorage.removeItem(LEGACY_HIDDEN_PROJECTS_KEY)
+    } catch { return }
+    if (!legacy.length) return
+    void ipcClient
+      .invoke('project.hide', { paths: legacy })
+      .then((res) => {
+        if (Array.isArray(res?.hiddenProjects)) setHiddenProjects(res.hiddenProjects)
+      })
+      .catch(() => {})
+  }, [setHiddenProjects])
+
   const reloadSidebarSettings = useCallback(() => {
+    const seq = ++reloadSeqRef.current
     ipcClient
       .invoke('settings.get', { key: 'recentProjects' })
       .then((res) => {
+        if (seq !== reloadSeqRef.current) return
         if (workspacePathKey(useUIStore.getState().currentWorkspace) !== workspacePathKey(currentWorkspace)) return
         const list = res?.settings?.recentProjects as string[] | undefined
         if (list) {
@@ -347,6 +417,17 @@ export function ProjectSidebar({
             return { recentProjects: next }
           })
         }
+      })
+      .catch(() => {})
+    ipcClient
+      .invoke('settings.get', { key: 'hiddenWorktrees' })
+      .then((res) => {
+        if (seq !== reloadSeqRef.current) return
+        const hidden = res?.settings?.hiddenWorktrees
+        if (Array.isArray(hidden)) {
+          setHiddenProjects(hidden.filter((p): p is string => typeof p === 'string' && !!p))
+        }
+        migrateLegacyHiddenProjects()
       })
       .catch(() => {})
     ipcClient
@@ -374,7 +455,7 @@ export function ProjectSidebar({
         }
       })
       .catch(() => {})
-  }, [currentWorkspace])
+  }, [currentWorkspace, setHiddenProjects, migrateLegacyHiddenProjects])
 
   const handleProjectListChange = useCallback(() => {
     worktrees.refresh()
@@ -396,7 +477,8 @@ export function ProjectSidebar({
         detail.key === 'recentProjects' ||
         detail.key === 'recentProjectsFixedOrder' ||
         detail.key === 'sessionTitleFollowsLatest' ||
-        detail.key === 'projectDisplayNames'
+        detail.key === 'projectDisplayNames' ||
+        detail.key === 'hiddenWorktrees'
       ) {
         reloadSidebarSettings()
       }
@@ -751,6 +833,14 @@ export function ProjectSidebar({
         </div>
         {hiddenOpen && <HiddenProjectsDialog paths={hiddenProjects} name={(path) => resolveProjectDisplayName(projectDisplayNames, path, diskProjectName(path))} onRestore={restoreProject} onClose={() => setHiddenOpen(false)} />}
         {worktrees.failed && <div role="status" className="px-3 pb-2 text-xs text-foreground-secondary">{t('common:sidebar.worktreeReadFailed')}</div>}
+        {worktrees.missingPaths.size > 0 && (
+          <div role="status" className="mx-1 mb-2 flex items-center gap-2 rounded-md border border-dashed border-border/60 px-2 py-1.5 text-[11px] leading-snug text-foreground-secondary">
+            <span className="min-w-0 flex-1">{t('common:sidebar.projectsPathMissing', { count: worktrees.missingPaths.size })}</span>
+            <button type="button" className="workbench-icon shrink-0" onClick={() => worktrees.refresh()}>
+              {t('common:sidebar.recheck')}
+            </button>
+          </div>
+        )}
         {diskPaths.length === 0 ? (
           <button type="button" onClick={onOpenProject}
             className="mx-1 flex w-[calc(100%-0.5rem)] items-center gap-2 rounded-md border border-dashed border-border/70 px-3 py-2.5 text-left text-[12px] text-foreground-secondary hover:border-border hover:text-foreground">

@@ -155,6 +155,12 @@ export interface UIState {
     gitDiff?: { patch: string; staged: boolean; status: string }
   } | null
   recentProjects: string[]
+  /**
+   * 侧栏隐藏的项目 / 工作副本路径。事实源在主进程 hiddenWorktrees，这里只是缓存副本：
+   * 重新打开（添加）同一个项目时主进程会自动解除隐藏，渲染进程不会再自己留一份坑。
+   */
+  hiddenProjects: string[]
+  setHiddenProjects: (paths: string[]) => void
   projectDisplayNames: Record<string, string>
   setWorkspace: (path: string | null) => void
   ephemeralSandboxDraft: boolean

@@ -220,6 +220,18 @@ export const promptTextSchema = z.object({
   capabilities: z.array(z.enum(CAPABILITY_IDS)).max(8).optional(),
 })
 
+/** 立即发送排队消息：只带会话与已开启的能力，队列内容留在 Worker 里。 */
+export const promptFlushQueueSchema = z.object({
+  sessionFile: z.string().optional(),
+  capabilities: z.array(z.enum(CAPABILITY_IDS)).max(8).optional(),
+})
+
+/** 侧栏隐藏项目（可一次隐藏一个仓库组里的多个工作副本）。 */
+export const projectHideSchema = z.object({
+  paths: z.array(z.string().min(1)).max(200).optional(),
+  path: z.string().min(1).optional(),
+})
+
 /** A Tools-menu switch: push the new set to the session's live worker right away. */
 export const capabilityApplySchema = z.object({
   sessionFile: z.string().optional(),
@@ -445,3 +457,230 @@ export const settingsSetSchema = z
       }
     }
   })
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * 类型校验（历史通道）
+ *
+ * 下面这些通道是老写法 registerHandler + `async (req) => …`：preload 只校验通道名，
+ * 请求体原样进主进程。逐一改成强约束会碰到「有的调用方不带参数」「有的会多带字段」的历史行为，
+ * 所以统一用 looseRequest：字段全可选（`undefined` / 缺参都算 `{}`），但**给了就必须是对的类型**，
+ * 未知键原样透传（有些通道会把请求体整体转给 Worker）。
+ * 这样新调用方传错字段类型会被当场拦下，老调用方行为不变。
+ * ──────────────────────────────────────────────────────────────────────────── */
+export function looseRequest<T extends z.ZodRawShape>(shape: T) {
+  const body = z.object(shape).passthrough()
+  type Out = z.infer<typeof body>
+  // 输入侧放宽到 unknown（缺参 / undefined 走空对象），输出侧仍是带类型的对象，
+  // 这样 handler 里 `req.xxx` 有类型，而老调用方什么都不传也不会被拒。
+  const schema = z.preprocess((value) => (value == null ? {} : value), body)
+  return schema as unknown as z.ZodSchema<Out>
+}
+
+export const sessionListSchema = looseRequest({
+  workspaceId: z.string().optional(),
+  refresh: z.boolean().optional(),
+})
+
+export const sessionOpenSchema = looseRequest({
+  sessionId: z.string().optional(),
+  sessionFile: z.string().optional(),
+})
+
+export const sessionBindSchema = looseRequest({
+  sessionFile: z.string().nullable().optional(),
+})
+
+export const sessionVisibleSchema = looseRequest({
+  sessionFile: z.string().nullable().optional(),
+})
+
+export const sessionEphemeralDraftSchema = looseRequest({
+  active: z.boolean().optional(),
+})
+
+export const sessionBranchAnchorsSchema = looseRequest({
+  sessionFile: z.string().optional(),
+})
+
+export const rewindCheckpointsSchema = looseRequest({
+  sessionId: z.string().optional(),
+  sessionFile: z.string().optional(),
+})
+
+export const rewindRunCommandSchema = looseRequest({
+  text: z.string().optional(),
+})
+
+export const sessionForkSchema = looseRequest({
+  title: z.string().optional(),
+  entryId: z.string().optional(),
+  fromMessageId: z.string().optional(),
+  sessionFile: z.string().optional(),
+  workspaceId: z.string().optional(),
+})
+
+export const sessionCloneSchema = looseRequest({
+  title: z.string().optional(),
+  sessionFile: z.string().optional(),
+  workspaceId: z.string().optional(),
+})
+
+export const sessionFileOnlySchema = looseRequest({
+  sessionFile: z.string().optional(),
+})
+
+export const projectRemoveRecentSchema = looseRequest({
+  path: z.string().optional(),
+  isRepositoryGroup: z.boolean().optional(),
+  groupPaths: z.array(z.string()).max(200).optional(),
+  siblingPaths: z.array(z.string()).max(200).optional(),
+})
+
+export const projectPathSchema = looseRequest({
+  path: z.string().optional(),
+})
+
+export const projectRenameSchema = looseRequest({
+  path: z.string().optional(),
+  name: z.string().optional(),
+  isRepositoryGroup: z.boolean().optional(),
+})
+
+export const promptAbortSchema = looseRequest({
+  sessionFile: z.string().optional(),
+})
+
+export const promptDequeueClearQueueSchema = looseRequest({
+  abort: z.boolean().optional(),
+  currentText: z.string().optional(),
+  sessionFile: z.string().optional(),
+})
+
+export const workspaceEnsureWorkerSchema = looseRequest({
+  path: z.string().optional(),
+})
+
+export const workspaceSwitchSchema = looseRequest({
+  workspaceId: z.string().min(1),
+})
+
+export const workspaceSandboxCreateSchema = looseRequest({
+  label: z.string().optional(),
+})
+
+export const workspaceSandboxRenameSchema = looseRequest({
+  path: z.string().optional(),
+  label: z.string().optional(),
+})
+
+export const workspaceIsSandboxSchema = looseRequest({
+  path: z.string().optional(),
+})
+
+export const desktopKillWorkerSchema = looseRequest({
+  sessionFile: z.string().optional(),
+})
+
+export const desktopSleepBlockSchema = looseRequest({
+  on: z.boolean().optional(),
+})
+
+export const notificationsMarkSchema = looseRequest({
+  id: z.string().optional(),
+  unread: z.boolean().optional(),
+})
+
+export const terminalProfilesSchema = looseRequest({
+  refresh: z.boolean().optional(),
+})
+
+export const terminalCreateSchema = looseRequest({
+  profileId: z.string().optional(),
+  cwd: z.string().optional(),
+  workspace: z.string().optional(),
+  rawCommand: z.string().max(8000).optional(),
+  cols: z.number().optional(),
+  rows: z.number().optional(),
+})
+
+export const terminalResizeSchema = looseRequest({
+  id: z.string().optional(),
+  cols: z.number().optional(),
+  rows: z.number().optional(),
+})
+
+export const terminalKillSchema = looseRequest({
+  id: z.string().optional(),
+})
+
+export const skillSetEnabledSchema = looseRequest({
+  key: z.string().optional(),
+  enabled: z.boolean().optional(),
+})
+
+export const skillTransferSchema = looseRequest({
+  key: z.string().optional(),
+  target: z.enum(['project', 'user']).optional(),
+  mode: z.enum(['move', 'copy']).optional(),
+})
+
+export const resourcePathSchema = looseRequest({
+  path: z.string().optional(),
+})
+
+export const resourceWriteSchema = looseRequest({
+  path: z.string().optional(),
+  content: z.string().optional(),
+  revisionLabel: z.string().optional(),
+})
+
+export const resourceRestoreSchema = looseRequest({
+  path: z.string().optional(),
+  revisionId: z.string().optional(),
+})
+
+export const settingsGetSchema = looseRequest({
+  key: z.string().optional(),
+})
+
+export const alertsSignalSchema = looseRequest({
+  kind: z.string().optional(),
+  title: z.string().optional(),
+  body: z.string().optional(),
+})
+
+export const runtimeGetStateSchema = looseRequest({
+  workspaceId: z.string().optional(),
+  sessionFile: z.string().optional(),
+  includeTools: z.boolean().optional(),
+})
+
+export const modelListSchema = looseRequest({
+  scope: z.enum(['available', 'settings', 'catalog']).optional(),
+})
+
+export const modelSetSchema = looseRequest({
+  sessionFile: z.string().optional(),
+  provider: z.string().optional(),
+  modelId: z.string().optional(),
+})
+
+export const thinkingLevelSetSchema = looseRequest({
+  sessionFile: z.string().optional(),
+  level: z.string().optional(),
+})
+
+export const usageSummarySchema = looseRequest({
+  days: z.number().optional(),
+  from: z.number().optional(),
+  to: z.number().optional(),
+})
+
+export const reviewGetDiffSchema = looseRequest({
+  scope: z.string().optional(),
+})
+
+export const wslProbeDistroSchema = looseRequest({
+  distro: z.string().optional(),
+  refresh: z.boolean().optional(),
+})

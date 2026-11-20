@@ -14,7 +14,7 @@ import { join, relative } from 'node:path'
  * The rest are registered here as a budget: it may only go down. When you convert a
  * handler to `registerHandlerWithSchema`, lower MAX_UNVALIDATED_REQUESTS in the same commit.
  */
-const MAX_UNVALIDATED_REQUESTS = 99
+const MAX_UNVALIDATED_REQUESTS = 55
 const root = process.cwd()
 
 function mainSources(dir) {

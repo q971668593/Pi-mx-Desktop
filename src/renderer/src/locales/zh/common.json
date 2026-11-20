@@ -42,6 +42,8 @@
     "toggleProject": "展开或收起 {{name}} 的会话",
     "refreshProjects": "刷新项目与会话",
     "worktreeReadFailed": "部分工作副本读取失败，可点击刷新重试。",
+    "projectsPathMissing": "{{count}} 个项目路径暂时读不到（盘符/网络盘未就绪），已从列表收起。",
+    "recheck": "重新检测",
     "sessionReadFailed": "会话读取失败，请重试。",
     "rename": "重命名",
     "delete": "删除",
@@ -83,7 +85,8 @@
     "forkChooseMessage": "选择其它消息…",
     "existingForks": "已有分叉",
     "forkedFrom": "分叉自：{{title}}",
-    "teamSession": "工作团队 · {{role}}",
+    "teamSession": "工作团队 · {{role}}",
+
     "undoRemove": "撤销",
     "restored": "项目已放回列表",
     "restoreFailed": "恢复失败",
@@ -374,6 +377,7 @@
     "completionNotification": "进入最新完成通知",
     "sessionTree": "打开会话树浮层",
     "restoreQueue": "将排队消息拉回输入框",
+    "flushQueue": "立即发送排队消息",
     "stopOrDismiss": "停止运行 / 关闭浮层",
     "navOnly": "仅导航 — 不新增 Agent 能力。",
     "listen": "按下新快捷键…"

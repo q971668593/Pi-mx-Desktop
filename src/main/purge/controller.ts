@@ -30,8 +30,12 @@ export interface PurgeState extends PurgeConfig {
   personaFile: string
   personaExists: boolean
   personaChars: number
-  /** 安装包里是否带了人设（没带就只能手动指定 source） */
+  /** 安装包里是否带了人设（没带就只能手动指定 source 或导入） */
   bundledPersona: boolean
+  /** 实际找到的安装包人设文件；没找到是空串 */
+  bundledPersonaFile: string
+  /** 首选查找目录（安装包资源目录），用来解释「为什么会找不到」 */
+  bundledDir: string
   error?: string
 }
 
@@ -43,8 +47,36 @@ export function bundledPurgeDir(appPath: string, resourcesPath: string, packaged
   return packaged ? join(resourcesPath, 'purge') : join(appPath, 'resources', 'purge')
 }
 
-function currentBundledDir(): string {
-  return bundledPurgeDir(app.getAppPath(), process.resourcesPath, app.isPackaged)
+/**
+ * 安装包内人设的查找顺序。
+ *
+ * 正常情况下只有第一个（resources/purge）。后面几个是「机器上找不到时自己救回来」的口子：
+ * 把 persona.md 放到 exe 旁边（或 exe 旁的 purge/、resources/purge/）再点「重新安装」，
+ * 就能在不重装、不重打包的情况下补上人设 —— 老安装包没带人设的情况也能救。
+ */
+export function bundledPurgeCandidates(appPath: string, resourcesPath: string, executablePath: string, packaged: boolean): string[] {
+  const dir = dirname(executablePath)
+  return [
+    bundledPurgeDir(appPath, resourcesPath, packaged),
+    join(dir, 'purge'),
+    join(dir, 'resources', 'purge'),
+    dir,
+  ]
+}
+
+function currentBundledCandidates(): string[] {
+  return bundledPurgeCandidates(app.getAppPath(), process.resourcesPath, process.execPath, app.isPackaged)
+}
+
+function firstDirWith(candidates: readonly string[], file: string): string | null {
+  for (const dir of candidates) {
+    try {
+      if (existsSync(join(dir, file))) return dir
+    } catch {
+      /* 无权限/路径异常：继续看下一个候选 */
+    }
+  }
+  return null
 }
 
 export function purgePaths(agentDir: string = resolveActiveAgentDir()): {
@@ -93,28 +125,29 @@ function charCount(file: string): number {
  *   - 扩展：以安装包为准，每次启动覆盖一份，随版本升级自动更新。
  *   - 人设：只在「没有」时补一份，用户改过的内容不会被盖掉。
  */
-export function ensurePurgeInstalled(options?: { agentDir?: string; bundledDir?: string }): {
+export function ensurePurgeInstalled(options?: { agentDir?: string; bundledDir?: string; bundledDirs?: string[] }): {
   extensionInstalled: boolean
   personaInstalled: boolean
   bundledPersona: boolean
   error?: string
 } {
   const agentDir = options?.agentDir ?? resolveActiveAgentDir()
-  const bundledDir = options?.bundledDir ?? currentBundledDir()
+  const candidates = options?.bundledDirs
+    ?? (options?.bundledDir ? [options.bundledDir] : currentBundledCandidates())
   const paths = purgePaths(agentDir)
-  const bundledExt = join(bundledDir, EXTENSION_FILE)
-  const bundledPersona = join(bundledDir, 'persona.md')
+  const extensionDir = firstDirWith(candidates, EXTENSION_FILE)
+  const personaDir = firstDirWith(candidates, 'persona.md')
   const result = {
     extensionInstalled: false,
     personaInstalled: false,
-    bundledPersona: existsSync(bundledPersona),
+    bundledPersona: personaDir !== null,
     error: undefined as string | undefined,
   }
 
   try {
-    if (existsSync(bundledExt)) {
+    if (extensionDir) {
       mkdirSync(join(agentDir, 'extensions'), { recursive: true })
-      copyFileSync(bundledExt, paths.extensionFile)
+      copyFileSync(join(extensionDir, EXTENSION_FILE), paths.extensionFile)
       result.extensionInstalled = true
     }
   } catch (error) {
@@ -122,9 +155,9 @@ export function ensurePurgeInstalled(options?: { agentDir?: string; bundledDir?:
   }
 
   try {
-    if (result.bundledPersona && !existsSync(paths.personaFile)) {
+    if (personaDir && !existsSync(paths.personaFile)) {
       mkdirSync(paths.purgeDir, { recursive: true })
-      copyFileSync(bundledPersona, paths.personaFile)
+      copyFileSync(join(personaDir, 'persona.md'), paths.personaFile)
       result.personaInstalled = true
     }
   } catch (error) {
@@ -134,12 +167,14 @@ export function ensurePurgeInstalled(options?: { agentDir?: string; bundledDir?:
   return result
 }
 
-export function getPurgeState(options?: { agentDir?: string; bundledDir?: string }): PurgeState {
+export function getPurgeState(options?: { agentDir?: string; bundledDir?: string; bundledDirs?: string[] }): PurgeState {
   const agentDir = options?.agentDir ?? resolveActiveAgentDir()
-  const bundledDir = options?.bundledDir ?? currentBundledDir()
+  const candidates = options?.bundledDirs
+    ?? (options?.bundledDir ? [options.bundledDir] : currentBundledCandidates())
   const paths = purgePaths(agentDir)
   const { config, error } = readConfigFile(paths.configFile)
   const personaFile = config.source.trim() || paths.personaFile
+  const personaDir = firstDirWith(candidates, 'persona.md')
   const state: PurgeState = {
     ...config,
     configFile: paths.configFile,
@@ -148,7 +183,9 @@ export function getPurgeState(options?: { agentDir?: string; bundledDir?: string
     personaFile,
     personaExists: existsSync(personaFile),
     personaChars: charCount(personaFile),
-    bundledPersona: existsSync(join(bundledDir, 'persona.md')),
+    bundledPersona: personaDir !== null,
+    bundledPersonaFile: personaDir ? join(personaDir, 'persona.md') : '',
+    bundledDir: candidates[0] ?? '',
   }
   if (error) state.error = error
   return state

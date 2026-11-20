@@ -247,6 +247,19 @@ export const configStore = {
     }
   },
 
+  /**
+   * 解除隐藏（恢复项目 / 重新添加项目）。
+   *
+   * 侧栏「隐藏项目」和「从列表移除」共用 hiddenWorktrees 这一份主进程列表：只有一份事实源，
+   * 用户再次主动打开/添加同一个文件夹时（addRecentProject）自动解除隐藏，不会出现
+   * 「明明又打开了却始终看不见」的情况。
+   */
+  unhideProject(path: string): void {
+    const hidden = store.get('hiddenWorktrees') || []
+    if (!hidden.some((p: string) => workspacePathsEqual(p, path))) return
+    store.set('hiddenWorktrees', hidden.filter((p: string) => !workspacePathsEqual(p, path)))
+  },
+
   setProjectDisplayName(path: string, name: string, isRepositoryGroup = false): void {
     const key = projectDisplayNameKey(path, isRepositoryGroup)
     if (!key) return

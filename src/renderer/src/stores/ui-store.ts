@@ -20,7 +20,7 @@ import {
 import { createShellSlice, DEFAULT_RIGHT_PANEL_WIDTH, projectPanelKey } from '@renderer/stores/ui-store-shell-slice'
 import { coerceActivePanel } from '@shared/right-panels'
 import { createRuntimeSlice } from '@renderer/stores/ui-store-runtime-slice'
-import { workspacePathKey } from '@shared/workspace-path'
+import { workspacePathKey, uniqueWorkspacePaths } from '@shared/workspace-path'
 import { isAbortQueueIgnoreActive } from '@renderer/lib/abort-ui-hold'
 import { createSessionSlice, sessionMirror } from '@renderer/stores/ui-store-session-slice'
 import {
@@ -312,6 +312,8 @@ export const useUIStore = create<UIState>()(
   setPendingTurnStage: (stage) => set({ pendingTurnStage: stage }),
   pendingSteering: [],
   pendingFollowUp: [],
+  hiddenProjects: [],
+  setHiddenProjects: (paths) => set({ hiddenProjects: uniqueWorkspacePaths(paths) }),
   composerWidget: null,
   adapterWidgetExpandedBySession: {},
   setComposerWidget: (state) => set({ composerWidget: state }),

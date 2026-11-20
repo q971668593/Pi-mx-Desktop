@@ -12,13 +12,13 @@ import {
 import { sessionPreviewProcess } from '../../session-preview-process'
 import { awaitWslVm } from '../../wsl/wsl-env'
 import { registerHandler, registerHandlerWithSchema } from '../registry'
-import { workspaceOpenSchema, workspaceSandboxDeleteSchema } from '../schemas'
+import { workspaceEnsureWorkerSchema, workspaceIsSandboxSchema, workspaceOpenSchema, workspaceSandboxCreateSchema, workspaceSandboxDeleteSchema, workspaceSandboxRenameSchema, workspaceSwitchSchema } from '../schemas'
 import { errorMessage } from '@shared/error-message'
 import { getMainWindow } from '../../window'
 import { refreshGitWorkspaceWatch } from '../../git-workspace-watch'
 
 export function registerWorkspaceHandlers(): void {
-  registerHandler('ipc:workspace.ensureWorker', async (req) => {
+  registerHandlerWithSchema('ipc:workspace.ensureWorker', workspaceEnsureWorkerSchema, async (req) => {
     const path = String(req?.path || '').trim()
     if (!path) return { ok: false, workspaceId: '', error: 'missing path' }
     configStore.set('currentProject', path)
@@ -58,7 +58,7 @@ export function registerWorkspaceHandlers(): void {
     return { workspaceId: path, path, name }
   })
 
-  registerHandler('ipc:workspace.switch', async (req) => {
+  registerHandlerWithSchema('ipc:workspace.switch', workspaceSwitchSchema, async (req) => {
     const result = await workerManager.start(req.workspaceId)
     void refreshGitWorkspaceWatch(getMainWindow())
     return {
@@ -69,7 +69,7 @@ export function registerWorkspaceHandlers(): void {
     }
   })
 
-  registerHandler('ipc:workspace.sandbox.create', async (req) => {
+  registerHandlerWithSchema('ipc:workspace.sandbox.create', workspaceSandboxCreateSchema, async (req) => {
     const box = createSandboxWorkspace(req.label)
     return { sandbox: { ...box, kind: 'sandbox' as const } }
   })
@@ -94,15 +94,15 @@ export function registerWorkspaceHandlers(): void {
     return { sandboxes }
   })
 
-  registerHandler('ipc:workspace.sandbox.rename', async (req) => {
-    return { ok: renameSandboxWorkspace(req.path, req.label || '') }
+  registerHandlerWithSchema('ipc:workspace.sandbox.rename', workspaceSandboxRenameSchema, async (req) => {
+    return { ok: renameSandboxWorkspace(String(req.path || ''), req.label || '') }
   })
 
   registerHandlerWithSchema('ipc:workspace.sandbox.delete', workspaceSandboxDeleteSchema, async (req) => {
     return { ok: deleteSandboxWorkspace(req.path) }
   })
 
-  registerHandler('ipc:workspace.isSandbox', async (req) => {
+  registerHandlerWithSchema('ipc:workspace.isSandbox', workspaceIsSandboxSchema, async (req) => {
     return { sandbox: isSandboxWorkspacePath(req.path || '') }
   })
 }

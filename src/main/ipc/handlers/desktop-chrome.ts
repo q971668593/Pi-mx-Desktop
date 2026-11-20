@@ -1,5 +1,6 @@
 import { app, powerSaveBlocker, dialog } from 'electron'
 import { registerHandler, registerHandlerWithSchema } from '../registry'
+import { desktopKillWorkerSchema, desktopSleepBlockSchema, notificationsMarkSchema } from '../schemas'
 import { z } from 'zod'
 import { workspacePathsEqual } from '@shared/workspace-path'
 import { configStore } from '../../config-store'
@@ -16,11 +17,11 @@ let sleepBlocker: number | null = null
 
 export function registerDesktopChromeHandlers(): void {
   registerHandler('ipc:notifications.inbox', async () => ({ items: listCompletionInbox() }))
-  registerHandler('ipc:notifications.markUnread', async (req) => {
+  registerHandlerWithSchema('ipc:notifications.markUnread', notificationsMarkSchema, async (req) => {
     markCompletionInboxUnread(String(req.id || ''), req.unread !== false)
     return { ok: true }
   })
-  registerHandler('ipc:notifications.markRead', async (req) => {
+  registerHandlerWithSchema('ipc:notifications.markRead', notificationsMarkSchema, async (req) => {
     markCompletionInboxRead(String(req.id || ''))
     return { ok: true }
   })
@@ -42,14 +43,14 @@ export function registerDesktopChromeHandlers(): void {
     }
   })
 
-  registerHandler('ipc:desktop.killWorker', async (req) => {
+  registerHandlerWithSchema('ipc:desktop.killWorker', desktopKillWorkerSchema, async (req) => {
     const file = String(req.sessionFile || '')
     if (!file) return { ok: false }
     await workerManager.abort(file)
     return { ok: true }
   })
 
-  registerHandler('ipc:desktop.setSleepBlock', async (req) => {
+  registerHandlerWithSchema('ipc:desktop.setSleepBlock', desktopSleepBlockSchema, async (req) => {
     const on = req.on === true
     if (on && sleepBlocker == null) {
       sleepBlocker = powerSaveBlocker.start('prevent-app-suspension')

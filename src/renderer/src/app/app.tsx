@@ -23,7 +23,7 @@ import { onAppEvent, onWorkerExit, onNotificationOpenSession, ipcClient } from '
 import { handleNotificationOpenSession } from '@renderer/lib/notification-open-session'
 
 import { activateWorkspace } from '@renderer/lib/activate-workspace'
-import { resolveProjectDisplayName } from '@shared/workspace-path'
+import { resolveProjectDisplayName, workspacePathsEqual } from '@shared/workspace-path'
 import { ensureWorkspaceWorkerOnBoot } from '@renderer/lib/ensure-workspace-worker'
 import { refreshComposerRunDisplay } from '@renderer/lib/composer-run-display'
 import { useExtensionUIStore } from '@renderer/stores/extension-ui-store'
@@ -346,6 +346,11 @@ export default function App() {
   }
 
   const recentProjects = useUIStore((s) => s.recentProjects)
+  const hiddenProjects = useUIStore((s) => s.hiddenProjects)
+  // 首页/欢迎页的“最近项目”也遵守侧栏隐藏：隐藏了却在另一个入口冒出来等于没隐藏。
+  const visibleRecentProjects = recentProjects.filter(
+    (path) => !hiddenProjects.some((hidden) => workspacePathsEqual(hidden, path)),
+  )
   const fileChanges = useUIStore((s) => s.fileChanges)
   const { gitData } = useReviewGitData({
     enabled: !!currentWorkspace,
@@ -448,7 +453,7 @@ export default function App() {
                     subtitle={
                       ephemeralSandboxDraft ? t('common:home.firstMsgIsTitle') : undefined
                     }
-                    recentProjects={recentProjects}
+                    recentProjects={visibleRecentProjects}
                     currentWorkspace={currentWorkspace}
                     ephemeralSandboxDraft={ephemeralSandboxDraft}
                     onSelectProject={(p) => void handleSelectProject(p)}

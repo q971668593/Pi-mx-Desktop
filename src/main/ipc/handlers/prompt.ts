@@ -7,7 +7,7 @@ import { readActionableImage, resolveActionableImage } from '../../image-file-ac
 import { capabilityCatalog, setInstalledCapabilityTools } from '../../capabilities/catalog'
 import { applySessionCapabilities } from '../../capabilities/session-apply'
 import { clipboard, nativeImage } from 'electron'
-import { capabilityApplySchema, clipboardReadTempImageSchema, clipboardWriteTempImageSchema, dialogSaveImageSchema, promptTextSchema } from '../schemas'
+import { capabilityApplySchema, clipboardReadTempImageSchema, clipboardWriteTempImageSchema, dialogSaveImageSchema, promptAbortSchema, promptDequeueClearQueueSchema, promptFlushQueueSchema, promptTextSchema } from '../schemas'
 import { configStore } from '../../config-store'
 import { isComputerCapabilityTool, isWebSearchCapabilityTool } from '@shared/capabilities'
 
@@ -139,7 +139,7 @@ export function registerPromptHandlers(): void {
     }
   })
 
-  registerHandler('ipc:prompt.abort', async (req) => {
+  registerHandlerWithSchema('ipc:prompt.abort', promptAbortSchema, async (req) => {
     const sessionFile = req?.sessionFile as string | undefined
     if (!sessionFile) {
       return { aborted: false, ignored: true, reason: 'session_required' }
@@ -165,7 +165,35 @@ export function registerPromptHandlers(): void {
     return { aborted: true }
   })
 
-  registerHandler('ipc:prompt.dequeueClearQueue', async (req) => {
+  /**
+   * 立即发送排队消息（需对话运行中 / 已绑定时才有队列）。
+   * 走与发送同一套绑定流程：空闲时这一下会真的开新一轮。
+   */
+  registerHandlerWithSchema('ipc:prompt.flushQueue', promptFlushQueueSchema, async (req) => {
+    const sessionFile = typeof req?.sessionFile === 'string' ? req.sessionFile : undefined
+    if (!(await workerMatchesSession(sessionFile))) {
+      return { flushed: 0, mode: 'none' as const, ignored: true }
+    }
+    // 队列只存在于活着的 Worker 里：没有 Worker 就等于没有排队消息，别为“清一个空队列”起进程。
+    if (!sessionFile || !workerManager.hasLiveSession(sessionFile)) {
+      return { flushed: 0, mode: 'none' as const }
+    }
+    try {
+      const bind = await bindBeforePrompt(sessionFile)
+      await applyCapabilities(req)
+      const res = await workerManager.flushQueue(sessionFile)
+      return {
+        ...res,
+        model: bind?.model,
+        thinkingLevel: bind?.thinkingLevel,
+        modelFallbackMessage: bind?.modelFallbackMessage,
+      }
+    } catch (e: unknown) {
+      return { flushed: 0, mode: 'error' as const, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
+  registerHandlerWithSchema('ipc:prompt.dequeueClearQueue', promptDequeueClearQueueSchema, async (req) => {
     const abort = !!req?.abort
     const currentText = typeof req?.currentText === 'string' ? req.currentText : ''
     const sessionFile = req?.sessionFile as string | undefined

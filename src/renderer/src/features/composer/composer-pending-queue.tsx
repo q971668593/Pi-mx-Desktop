@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ListOrdered } from '@renderer/components/icons'
+import { ListOrdered, Send } from '@renderer/components/icons'
 import { useUIStore } from '@renderer/stores/ui-store'
+import { flushQueuedMessages } from '@renderer/lib/composer-queue-flush'
 
 function truncateLine(text: string, max = 120): string {
   const normalized = text.replace(/\s+/g, ' ').trim()
@@ -13,9 +15,20 @@ export function ComposerPendingQueue() {
   const { t } = useTranslation()
   const steering = useUIStore((s) => s.pendingSteering)
   const followUp = useUIStore((s) => s.pendingFollowUp)
+  const [flushing, setFlushing] = useState(false)
   if (steering.length === 0 && followUp.length === 0) return null
 
   const total = steering.length + followUp.length
+
+  const flushNow = async () => {
+    if (flushing) return
+    setFlushing(true)
+    try {
+      await flushQueuedMessages()
+    } finally {
+      setFlushing(false)
+    }
+  }
 
   return (
     <div
@@ -25,7 +38,19 @@ export function ComposerPendingQueue() {
     >
       <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-foreground-secondary/60">
         <ListOrdered className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
-        <span>{t('composer:queueTitle', { count: total })}</span>
+        <span className="min-w-0 flex-1 truncate">{t('composer:queueTitle', { count: total })}</span>
+        {/* 默认保持“挂起来，到点自动送”；这个按钮只是把送出的时机提前到用户想要的时候 */}
+        <button
+          type="button"
+          className="composer-queue-flush inline-flex shrink-0 items-center gap-1 rounded border border-border/50 px-1.5 py-[1px] text-[10px] font-medium text-foreground-secondary/80 hover:border-border hover:text-foreground disabled:opacity-50"
+          title={t('composer:queueFlushHint')}
+          aria-label={t('composer:queueFlush')}
+          disabled={flushing}
+          onClick={() => void flushNow()}
+        >
+          <Send className="h-2.5 w-2.5" aria-hidden />
+          {flushing ? t('composer:queueFlushing') : t('composer:queueFlush')}
+        </button>
       </div>
       <ul className="space-y-0.5">
         {steering.map((msg, index) => (

@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { executeSlashCommand, isExecutableBuiltin } from './slash-exec'
 import { restoreQueuedToComposer } from '@renderer/lib/composer-queue-restore'
+import { flushQueuedMessages } from '@renderer/lib/composer-queue-flush'
 import type { WorkspaceFsSearchEntry } from '@shared/ipc-contract'
 import type { SlashCommand } from './composer-constants'
 import { applyThinkingLevel, nextThinkingLevel } from './thinking-level-actions'
@@ -121,6 +122,15 @@ export function useComposerKeyDown(opts: {
         e.preventDefault()
         void runComposerAbort(text)
         return
+      }
+      // Ctrl/⌘+Enter：把排队消息立刻送出去（队列空时退回普通发送）
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !alt && !e.shiftKey) {
+        const { pendingSteering, pendingFollowUp } = useUIStore.getState()
+        if (pendingSteering.length + pendingFollowUp.length > 0) {
+          e.preventDefault()
+          void flushQueuedMessages()
+          return
+        }
       }
       if (alt && e.key === 'Enter') {
         e.preventDefault()

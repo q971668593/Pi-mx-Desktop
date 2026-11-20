@@ -26,6 +26,8 @@ function state(patch: Partial<PurgeState> = {}): PurgeState {
     personaExists: true,
     personaChars: 20926,
     bundledPersona: true,
+    bundledPersonaFile: 'C:/app/resources/purge/persona.md',
+    bundledDir: 'C:/app/resources/purge',
     ...patch,
   }
 }

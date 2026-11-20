@@ -19,6 +19,7 @@ vi.mock('../agent-dir', () => ({
 }))
 
 import {
+  bundledPurgeCandidates,
   bundledPurgeDir,
   ensurePurgeInstalled,
   getPurgeState,
@@ -54,6 +55,47 @@ describe('bundledPurgeDir', () => {
   it('打包后指向 resources/purge，开发时指向仓库 resources/purge', () => {
     expect(bundledPurgeDir('/app', '/app-res', true)).toBe(join('/app-res', 'purge'))
     expect(bundledPurgeDir('/repo', '/app-res', false)).toBe(join('/repo', 'resources', 'purge'))
+  })
+})
+
+describe('bundledPurgeCandidates', () => {
+  it('先看安装包资源目录，再看 exe 旁边（手工补人设的救命口）', () => {
+    const dirs = bundledPurgeCandidates('/app', '/app-res', '/exe/Pi mx.exe', true)
+    expect(dirs[0]).toBe(join('/app-res', 'purge'))
+    expect(dirs).toContain(join('/exe', 'purge'))
+    expect(dirs).toContain(join('/exe', 'resources', 'purge'))
+    expect(dirs).toContain('/exe')
+  })
+})
+
+describe('ensurePurgeInstalled 的兜底查找', () => {
+  it('安装包目录没有人设、exe 旁边有：照样能补上（老安装包的救法）', () => {
+    const agentDir = makeTempDir('pi-purge-agent-')
+    const resourcesDir = makeTempDir('pi-purge-res-')
+    writeFileSync(join(resourcesDir, 'pi-app-purge.ts'), 'EXT', 'utf8')
+    const exeDir = makeTempDir('pi-purge-exe-')
+    writeFileSync(join(exeDir, 'persona.md'), 'EXE_PERSONA', 'utf8')
+
+    const result = ensurePurgeInstalled({ agentDir, bundledDirs: [resourcesDir, exeDir] })
+    const paths = purgePaths(agentDir)
+
+    expect(result.extensionInstalled).toBe(true)
+    expect(result.personaInstalled).toBe(true)
+    expect(result.bundledPersona).toBe(true)
+    expect(readFileSync(paths.personaFile, 'utf8')).toBe('EXE_PERSONA')
+  })
+
+  it('哪里都没有人设：如实报告 bundledPersona=false，不假装成功', () => {
+    const agentDir = makeTempDir('pi-purge-agent-')
+    const resourcesDir = makeTempDir('pi-purge-res-')
+    writeFileSync(join(resourcesDir, 'pi-app-purge.ts'), 'EXT', 'utf8')
+
+    const result = ensurePurgeInstalled({ agentDir, bundledDirs: [resourcesDir] })
+
+    expect(result.extensionInstalled).toBe(true)
+    expect(result.personaInstalled).toBe(false)
+    expect(result.bundledPersona).toBe(false)
+    expect(existsSync(purgePaths(agentDir).personaFile)).toBe(false)
   })
 })
 

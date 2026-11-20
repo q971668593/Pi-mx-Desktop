@@ -1,4 +1,5 @@
-import { registerHandler } from '../registry'
+import { registerHandler, registerHandlerWithSchema } from '../registry'
+import { usageSummarySchema } from '../schemas'
 import { resolveActiveAgentDir } from '../../agent-dir'
 import { sessionPreviewProcess } from '../../session-preview-process'
 
@@ -6,7 +7,7 @@ const DAY = 86_400_000
 
 export function registerUsageHandlers(): void {
   /** Settings → Usage: totals for the last `days` local days (today included; 0 = all time), or an explicit range. */
-  registerHandler('ipc:usage.summary', async (req) => {
+  registerHandlerWithSchema('ipc:usage.summary', usageSummarySchema, async (req) => {
     const r = (req ?? {}) as { days?: number; from?: number; to?: number }
     const offsetMin = -new Date().getTimezoneOffset()
     const now = Date.now()

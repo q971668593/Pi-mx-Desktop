@@ -30,6 +30,21 @@ import { sessionPreviewText } from '@shared/session-preview-text'
 import type { PiSessionMessage } from '@shared/worker-message'
 import { registerHandler, registerHandlerWithSchema } from '../registry'
 import {
+  projectHideSchema,
+  projectPathSchema,
+  projectRemoveRecentSchema,
+  projectRenameSchema,
+  rewindCheckpointsSchema,
+  rewindRunCommandSchema,
+  sessionBindSchema,
+  sessionBranchAnchorsSchema,
+  sessionCloneSchema,
+  sessionEphemeralDraftSchema,
+  sessionFileOnlySchema,
+  sessionForkSchema,
+  sessionListSchema,
+  sessionOpenSchema,
+  sessionVisibleSchema,
   sessionCompactSchema,
   sessionDeleteSchema,
   sessionExportSchema,
@@ -55,7 +70,7 @@ function timeMs(value: unknown): number {
 }
 
 export function registerSessionHandlers(): void {
-  registerHandler('ipc:session.list', async (req) => {
+  registerHandlerWithSchema('ipc:session.list', sessionListSchema, async (req) => {
     const workspaceId = req.workspaceId || workerManager.cwd || configStore.get('currentProject') || ''
     if (workspaceId && req.refresh === true) {
       await sessionPreviewProcess.invalidateListSessions(workspaceId)
@@ -149,7 +164,7 @@ export function registerSessionHandlers(): void {
       () => workerManager.isWorkspaceRunning(authorized.cwd))
   })
 
-  registerHandler('ipc:session.open', async (req) => {
+  registerHandlerWithSchema('ipc:session.open', sessionOpenSchema, async (req) => {
     const sessionId = req.sessionId
     if (req.sessionFile) {
       setPendingWorkerSessionFile(req.sessionFile)
@@ -168,7 +183,7 @@ export function registerSessionHandlers(): void {
     }
   })
 
-  registerHandler('ipc:session.setPendingBind', async (req) => {
+  registerHandlerWithSchema('ipc:session.setPendingBind', sessionBindSchema, async (req) => {
     const sessionFile = req.sessionFile ?? null
     setPendingWorkerSessionFile(sessionFile)
     if (sessionFile) {
@@ -188,7 +203,7 @@ export function registerSessionHandlers(): void {
     return { ok: true }
   })
 
-  registerHandler('ipc:session.setVisible', async (req) => {
+  registerHandlerWithSchema('ipc:session.setVisible', sessionVisibleSchema, async (req) => {
     setVisibleSessionFile(typeof req.sessionFile === 'string' ? req.sessionFile : null)
     return { ok: true }
   })
@@ -219,7 +234,7 @@ export function registerSessionHandlers(): void {
     }
   })
 
-  registerHandler('ipc:session.setEphemeralDraft', async (req) => {
+  registerHandlerWithSchema('ipc:session.setEphemeralDraft', sessionEphemeralDraftSchema, async (req) => {
     setPendingEphemeralSandboxDraft(!!req.active)
     if (req.active) setPendingWorkerSessionFile(null)
     return { ok: true }
@@ -306,7 +321,7 @@ export function registerSessionHandlers(): void {
     }
   })
 
-  registerHandler('ipc:session.branchAnchors', async (req) => {
+  registerHandlerWithSchema('ipc:session.branchAnchors', sessionBranchAnchorsSchema, async (req) => {
     const file =
       req.sessionFile ||
       ((await workerManager.getState().catch(() => null)) as { sessionFile?: string } | null)?.sessionFile
@@ -314,7 +329,7 @@ export function registerSessionHandlers(): void {
     return { anchors: listMessageAnchorsFromSessionFile(file) }
   })
 
-  registerHandler('ipc:rewind.checkpoints', async (req) => {
+  registerHandlerWithSchema('ipc:rewind.checkpoints', rewindCheckpointsSchema, async (req) => {
     const cwd = workerManager.cwd || configStore.get('currentProject') || ''
     if (!cwd) return { checkpoints: [] }
     let sessionId = req.sessionId as string | undefined
@@ -326,7 +341,7 @@ export function registerSessionHandlers(): void {
     return { checkpoints: listRewindCheckpoints(cwd, sessionId || undefined) }
   })
 
-  registerHandler('ipc:rewind.runCommand', async (req) => {
+  registerHandlerWithSchema('ipc:rewind.runCommand', rewindRunCommandSchema, async (req) => {
     await workerManager.runExtensionCommand(String(req.text || '/rewind').trim())
     return { ok: true }
   })
@@ -409,7 +424,7 @@ export function registerSessionHandlers(): void {
     }
   })
 
-  registerHandler('ipc:session.fork', async (req) => {
+  registerHandlerWithSchema('ipc:session.fork', sessionForkSchema, async (req) => {
     const title = String(req?.title || '')
     const entryId = String(req?.entryId || req?.fromMessageId || '').trim()
     const sessionFile = String(req?.sessionFile || '').trim()
@@ -520,7 +535,7 @@ export function registerSessionHandlers(): void {
     }
   })
 
-  registerHandler('ipc:session.clone', async (req) => {
+  registerHandlerWithSchema('ipc:session.clone', sessionCloneSchema, async (req) => {
     const title = String(req?.title || '')
     const sessionFile = String(req?.sessionFile || '').trim()
     const workspaceId = String(req?.workspaceId || workerManager.cwd || configStore.get('currentProject') || '')
@@ -609,7 +624,7 @@ export function registerSessionHandlers(): void {
     }
   })
 
-  registerHandler('ipc:session.forkCandidates', async (req) => {
+  registerHandlerWithSchema('ipc:session.forkCandidates', sessionFileOnlySchema, async (req) => {
     const sessionFile = String(req?.sessionFile || '').trim()
     try {
       if (!sessionFile) return { messages: [] }
@@ -657,7 +672,7 @@ export function registerSessionHandlers(): void {
     return { ok: !!r.ok, error: r.error }
   })
 
-  registerHandler('ipc:session.reloadFromDisk', async (req) => {
+  registerHandlerWithSchema('ipc:session.reloadFromDisk', sessionFileOnlySchema, async (req) => {
     const sessionFile =
       (req.sessionFile as string | undefined) || getPendingWorkerSessionFile() || undefined
     if (!sessionFile) return { ok: false, error: 'no session file' }
@@ -672,7 +687,7 @@ export function registerSessionHandlers(): void {
     }
   })
 
-  registerHandler('ipc:project.removeRecent', async (req) => {
+  registerHandlerWithSchema('ipc:project.removeRecent', projectRemoveRecentSchema, async (req) => {
     const path = (req.path as string | undefined)?.trim()
     if (!path) return { ok: false, error: 'missing path' }
     const isRepositoryGroup = req.isRepositoryGroup === true
@@ -711,15 +726,40 @@ export function registerSessionHandlers(): void {
     }
   })
 
-  registerHandler('ipc:project.restoreRecent', async (req) => {
-    // 「移除项目」误点后的撤销：放回 MRU，并解掉 hiddenWorktrees 的隐藏。
+  registerHandlerWithSchema('ipc:project.restoreRecent', projectPathSchema, async (req) => {
+    // 「移除项目 / 隐藏项目」误点后的撤销：放回 MRU，并解掉 hiddenWorktrees 的隐藏。
     const path = (req.path as string | undefined)?.trim()
     if (!path) return { ok: false, error: 'missing path' }
     configStore.addRecentProject(path)
-    return { ok: true, currentProject: configStore.get('currentProject'), recentProjects: configStore.get('recentProjects') || [] }
+    if (typeof configStore.unhideProject === 'function') configStore.unhideProject(path)
+    return {
+      ok: true,
+      currentProject: configStore.get('currentProject'),
+      recentProjects: configStore.get('recentProjects') || [],
+      hiddenProjects: configStore.get('hiddenWorktrees') || [],
+    }
   })
 
-  registerHandler('ipc:project.rename', async (req) => {
+  /**
+   * 侧栏「隐藏项目」。
+   *
+   * 隐藏状态存主进程（hiddenWorktrees），不再只存渲染进程 localStorage：
+   * 之前两套列表并存，重新添加同一个文件夹时只解了主进程那份，localStorage 那份还在，
+   * 于是项目被永久“吞掉”，只能去隐藏抽屉里手动恢复。
+   */
+  registerHandlerWithSchema('ipc:project.hide', projectHideSchema, async (req) => {
+    const raw = Array.isArray(req.paths) ? (req.paths as unknown[]) : req.path ? [req.path] : []
+    const paths = raw
+      .map((p) => (typeof p === 'string' ? p.trim() : ''))
+      .filter((p): p is string => !!p)
+    if (!paths.length) return { ok: false, error: 'missing path' }
+    for (const path of paths) {
+      if (typeof configStore.hideWorktree === 'function') configStore.hideWorktree(path)
+    }
+    return { ok: true, hiddenProjects: configStore.get('hiddenWorktrees') || [] }
+  })
+
+  registerHandlerWithSchema('ipc:project.rename', projectRenameSchema, async (req) => {
     const path = (req.path as string | undefined)?.trim()
     if (!path) return { ok: false, error: 'missing path' }
     const name = typeof req.name === 'string' ? req.name.trim() : ''

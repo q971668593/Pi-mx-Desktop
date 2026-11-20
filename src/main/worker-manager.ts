@@ -732,6 +732,33 @@ export class WorkerManager {
     const r = await this.request('clearQueue', sessionFile ? { sessionFile } : {})
     return { steering: (r.steering as string[]) || [], followUp: (r.followUp as string[]) || [] }
   }
+  /**
+   * 立即发送排队消息。与 dispatchPrompt 同一套运行账本：空闲时这一下会开新一轮，
+   * 所以要提前占住 run claim，失败回退，不让 UI 卡在“运行中”。
+   */
+  async flushQueue(sessionFile?: string): Promise<{ flushed: number; mode: 'steer' | 'prompt' | 'none' | 'error'; error?: string }> {
+    const slot = await this.resolveSlotForRpc(sessionFile)
+    const key = normalizeSessionKey(slot.sessionFile || sessionFile || '')
+    await this.pushGoalBeforeTurn(key || undefined)
+    const claim = key && !slot.stopping && !slot.agentTurnActive && !this.activeRuns.has(key)
+      ? this.claimRun(key, slot)
+      : null
+    try {
+      const r = await this.requestOnSlot(slot, 'flushQueue', { sessionFile })
+      return {
+        flushed: typeof r.flushed === 'number' ? r.flushed : 0,
+        mode: (r.mode as 'steer' | 'prompt' | 'none' | 'error') || 'none',
+        error: typeof r.error === 'string' ? r.error : undefined,
+      }
+    } catch (error) {
+      if (claim && this.activeRuns.get(key) === claim && !claim.runId && !slot.agentTurnActive) {
+        this.activeRuns.delete(key)
+        getRunLedger().releaseRun(key)
+        this.applyDeferredModelReload(slot.poolKey)
+      }
+      throw error
+    }
+  }
   async setModel(provider: string, modelId: string, sessionFile?: string): Promise<string> {
     return (await this.setModelWithThinking(provider, modelId, sessionFile)).modelId
   }

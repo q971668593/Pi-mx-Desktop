@@ -9,6 +9,7 @@ import { workerManager } from '../../worker-manager'
 import { invalidateSdkManagerCaches } from '../../sdk-manager'
 import { sessionPreviewProcess } from '../../session-preview-process'
 import { registerHandler, registerHandlerWithSchema, sendEvent } from '../registry'
+import { alertsSignalSchema, settingsGetSchema } from '../schemas'
 import { settingsSetSchema } from '../schemas'
 import { remoteTap } from '../../remote/tap'
 import { getPythonRuntimeStatus, installLatestPython, openPythonDownloads } from '../../python-runtime'
@@ -30,7 +31,7 @@ export function registerSettingsHandlers(): void {
     return { ok: true }
   })
 
-  registerHandler('ipc:settings.get', async (req) => {
+  registerHandlerWithSchema('ipc:settings.get', settingsGetSchema, async (req) => {
     if (req.key) {
       const key = req.key as keyof StoreSchema
       if (key === 'asrConfig') {
@@ -161,7 +162,7 @@ export function registerSettingsHandlers(): void {
     })
   })
 
-  registerHandler('ipc:alerts.signal', async (req) => {
+  registerHandlerWithSchema('ipc:alerts.signal', alertsSignalSchema, async (req) => {
     const { traceAudio } = await import('../../audio-trace')
     traceAudio('ipc.alerts.signal', {
       kind: req.kind,

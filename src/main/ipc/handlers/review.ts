@@ -1,5 +1,5 @@
 import { registerHandler, registerHandlerWithSchema } from '../registry'
-import { reviewMutationSchema } from '../schemas'
+import { reviewGetDiffSchema, reviewMutationSchema } from '../schemas'
 import { workerManager } from '../../worker-manager'
 import { configStore } from '../../config-store'
 import { readGitWorkspaceSnapshot, stageHunks, unstageHunks } from '../../git-workspace'
@@ -10,7 +10,7 @@ function reviewMutationCwd(reqCwd?: string): { ok: true; cwd: string } | { ok: f
 }
 
 export function registerReviewHandlers(): void {
-  registerHandler('ipc:review.getDiff', async (req) => {
+  registerHandlerWithSchema('ipc:review.getDiff', reviewGetDiffSchema, async (req) => {
     const cwd = getTrustedWorkspaceRoot() || process.cwd()
     if (req.scope === 'git') {
       const snap = await readGitWorkspaceSnapshot(cwd)

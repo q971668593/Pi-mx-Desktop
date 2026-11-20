@@ -182,6 +182,14 @@ export function PurgeSettings() {
             {state?.personaExists ? t('settings:purge.personaChars', { chars: state.personaChars }) : t('settings:purge.personaMissing')}
           </span>
         </SettingRow>
+        <SettingRow
+          label={t('settings:purge.bundledPersona')}
+          description={state?.bundledPersona ? state?.bundledPersonaFile : state?.bundledDir}
+        >
+          <span className={state?.bundledPersona ? 'text-[12px] text-emerald-600' : 'text-[12px] text-foreground-secondary'}>
+            {state?.bundledPersona ? t('settings:purge.bundledPersonaOk') : t('settings:purge.bundledPersonaMissing')}
+          </span>
+        </SettingRow>
         <SettingRow label={t('settings:purge.extensionFile')} description={state?.extensionFile}>
           <span className={state?.extensionInstalled ? 'text-[12px] text-emerald-600' : 'text-[12px] text-destructive'}>
             {state?.extensionInstalled ? t('settings:purge.extensionOk') : t('settings:purge.extensionMissing')}
@@ -194,7 +202,11 @@ export function PurgeSettings() {
 
       {!ready && (
         <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-[12.5px] leading-relaxed text-amber-700">
-          {state?.extensionInstalled === false ? t('settings:purge.needReinstall') : t('settings:purge.needPersona')}
+          {state?.extensionInstalled === false
+            ? t('settings:purge.needReinstall')
+            : state?.bundledPersona === false
+              ? t('settings:purge.needPersonaNoBundle')
+              : t('settings:purge.needPersona')}
         </div>
       )}
       <div className="mt-3 px-1 text-[12px] leading-relaxed text-foreground-secondary">{t('settings:purge.footer')}</div>

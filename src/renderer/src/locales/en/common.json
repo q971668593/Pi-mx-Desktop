@@ -45,6 +45,8 @@
     "toggleProject": "Expand or collapse sessions in {{name}}",
     "refreshProjects": "Refresh projects and sessions",
     "worktreeReadFailed": "Some worktrees could not be loaded. Refresh to try again.",
+    "projectsPathMissing": "{{count}} project path(s) unreachable (drive/share not ready), folded away for now.",
+    "recheck": "Recheck",
     "sessionReadFailed": "Sessions could not be loaded. Please try again.",
     "rename": "Rename",
     "delete": "Delete",
@@ -86,7 +88,8 @@
     "forkChooseMessage": "Choose another message…",
     "existingForks": "Existing forks",
     "forkedFrom": "Forked from: {{title}}",
-    "teamSession": "Work team · {{role}}",
+    "teamSession": "Work team · {{role}}",
+
     "undoRemove": "Undo",
     "restored": "Project restored",
     "restoreFailed": "Could not restore the project",
@@ -380,6 +383,7 @@
     "completionNotification": "Focus latest completion notification",
     "sessionTree": "Open session tree overlay",
     "restoreQueue": "Restore queued message into composer",
+    "flushQueue": "Send queued messages now",
     "stopOrDismiss": "Stop run / dismiss overlay",
     "navOnly": "Navigation only — no new agent capabilities.",
     "listen": "Press a new shortcut…"
