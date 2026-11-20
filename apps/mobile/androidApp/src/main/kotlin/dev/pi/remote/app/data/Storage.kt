@@ -159,6 +159,18 @@ class TimelineCache(private val root: File) {
 
     fun saveInbox(hostId: String, sessions: List<SessionSummary>) = write(File(hostDir(hostId), "inbox.json"), RemoteJson.encodeToString(ListSerializer(SessionSummary.serializer()), sessions))
 
+    /** 宿主那边已经删掉的会话：连缓存一起丢掉，别再出现在列表里。 */
+    fun pruneInbox(alive: Set<String>) {
+        val dir = root
+        dir.listFiles()?.filter { it.isDirectory }?.forEach { host ->
+            val sessions = runCatching {
+                RemoteJson.decodeFromString(ListSerializer(SessionSummary.serializer()), File(host, "inbox.json").readText())
+            }.getOrNull() ?: return@forEach
+            val kept = sessions.filter { it.sessionKey in alive }
+            if (kept.size != sessions.size) saveInbox(host.name, kept)
+        }
+    }
+
     fun loadTimeline(hostId: String, key: String): SessionTimeline? =
         runCatching { RemoteJson.decodeFromString(CachedTimeline.serializer(), File(hostDir(hostId), "turns/${name(key)}.json").readText()).toTimeline() }.getOrNull()
 

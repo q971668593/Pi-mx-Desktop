@@ -54,6 +54,7 @@ data class HelloResult(
 @Serializable data class WatchListParams(val projectId: String? = null)
 @Serializable data class SessionList(val sessions: List<SessionSummary>)
 @Serializable data class SessionKeyParams(val sessionKey: String)
+@Serializable data class DeleteResult(val deleted: Boolean)
 @Serializable data class OpenParams(val sessionKey: String, val cursor: Cursor? = null)
 
 @Serializable
@@ -113,6 +114,11 @@ data class GitCommit(
     val at: Long,
     val refs: List<String>? = null,
 )
+
+@Serializable data class FileWriteParams(val sessionKey: String, val path: String, val content: String, val expectedRevision: String? = null)
+@Serializable data class FileWriteResult(val size: Long, val revision: String)
+
+@Serializable data class ProjectSetHiddenParams(val projectId: String, val hidden: Boolean)
 
 @Serializable data class GitLogParams(val sessionKey: String, val limit: Int? = null)
 @Serializable data class GitLogResult(val isRepo: Boolean, val commits: List<GitCommit>)
@@ -179,6 +185,7 @@ object RemoteMethods {
         "session.unwatchList" to (Empty.serializer() to Empty.serializer()),
         "session.open" to (OpenParams.serializer() to OpenResult.serializer()),
         "session.close" to (SessionKeyParams.serializer() to Empty.serializer()),
+        "session.delete" to (SessionKeyParams.serializer() to DeleteResult.serializer()),
         "turn.page" to (PageParams.serializer() to PageResult.serializer()),
         "turn.toolDetail" to (ToolDetailParams.serializer() to ToolDetailResult.serializer()),
         "turn.send" to (SendParams.serializer() to SendResult.serializer()),
@@ -187,6 +194,8 @@ object RemoteMethods {
         "review.diff" to (ReviewDiffParams.serializer() to ReviewDiffResult.serializer()),
         "file.search" to (FileSearchParams.serializer() to FileSearchResult.serializer()),
         "file.read" to (FileReadParams.serializer() to FileReadResult.serializer()),
+        "file.write" to (FileWriteParams.serializer() to FileWriteResult.serializer()),
+        "project.setHidden" to (ProjectSetHiddenParams.serializer() to Empty.serializer()),
         "git.log" to (GitLogParams.serializer() to GitLogResult.serializer()),
         "session.stats" to (SessionKeyParams.serializer() to SessionStatsResult.serializer()),
         "command.list" to (SessionKeyParams.serializer() to CommandListResult.serializer()),

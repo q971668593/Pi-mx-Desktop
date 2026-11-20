@@ -14,6 +14,12 @@
     "copy": "复制目标与验收项",
     "copied": "已复制",
     "loopStalled": "自动循环已暂停：连续几轮没有进展，还剩 {{count}} 项未达成",
-    "loopCapped": "自动循环已到轮数上限，还剩 {{count}} 项未达成"
+    "loopCapped": "自动循环已到轮数上限，还剩 {{count}} 项未达成",
+    "running": "进行中",
+    "paused": "已暂停",
+    "stop": "终止",
+    "stopping": "正在终止…",
+    "start": "再次启动",
+    "starting": "启动中…"
   }
 }

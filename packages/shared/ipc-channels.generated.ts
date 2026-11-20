@@ -247,6 +247,7 @@ export const IPC_INVOKE_CHANNELS = [
   'ipc:sessionGoal.continue',
   'ipc:sessionGoal.get',
   'ipc:sessionGoal.markDone',
+  'ipc:sessionGoal.resume',
   'ipc:sessionGoal.set',
   'ipc:sessionGoal.toggleCriterion',
   'ipc:settings.get',

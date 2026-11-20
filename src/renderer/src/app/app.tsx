@@ -446,7 +446,7 @@ export default function App() {
           center={
             <SplitView>
             <MainColumnWithTimelineScroll className="h-full">
-              {!showHome ? <><InterruptedRunBanner /><GoalBar /></> : null}
+              {!showHome ? <InterruptedRunBanner /> : null}
               {showHome ? (
                 <Suspense fallback={<ShellSuspenseFallback label={t('common:loading')} />}>
                   <ProjectHomeView
@@ -466,6 +466,8 @@ export default function App() {
               )}
               <MainColRightPanelToggle />
               <ComposerDock heroMode={showHome}>
+                {/* 会话目标：贴着输入框的一条窄条，进行中可终止、可再次启动、可删除。 */}
+                {!showHome ? <GoalBar /> : null}
                 {/* 确认问题不再整屏弹窗：贴在输入框上方，可折叠，答完自动收起。 */}
                 <QuestionnaireDock />
                 {/* The agent waiting on the user in their Chrome: answerable right above the composer. */}

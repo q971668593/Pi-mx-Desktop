@@ -6,6 +6,8 @@ import { cn } from '@renderer/lib/utils'
 import { parseGoalCriteriaText } from '@shared/session-goal'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useSessionGoalStore } from '@renderer/stores/session-goal-store'
+import { ipcClient } from '@renderer/lib/ipc-client'
+import { abortAgentTurn } from '@renderer/lib/composer-abort'
 
 /**
  * 会话目标条：钉在时间线顶部的一个窄条。
@@ -31,6 +33,9 @@ export function GoalBar({ className }: { className?: string }) {
   const [expanded, setExpanded] = useState(true)
   /** 两段式清除：误点一次不该把目标（以及注入给模型的 goal 段）直接抹掉。 */
   const [confirmClear, setConfirmClear] = useState(false)
+  const [stopping, setStopping] = useState(false)
+  const [starting, setStarting] = useState(false)
+  const running = useUIStore((state) => state.sessionRuntimeRunning)
   const [goalDraft, setGoalDraft] = useState('')
   const [criteriaDraft, setCriteriaDraft] = useState('')
   const [saving, setSaving] = useState(false)
@@ -151,8 +156,8 @@ export function GoalBar({ className }: { className?: string }) {
   )
 
   return (
-    <div className={cn('shrink-0 px-4 pt-2 sm:px-6', className)} data-goal-bar>
-      <div className="rounded-lg border border-border/50 bg-card/50 px-2.5 py-1.5">
+    <div className={cn('shrink-0', className)} data-goal-bar>
+      <div className="mb-2 rounded-lg border border-border/60 bg-card/70 px-2.5 py-1.5 shadow-sm">
         {editing ? (
           editor
         ) : !goal ? (
@@ -182,17 +187,66 @@ export function GoalBar({ className }: { className?: string }) {
                   <CheckCircle2 className="h-3 w-3" />
                   {t('goal:bar.done')}
                 </span>
-              ) : goal.criteria.length > 0 ? (
+              ) : (
+                <span
+                  className={cn(
+                    'shrink-0 rounded px-1.5 py-0.5 text-[11px]',
+                    running || autoRun
+                      ? 'bg-primary/10 text-primary'
+                      : 'bg-[var(--bg-hover)] text-foreground-secondary',
+                  )}
+                >
+                  {t(running || autoRun ? 'goal:bar.running' : 'goal:bar.paused')}
+                </span>
+              )}
+              {remaining > 0 && goal.criteria.length > 0 ? (
                 <span className="shrink-0 rounded bg-[var(--bg-hover)] px-1.5 py-0.5 text-[11px] text-foreground-secondary">
                   {t('goal:bar.remaining', { count: remaining })}
                 </span>
               ) : null}
               <div className="flex shrink-0 items-center gap-0.5">
-                {remaining > 0 && (
-                  <button type="button" aria-pressed={autoRun} onClick={() => setAutoRun(sessionFile, !autoRun)}
-                    className="rounded px-1.5 py-0.5 text-[11px] hover:bg-[var(--bg-hover)] aria-pressed:text-accent">
-                    {t(autoRun ? 'goal:bar.pauseAutoRun' : 'goal:bar.enableAutoRun')}
-                  </button>
+                {remaining === 0 ? null : (
+                  <>
+                    {running || autoRun ? (
+                      <button
+                        type="button"
+                        disabled={stopping}
+                        onClick={() => {
+                          setStopping(true)
+                          void (async () => {
+                            try {
+                              setAutoRun(sessionFile, false)
+                              await abortAgentTurn()
+                            } finally {
+                              setStopping(false)
+                            }
+                          })()
+                        }}
+                        className="rounded px-1.5 py-0.5 text-[11px] text-foreground-secondary hover:bg-[var(--bg-hover)] hover:text-destructive disabled:opacity-50"
+                      >
+                        {t(stopping ? 'goal:bar.stopping' : 'goal:bar.stop')}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={starting}
+                        onClick={() => {
+                          setStarting(true)
+                          void (async () => {
+                            try {
+                              setAutoRun(sessionFile, true)
+                              await ipcClient.invoke('sessionGoal.resume', { sessionFile })
+                            } finally {
+                              setStarting(false)
+                            }
+                          })()
+                        }}
+                        className="rounded px-1.5 py-0.5 text-[11px] text-foreground-secondary hover:bg-[var(--bg-hover)] hover:text-foreground disabled:opacity-50"
+                      >
+                        {t(starting ? 'goal:bar.starting' : 'goal:bar.start')}
+                      </button>
+                    )}
+                  </>
                 )}
                 {goal.criteria.length > 0 ? (
                   <button

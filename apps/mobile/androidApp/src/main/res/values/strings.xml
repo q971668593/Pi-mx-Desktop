@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">pi Remote</string>
+    <string name="app_name">Pi mx Remote</string>
     <string name="hosts_title">Connect your computer</string>
     <string name="hosts_desc">Open pi Desktop on your computer, go to Settings › Mobile and scan the QR code. Your phone and computer need to be on the same local network, or in the same Tailscale / ZeroTier / WireGuard network.</string>
     <string name="hosts_scan">Scan to connect</string>
@@ -40,6 +40,12 @@
     <string name="inbox_running">Running</string>
     <string name="inbox_recent">Recent</string>
     <string name="inbox_empty">No sessions yet</string>
+    <string name="inbox_search">搜索项目或会话</string>
+    <string name="inbox_no_project_match">没有匹配的项目</string>
+    <string name="inbox_project_empty">这个项目下还没有会话</string>
+    <string name="inbox_hidden_group">已隐藏 · %d（与电脑同步）</string>
+    <string name="inbox_unhide">恢复这个项目</string>
+    <string name="inbox_hide">隐藏这个项目（同步到电脑）</string>
     <string name="inbox_new">New session</string>
     <string name="inbox_hosts">Switch computer</string>
     <string name="ago_now">now</string>
@@ -166,6 +172,11 @@
     <string name="notif_failed">Failed: %1$s</string>
     <string name="notif_keepalive">Waiting for %1$d running task(s)</string>
     <string name="menu_language">Language</string>
+    <string name="session_retry">Try again</string>
+    <string name="session_opening">Opening the session…</string>
+    <string name="session_connecting">Connecting to the desktop…</string>
+    <string name="session_delete_title">Delete this conversation?</string>
+    <string name="session_delete_confirm">Delete</string>
     <string name="session_untitled">New chat</string>
     <string name="menu_theme">Theme</string>
     <string name="theme_system">System</string>
@@ -221,6 +232,21 @@
     <string name="review_remove_comment">Remove comment</string>
     <string name="review_insert">Insert into message</string>
     <plurals name="review_comment_count"><item quantity="one">%d comment</item><item quantity="other">%d comments</item></plurals>
+    <string name="panel_tab_files">Files</string>
+    <string name="panel_tab_git">Git</string>
+    <string name="panel_tab_team">Team</string>
+    <string name="panel_tab_terminal">Terminal</string>
+    <string name="panel_tab_browser">Browser</string>
+    <string name="panel_edit">Edit</string>
+    <string name="panel_cancel">Cancel</string>
+    <string name="panel_save">Save</string>
+    <string name="panel_saving">Saving…</string>
+    <string name="panel_saved">Saved</string>
+    <string name="panel_save_failed">Save refused (file changed on the desktop?)</string>
+    <string name="panel_team_empty">No board file found at %s</string>
+    <string name="panel_terminal_hint">The terminal lives in the desktop window; open it there.</string>
+    <string name="panel_browser_hint">The built-in browser is a desktop surface only.</string>
+    <string name="panel_desktop_only">This tab needs the desktop app.</string>
     <string name="panel_git">Recent commits</string>
     <string name="panel_project_files">Project files</string>
     <string name="git_title">Commits</string>

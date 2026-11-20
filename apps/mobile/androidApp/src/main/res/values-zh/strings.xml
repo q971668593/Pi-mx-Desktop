@@ -39,6 +39,12 @@
     <string name="inbox_running">运行中</string>
     <string name="inbox_recent">最近</string>
     <string name="inbox_empty">还没有会话</string>
+    <string name="inbox_search">搜索项目或会话</string>
+    <string name="inbox_no_project_match">没有匹配的项目</string>
+    <string name="inbox_project_empty">这个项目下还没有会话</string>
+    <string name="inbox_hidden_group">已隐藏 · %d（与电脑同步）</string>
+    <string name="inbox_unhide">恢复这个项目</string>
+    <string name="inbox_hide">隐藏这个项目（同步到电脑）</string>
     <string name="inbox_new">新建会话</string>
     <string name="inbox_hosts">切换电脑</string>
     <string name="ago_now">刚刚</string>
@@ -165,6 +171,11 @@
     <string name="notif_failed">失败：%1$s</string>
     <string name="notif_keepalive">正在等待 %1$d 个任务完成</string>
     <string name="menu_language">语言</string>
+    <string name="session_retry">重新连接</string>
+    <string name="session_opening">正在打开会话…</string>
+    <string name="session_connecting">正在连接电脑…</string>
+    <string name="session_delete_title">删除这个对话？</string>
+    <string name="session_delete_confirm">删除</string>
     <string name="session_untitled">新对话</string>
     <string name="menu_theme">主题</string>
     <string name="theme_system">跟随系统</string>
@@ -220,6 +231,21 @@
     <string name="review_remove_comment">删除批注</string>
     <string name="review_insert">插入输入框</string>
     <plurals name="review_comment_count"><item quantity="other">%d 条批注</item></plurals>
+    <string name="panel_tab_files">文件</string>
+    <string name="panel_tab_git">Git</string>
+    <string name="panel_tab_team">工作团队</string>
+    <string name="panel_tab_terminal">终端</string>
+    <string name="panel_tab_browser">浏览器</string>
+    <string name="panel_edit">编辑</string>
+    <string name="panel_cancel">取消</string>
+    <string name="panel_save">保存</string>
+    <string name="panel_saving">保存中…</string>
+    <string name="panel_saved">已保存</string>
+    <string name="panel_save_failed">保存被拒（文件已在电脑上改动？）</string>
+    <string name="panel_team_empty">没找到看板文件：%s</string>
+    <string name="panel_terminal_hint">终端在电脑端窗口里，去那边开。</string>
+    <string name="panel_browser_hint">内置浏览器只在电脑端提供。</string>
+    <string name="panel_desktop_only">这个标签需要在电脑端使用。</string>
     <string name="panel_git">最近提交</string>
     <string name="panel_project_files">项目文件</string>
     <string name="git_title">提交记录</string>

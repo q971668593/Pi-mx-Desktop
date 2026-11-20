@@ -75,6 +75,21 @@ export function registerSessionGoalHandlers(): void {
     return { sent }
   })
 
+  /**
+   * 「再次启动目标」：把未完成的验收项拼成续跑提示，直接发一轮。
+   * 不依赖上一轮的 runId，所以暂停很久之后也能重新开始。
+   */
+  registerHandlerWithSchema('ipc:sessionGoal.resume', sessionGoalGetSchema, async ({ sessionFile }) => {
+    const store = getSessionGoalStore()
+    const goal = store.get(sessionFile)
+    if (!goal) return { sent: false, reason: 'no_goal' as const }
+    const remaining = store.remaining(sessionFile)
+    if (!remaining) return { sent: false, reason: 'done' as const }
+    if (!workerManager.hasLiveSessionWorker(sessionFile)) return { sent: false, reason: 'cold' as const }
+    await workerManager.sendPrompt(goalContinuationPrompt(remaining), sessionFile)
+    return { sent: true }
+  })
+
   registerHandlerWithSchema('ipc:sessionGoal.clear', sessionGoalClearSchema, async (req) => {
     const cleared = getSessionGoalStore().clear(req.sessionFile)
     if (cleared) await pushToLiveWorker(req.sessionFile)

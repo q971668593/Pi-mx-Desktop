@@ -85,6 +85,7 @@ import dev.pi.remote.app.ui.ConnectionBanner
 import dev.pi.remote.app.ui.Dot
 import dev.pi.remote.app.ui.IconAction
 import dev.pi.remote.app.ui.QuietButton
+import dev.pi.remote.app.ui.Spinner
 import dev.pi.remote.app.ui.TopBar
 import dev.pi.remote.app.ui.rich.MermaidSource
 import dev.pi.remote.app.ui.useTicker
@@ -238,6 +239,8 @@ fun SessionScreen(repo: RemoteRepository, sessionKey: String, onBack: () -> Unit
     var branches by remember(sessionKey) { mutableStateOf<List<BranchInfo>?>(null) }
     var branchesFailed by remember(sessionKey) { mutableStateOf(false) }
     var branchSheet by remember { mutableStateOf(false) }
+    // 选中后立刻回显：不等下一轮 run 的 timeline.state 更新
+    var modelOverride by remember(sessionKey) { mutableStateOf<String?>(null) }
     var gitSheet by remember { mutableStateOf(false) }
     var filesSheet by remember { mutableStateOf(false) }
     var imagePreview by remember { mutableStateOf<Pair<android.graphics.Bitmap, String>?>(null) }
@@ -377,6 +380,10 @@ fun SessionScreen(repo: RemoteRepository, sessionKey: String, onBack: () -> Unit
         onProjectFiles = { filesSheet = true },
         loadImage = { path -> repo.projectImage(sessionKey, path) },
         onOpenImage = { bitmap, path -> imagePreview = bitmap to path },
+        tabHost = { SessionPanelTabs(repo, sessionKey, repo.canWrite) },
+        modelLabelOverride = modelOverride?.let { id ->
+            models?.models?.firstOrNull { it.id == id }?.let { it.name ?: it.id.substringAfter('/') } ?: id.substringAfter('/')
+        },
         onFork = { anchor ->
             scope.launch {
                 repo.fork(sessionKey, anchor)
@@ -507,6 +514,8 @@ fun SessionScreen(repo: RemoteRepository, sessionKey: String, onBack: () -> Unit
             models, repo.canWrite,
             onModel = { id ->
                 models = models?.copy(current = id)
+                modelOverride = id
+                sheet = null
                 scope.launch { repo.setModel(sessionKey, id) }
             },
             onDismiss = { sheet = null },
@@ -556,6 +565,10 @@ fun SessionContent(
     /** 会话面板里的「项目文件」（不是输入框的文件选择）。 */
     onGitLog: () -> Unit = {},
     onProjectFiles: () -> Unit = {},
+    /** 刚选完的模型名：先回显，等下一轮 run 的 timeline.state 再接管。 */
+    modelLabelOverride: String? = null,
+    /** ⋯ 面板里的 tab 内容（文件 / Git / 团队 / 终端 / 浏览器）。 */
+    tabHost: (@androidx.compose.runtime.Composable () -> Unit)? = null,
     /** 聊天里加载项目内图片（生图/截图）；外层把 repo + sessionKey 绑好传进来。 */
     loadImage: suspend (String) -> android.graphics.Bitmap? = { null },
     /** 点缩略图看大图：外层负责弹全屏。 */
@@ -665,6 +678,24 @@ fun SessionContent(
         if (!canWrite) Banner(stringResource(R.string.readonly))
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
+            if (timeline == null) {
+                // 会话还没打开（或宿主正忙）：给个明确的「在打开」，别让点击看起来没反应。
+                Column(
+                    Modifier.fillMaxSize().padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Spinner(Pi.c.fg3, 18.dp)
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        if (connection is HostConnection.State.Ready) stringResource(R.string.session_opening) else stringResource(R.string.session_connecting),
+                        style = Pi.t.secondary.copy(color = Pi.c.fg3),
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    QuietButton(stringResource(R.string.session_retry), onRetry)
+                }
+                return@Box
+            }
             LazyColumn(state = listState, reverseLayout = true, modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(28.dp)) {
                 item("pad-bottom") { Spacer(Modifier.height(4.dp)) }
                 pendingText?.let { text -> item("pending-send", contentType = "pending") { PendingBubble(text) } }
@@ -719,7 +750,7 @@ fun SessionContent(
                 running = running,
                 enabled = canWrite && connection is HostConnection.State.Ready,
                 editable = canWrite,
-                modelLabel = state?.model?.substringAfter('/')?.ifEmpty { null } ?: stringResource(R.string.model),
+                modelLabel = modelLabelOverride?.ifEmpty { null } ?: state?.model?.substringAfter('/')?.ifEmpty { null } ?: stringResource(R.string.model),
                 thinkingLabel = thinkingLabel(state?.thinking),
                 onThinking = onThinkingSheet,
                 toolsOn = toolsOn,
@@ -763,14 +794,7 @@ fun SessionContent(
             settlePanel(1000f)
             onBranches()
         },
-        onGit = {
-            settlePanel(1000f)
-            onGitLog()
-        },
-        onFiles = {
-            settlePanel(1000f)
-            onProjectFiles()
-        },
+        tabHost = tabHost,
         onChanges = {
             settlePanel(1000f)
             onReview(ReviewTarget("git", turns.lastOrNull()?.id))

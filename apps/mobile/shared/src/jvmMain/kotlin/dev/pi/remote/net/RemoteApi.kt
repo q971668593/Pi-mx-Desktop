@@ -14,6 +14,9 @@ import dev.pi.remote.protocol.SwitchBranchParams
 import dev.pi.remote.protocol.RewindResult
 import dev.pi.remote.protocol.CommandListResult
 import dev.pi.remote.protocol.FileListParams
+import dev.pi.remote.protocol.FileWriteParams
+import dev.pi.remote.protocol.FileWriteResult
+import dev.pi.remote.protocol.ProjectSetHiddenParams
 import dev.pi.remote.protocol.FileReadParams
 import dev.pi.remote.protocol.FileReadResult
 import dev.pi.remote.protocol.GitLogParams
@@ -28,6 +31,7 @@ import dev.pi.remote.protocol.CapabilitySetResult
 import dev.pi.remote.protocol.CreateParams
 import dev.pi.remote.protocol.CreateResult
 import dev.pi.remote.protocol.Cursor
+import dev.pi.remote.protocol.DeleteResult
 import dev.pi.remote.protocol.ModelListResult
 import dev.pi.remote.protocol.ModelSetParams
 import dev.pi.remote.protocol.ModelSetResult
@@ -57,6 +61,8 @@ class RemoteApi(private val c: HostConnection) {
     suspend fun projects() = c.typedCall("project.list", Empty.serializer(), Empty(), ProjectList.serializer()).projects
     suspend fun watchList(projectId: String? = null) = c.typedCall("session.watchList", WatchListParams.serializer(), WatchListParams(projectId), SessionList.serializer()).sessions
     suspend fun open(sessionKey: String, cursor: Cursor?) = c.typedCall("session.open", OpenParams.serializer(), OpenParams(sessionKey, cursor), OpenResult.serializer())
+    suspend fun delete(sessionKey: String) =
+        c.typedCall("session.delete", SessionKeyParams.serializer(), SessionKeyParams(sessionKey), DeleteResult.serializer()).deleted
     suspend fun close(sessionKey: String) = c.typedCall("session.close", SessionKeyParams.serializer(), SessionKeyParams(sessionKey), Empty.serializer())
     suspend fun page(sessionKey: String, before: String, limit: Int = 20) = c.typedCall("turn.page", PageParams.serializer(), PageParams(sessionKey, before, limit), PageResult.serializer())
     suspend fun toolDetail(sessionKey: String, toolCallId: String) = c.typedCall("turn.toolDetail", ToolDetailParams.serializer(), ToolDetailParams(sessionKey, toolCallId), ToolDetailResult.serializer())
@@ -70,6 +76,10 @@ class RemoteApi(private val c: HostConnection) {
         c.typedCall("file.search", FileSearchParams.serializer(), FileSearchParams(sessionKey, query), FileSearchResult.serializer()).entries
     suspend fun readFile(sessionKey: String, path: String) =
         c.typedCall("file.read", FileReadParams.serializer(), FileReadParams(sessionKey, path), FileReadResult.serializer(), timeoutMs = 60_000)
+    suspend fun writeFile(sessionKey: String, path: String, content: String, expectedRevision: String? = null) =
+        c.typedCall("file.write", FileWriteParams.serializer(), FileWriteParams(sessionKey, path, content, expectedRevision), FileWriteResult.serializer())
+    suspend fun setProjectHidden(projectId: String, hidden: Boolean) =
+        c.typedCall("project.setHidden", ProjectSetHiddenParams.serializer(), ProjectSetHiddenParams(projectId, hidden), Empty.serializer())
     suspend fun gitLog(sessionKey: String, limit: Int = 20) =
         c.typedCall("git.log", GitLogParams.serializer(), GitLogParams(sessionKey, limit), GitLogResult.serializer())
     suspend fun branches(sessionKey: String) = c.typedCall("session.branches", SessionKeyParams.serializer(), SessionKeyParams(sessionKey), BranchesResult.serializer()).branches

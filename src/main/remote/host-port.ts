@@ -81,6 +81,9 @@ export interface RemoteHostPort {
 
   /** Projects the desktop trusts (recent projects). The gateway intersects them with its whitelist. */
   trustedProjects(): string[]
+  /** Desktop-side hidden projects (sidebar「隐藏/移除」): the phone mirrors them, it does not invent its own list. */
+  hiddenProjects(): string[]
+  setProjectHidden(projectId: string, hidden: boolean): void
   /** Display info for a project folder: temporary chats live in sandbox dirs named by a random id. */
   projectInfo?(path: string): { label?: string; temporary?: boolean }
   listSessions(projectId: string): Promise<HostSessionRow[]>
@@ -133,8 +136,12 @@ export interface RemoteHostPort {
   listDir(projectId: string, path: string, dotfiles: boolean): Promise<{ entries: FileEntry[]; truncated: boolean } | null>
   /** One file inside the project: text (capped) or an image as base64; null when unreadable/outside. */
   readFile(projectId: string, path: string): Promise<HostFileRead | null>
+  /** Write a text file inside the project (phone editor). `expectedRevision` guards lost updates. */
+  writeFile(projectId: string, path: string, content: string, expectedRevision?: string): Promise<{ size: number; revision: string } | null>
   /** `git log` of the project (the phone's Git view); `isRepo:false` outside a repository. */
   gitLog(projectId: string, limit: number): Promise<{ isRepo: boolean; commits: HostGitCommit[] }>
+  /** Delete a session file (same operation as the desktop's 删除对话). */
+  deleteSession(sessionFile: string, projectId: string): Promise<boolean>
   searchFiles(projectId: string, query: string): Promise<FileEntry[]>
   capabilityCatalog(): CapabilityInfo[]
   sessionCapabilities(sessionFile: string): string[]
@@ -142,7 +149,7 @@ export interface RemoteHostPort {
   getCacheWarming(): Promise<CacheWarming>
   setCacheWarming(mode: CacheWarming): Promise<CacheWarming>
   /** Tell the desktop renderer a setting changed underneath it. */
-  notifySettingsChanged(key: 'cacheWarming' | 'capabilities' | 'rewound', sessionFile?: string): void
+  notifySettingsChanged(key: 'cacheWarming' | 'capabilities' | 'rewound' | 'projects', sessionFile?: string): void
   /** A remotely created session now exists on disk: the desktop sidebar should re-list this project. */
   notifySessionsChanged(projectId: string): void
 

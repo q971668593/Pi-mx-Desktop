@@ -179,5 +179,7 @@ export const CursorSchema = z.object({ epoch: z.string(), seq }).strict()
 export type Cursor = z.infer<typeof CursorSchema>
 
 /** `temporary`: a desktop temporary chat (sandbox folder); `name` is then its title, not the folder id. */
-export const ProjectInfoSchema = z.object({ id: z.string(), name: z.string(), temporary: z.boolean().optional() }).strict()
+export const ProjectInfoSchema = z
+  .object({ id: z.string(), name: z.string(), temporary: z.boolean().optional(), hidden: z.boolean().optional() })
+  .strict()
 export type ProjectInfo = z.infer<typeof ProjectInfoSchema>

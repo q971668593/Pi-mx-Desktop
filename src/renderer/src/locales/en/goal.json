@@ -14,6 +14,12 @@
     "copy": "Copy goal and criteria",
     "copied": "Copied",
     "loopStalled": "Auto loop paused: no progress for several rounds, {{count}} criteria left",
-    "loopCapped": "Auto loop stopped at the round limit, {{count}} criteria left"
+    "loopCapped": "Auto loop stopped at the round limit, {{count}} criteria left",
+    "running": "Running",
+    "paused": "Paused",
+    "stop": "Stop",
+    "stopping": "Stopping…",
+    "start": "Start again",
+    "starting": "Starting…"
   }
 }

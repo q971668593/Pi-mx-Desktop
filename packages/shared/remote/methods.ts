@@ -180,6 +180,8 @@ function method<P extends z.ZodTypeAny, R extends z.ZodTypeAny>(params: P, resul
 export const REMOTE_METHODS = {
   'host.hello': method(HelloParamsSchema, HelloResultSchema, 'viewer'),
   'project.list': method(empty, z.object({ projects: z.array(ProjectInfoSchema) }).strict(), 'viewer'),
+  /** Hide / unhide a project on the desktop (the phone mirrors the sidebar). */
+  'project.setHidden': method(z.object({ projectId: z.string().min(1), hidden: z.boolean() }).strict(), empty, 'operator'),
   'session.watchList': method(
     z.object({ projectId: z.string().optional() }).strict(),
     z.object({ sessions: z.array(SessionSummarySchema) }).strict(),
@@ -309,6 +311,14 @@ export const REMOTE_METHODS = {
   /** One file for the phone's reader (text or image); paths stay inside the session's project. */
   'file.read': method(z.object({ sessionKey, path: z.string().min(1).max(4096) }).strict(), FileReadResultSchema, 'viewer'),
   /** Commits of the session's project (empty list outside a repository). */
+  /** Delete a conversation (same file removal as the desktop's 删除对话). */
+  'session.delete': method(z.object({ sessionKey }).strict(), z.object({ deleted: z.boolean() }).strict(), 'operator'),
+  /** Phone-side editor save; the revision guard refuses a stale write instead of clobbering. */
+  'file.write': method(
+    z.object({ sessionKey, path: z.string().min(1).max(4096), content: z.string().max(512 * 1024), expectedRevision: z.string().optional() }).strict(),
+    z.object({ size: z.number().int().nonnegative(), revision: z.string() }).strict(),
+    'operator',
+  ),
   'git.log': method(
     z.object({ sessionKey, limit: z.number().int().min(1).max(50).optional() }).strict(),
     z.object({ isRepo: z.boolean(), commits: z.array(GitCommitSchema) }).strict(),

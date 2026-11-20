@@ -21,6 +21,7 @@ import dev.pi.remote.protocol.HelloResult
 import dev.pi.remote.protocol.ModelListResult
 import dev.pi.remote.protocol.PairOffer
 import dev.pi.remote.protocol.FileReadResult
+import dev.pi.remote.protocol.FileWriteResult
 import dev.pi.remote.protocol.GitLogResult
 import dev.pi.remote.protocol.ProjectInfo
 import dev.pi.remote.protocol.RemoteJson
@@ -225,7 +226,12 @@ class RemoteRepository(
         return runCatching {
             val projects = a.projects()
             val sessions = a.watchList()
+            // 宿主列表是唯一事实源：电脑上删掉的会话不能在手机上借缓存复活。
+            val alive = sessions.map { it.sessionKey }.toSet()
+            _timelines.update { m -> m.filterKeys { it in alive } }
+            _pendingSends.update { m -> m.filterKeys { it in alive } }
             _inbox.value = InboxState(sessions, projects, loaded = true)
+            cache.pruneInbox(alive)
             persistInbox()
         }.onFailure { _notices.tryEmit(it.message ?: "list failed") }.isSuccess
     }
@@ -269,7 +275,12 @@ class RemoteRepository(
         runCatching {
             val projects = a.projects()
             val sessions = a.watchList()
+            // 宿主列表是唯一事实源：电脑上删掉的会话不能在手机上借缓存复活。
+            val alive = sessions.map { it.sessionKey }.toSet()
+            _timelines.update { m -> m.filterKeys { it in alive } }
+            _pendingSends.update { m -> m.filterKeys { it in alive } }
             _inbox.value = InboxState(sessions, projects, loaded = true)
+            cache.pruneInbox(alive)
             persistInbox()
         }.onFailure { _notices.tryEmit(it.message ?: "list failed") }
         openKey?.let { reopen(it) }
@@ -292,11 +303,15 @@ class RemoteRepository(
                     u.removed?.forEach { byKey.remove(it) }
                     inbox.copy(sessions = byKey.values.sortedByDescending { it.updatedAt })
                 }
+                // 运行中/已结束都算宿主收到了那条消息
+                u.sessions.forEach { if (it.status == "running" || it.status == "needsInput") _pendingSends.update { p -> p - it.sessionKey } }
                 persistInbox()
                 noticeTransitions(before, u.sessions)
             }
             "turn.patch" -> {
                 val evt = RemoteJson.decodeFromJsonElement(TurnPatchEvent.serializer(), e.payload)
+                // 任何一条时间线补丁都说明宿主已经收下这条消息：先撤掉「发送中」，别再挂着。
+                _pendingSends.update { it - evt.sessionKey }
                 val current = _timelines.value[evt.sessionKey] ?: return
                 if (evt.patches.any { it is TimelineReset }) {
                     scope.launch { reopen(evt.sessionKey, fresh = true) }
@@ -431,6 +446,34 @@ class RemoteRepository(
     }.onSuccess { reopen(key, fresh = true) }
 
     /** Commits of the session's project (phone Git view). */
+    /** 删除会话（和电脑端「删除对话」是同一个动作）；成功后本地列表与缓存一起清掉。 */
+    suspend fun deleteSession(key: String): Boolean {
+        val a = api ?: return false
+        return runCatching {
+            if (!a.delete(key)) return@runCatching false
+            _inbox.update { inbox -> inbox.copy(sessions = inbox.sessions.filterNot { it.sessionKey == key }) }
+            _timelines.update { it - key }
+            _pendingSends.update { it - key }
+            persistInbox()
+            true
+        }.getOrDefault(false)
+    }
+
+    /** 手机端编辑保存（有 revision 守卫，过期就拒绝而不是覆盖）。 */
+    suspend fun writeFile(key: String, path: String, content: String, expectedRevision: String? = null): Result<FileWriteResult> =
+        runCatching { api?.writeFile(key, path, content, expectedRevision) ?: error("offline") }
+
+    /** 和电脑侧栏同一份隐藏列表：隐藏/恢复后立刻重拉项目列表。 */
+    suspend fun setProjectHidden(projectId: String, hidden: Boolean): Boolean {
+        val a = api ?: return false
+        return runCatching {
+            a.setProjectHidden(projectId, hidden)
+            val projects = a.projects()
+            _inbox.update { it.copy(projects = projects) }
+            true
+        }.getOrDefault(false)
+    }
+
     suspend fun gitLog(key: String, limit: Int = 20): Result<GitLogResult> =
         runCatching { api?.gitLog(key, limit) ?: error("offline") }
 

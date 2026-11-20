@@ -69,6 +69,8 @@ export class SessionHub {
   private readonly enriched = new Map<string, { stamp: number; preview?: string; turn?: Turn }>()
   private readonly listWatchers = new Map<HubClient, { projectId?: string }>()
   private readonly dirty = new Set<string>()
+  /** 已经删除、等下一次 flush 告诉客户端的会话。 */
+  private readonly removed = new Set<string>()
   private listTimer: ReturnType<typeof setTimeout> | null = null
   private readonly refreshing = new Set<string>()
   /** Sessions created from a phone that the desktop sidebar has not been told about yet (key → project). */
@@ -294,6 +296,19 @@ export class SessionHub {
     }
   }
 
+  /** 会話被删除：从缓存与列表里移除，下一次 flush 把 `removed` 推给所有监听者。 */
+  forgetSession(sessionKey: string): void {
+    const key = normalizeSessionFileKey(sessionKey)
+    this.entries.delete(key)
+    this.rows.delete(key)
+    this.history.delete(key)
+    this.unlisted.delete(key)
+    this.enriched.delete(key)
+    this.removed.add(key)
+    this.dirty.add(key)
+    this.markDirty(key)
+  }
+
   private markDirty(key: string): void {
     this.dirty.add(key)
     if (this.listTimer || !this.listWatchers.size) return
@@ -312,11 +327,13 @@ export class SessionHub {
       .map((k) => this.rows.get(k))
       .filter((r): r is HostSessionRow => !!r && this.isAllowedProject(r.projectId))
       .map((r) => this.summaryFor(r, pending))
-    if (!summaries.length) return
+    const removed = [...this.removed]
+    if (!summaries.length && !removed.length) return
     for (const [client, filter] of this.listWatchers) {
       const mine = filter.projectId ? summaries.filter((s) => normalizeSessionFileKey(s.projectId) === normalizeSessionFileKey(filter.projectId!)) : summaries
-      if (mine.length) client.sendEvent('sessions.update', { sessions: mine })
+      if (mine.length || removed.length) client.sendEvent('sessions.update', { sessions: mine, ...(removed.length ? { removed } : {}) })
     }
+    this.removed.clear()
   }
 
   /** A session was created remotely: make sure watchers see it right away. */

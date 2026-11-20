@@ -138,6 +138,8 @@ fun SessionPanel(
     onBranches: (() -> Unit)? = null,
     onGit: (() -> Unit)? = null,
     onFiles: (() -> Unit)? = null,
+    /** 面板里的 tab（文件 / Git / 团队 / 终端 / 浏览器），和桌面端一致。 */
+    tabHost: (@Composable () -> Unit)? = null,
     usage: SessionUsage? = null,
 ) {
     val p = progress()
@@ -176,67 +178,8 @@ fun SessionPanel(
                     ContextBlock(stats, statsLoading)
                 }
 
-                if (onChanges != null) {
-                    Section(stringResource(R.string.panel_changes)) {
-                        val files = changes?.files.orEmpty()
-                        Row(
-                            Modifier.fillMaxWidth().heightIn(min = 40.dp).clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button, onClick = onChanges),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                when {
-                                    changes == null -> stringResource(R.string.panel_changes_open)
-                                    files.isEmpty() -> stringResource(R.string.panel_changes_none)
-                                    else -> stringResource(R.string.panel_files_value, files.size, files.sumOf { it.add }, files.sumOf { it.del })
-                                },
-                                style = Pi.t.secondary.copy(color = Pi.c.fg), modifier = Modifier.weight(1f),
-                            )
-                            PiIcon(PiIcons.ChevronRight, Pi.c.fg3, 14.dp)
-                        }
-                    }
-                }
-
-                if (onGit != null) {
-                    Section(stringResource(R.string.panel_git)) {
-                        Row(
-                            Modifier.fillMaxWidth().heightIn(min = 40.dp).clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button, onClick = onGit),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(stringResource(R.string.git_title), style = Pi.t.secondary.copy(color = Pi.c.fg), modifier = Modifier.weight(1f))
-                            PiIcon(PiIcons.ChevronRight, Pi.c.fg3, 14.dp)
-                        }
-                    }
-                }
-
-                if (onFiles != null) {
-                    Section(stringResource(R.string.panel_project_files)) {
-                        Row(
-                            Modifier.fillMaxWidth().heightIn(min = 40.dp).clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button, onClick = onFiles),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(stringResource(R.string.projfiles_title), style = Pi.t.secondary.copy(color = Pi.c.fg), modifier = Modifier.weight(1f))
-                            PiIcon(PiIcons.ChevronRight, Pi.c.fg3, 14.dp)
-                        }
-                    }
-                }
-
-                if (onBranches != null) {
-                    Section(stringResource(R.string.panel_branches)) {
-                        Row(
-                            Modifier.fillMaxWidth().heightIn(min = 40.dp).clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button, onClick = onBranches),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                when {
-                                    branchCount == null -> stringResource(R.string.panel_branches)
-                                    branchCount <= 1 -> stringResource(R.string.panel_branches_one)
-                                    else -> pluralStringResource(R.plurals.panel_branches_count, branchCount, branchCount)
-                                },
-                                style = Pi.t.secondary.copy(color = Pi.c.fg), modifier = Modifier.weight(1f),
-                            )
-                            PiIcon(PiIcons.ChevronRight, Pi.c.fg3, 14.dp)
-                        }
-                    }
+                if (tabHost != null) {
+                    Column(Modifier.fillMaxWidth().padding(top = 6.dp)) { tabHost() }
                 }
 
                 Section(stringResource(R.string.panel_session)) {

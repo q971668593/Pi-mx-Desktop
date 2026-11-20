@@ -229,4 +229,4 @@ data class SessionSummary(
 data class Cursor(val epoch: String, val seq: Long)
 
 @Serializable
-data class ProjectInfo(val id: String, val name: String, val temporary: Boolean = false)
+data class ProjectInfo(val id: String, val name: String, val temporary: Boolean = false, val hidden: Boolean = false)

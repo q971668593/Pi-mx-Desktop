@@ -1,5 +1,6 @@
 import { app, safeStorage } from 'electron'
 import { chmodSync, readFileSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { hostname } from 'node:os'
@@ -13,7 +14,7 @@ import { applySessionCapabilities, storedCapabilities } from './capabilities/ses
 import { readRemoteAttachment, writeRemoteAttachment } from './clipboard-temp-images'
 import { configStore } from './config-store'
 import { getSessionLeafOverride, setSessionLeafOverride } from './session-leaf-override'
-import { resolvePathUnderWorkspace, workspaceFsListDir, workspaceFsReadText } from './workspace-fs'
+import { resolvePathUnderWorkspace, workspaceFsListDir, workspaceFsReadText, workspaceFsWriteText } from './workspace-fs'
 import { extname } from 'node:path'
 import { readFile as readFileBytes, stat as statFile } from 'node:fs/promises'
 import { gitExec, isGitRepository } from './git-workspace'
@@ -99,6 +100,12 @@ export function createElectronRemoteHost(): RemoteHostPort {
     hostName: () => hostname(),
     appVersion: () => app.getVersion(),
     trustedProjects,
+    hiddenProjects: () => (configStore.get('hiddenWorktrees') || []) as string[],
+    setProjectHidden(projectId: string, hidden: boolean): void {
+      const canonical = trustedProjects().find((t) => comparable(t) === comparable(projectId)) ?? projectId
+      if (hidden) configStore.hideWorktree(canonical)
+      else configStore.unhideProject(canonical)
+    },
 
     async listSessions(projectId: string): Promise<HostSessionRow[]> {
       const r = await invokeHandler<{ sessions?: ListedSession[] }>('ipc:session.list', { workspaceId: projectId })
@@ -340,6 +347,19 @@ export function createElectronRemoteHost(): RemoteHostPort {
       const bytes = await readFileBytes(resolved.abs).catch(() => null)
       if (!bytes) return null
       return { path, size: info.size, truncated: false, kind: 'image' as const, mime, data: bytes.toString('base64') }
+    },
+
+    async deleteSession(sessionFile: string, projectId: string) {
+      const r = await invokeHandler<{ ok?: boolean }>('ipc:session.delete', { workspaceId: projectId, sessionFile })
+      return r?.ok === true
+    },
+
+    async writeFile(projectId: string, path: string, content: string, expectedRevision?: string) {
+      const r = await workspaceFsWriteText({ workspaceRoot: projectId, path, content, ...(expectedRevision ? { expectedRevision } : {}) })
+      if (!r.ok) return null
+      const size = Buffer.byteLength(content, 'utf8')
+      const revision = createHash('sha256').update(content, 'utf8').digest('hex')
+      return { size, revision }
     },
 
     async gitLog(projectId: string, limit: number) {

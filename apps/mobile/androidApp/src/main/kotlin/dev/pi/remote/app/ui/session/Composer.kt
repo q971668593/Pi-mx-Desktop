@@ -129,9 +129,23 @@ fun Composer(
                     },
                 )
             }
+            // 第一行：模型单独占一行，名字给足宽度（一行放不下时省略号，不挤思考程度）
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 34.dp).clip(RoundedCornerShape(8.dp))
+                    .clickable(role = Role.Button, onClick = onModel).padding(horizontal = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    modelLabel,
+                    style = Pi.t.secondary.copy(color = Pi.c.fg2),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                PiIcon(PiIcons.ChevronDown, Pi.c.fg3, 12.dp)
+            }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                // Left group takes what stop / send leave. Narrow: thinking shows only its icon; the model
-                // name gives way next (ellipsis), and the group clips as a last resort.
+                // 第二行：附件 / 命令 / 文件 与 思考程度 / 工具
                 BoxWithConstraints(Modifier.weight(1f)) {
                     val compact = maxWidth < 320.dp
                     Row(Modifier.clipToBounds(), verticalAlignment = Alignment.CenterVertically) {
@@ -147,14 +161,9 @@ fun Composer(
                             Modifier.size(36.dp).clip(CircleShape).clickable(enabled = editable, role = Role.Button, onClick = onFiles),
                             contentAlignment = Alignment.Center,
                         ) { PiIcon(PiIcons.At, Pi.c.fg2, 17.dp, contentDescription = stringResource(R.string.files_open)) }
-                        Row(Modifier.weight(1f, fill = false).heightIn(min = 36.dp).clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button, onClick = onModel).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(modelLabel, style = Pi.t.secondary.copy(color = Pi.c.fg2), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                            Spacer(Modifier.width(4.dp))
-                            PiIcon(PiIcons.ChevronDown, Pi.c.fg3, 12.dp)
-                        }
                         if (thinkingLabel != null) {
                             Row(
-                                Modifier.widthIn(max = 96.dp).heightIn(min = 36.dp).clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button, onClick = onThinking)
+                                Modifier.heightIn(min = 36.dp).clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button, onClick = onThinking)
                                     .semantics { contentDescription = thinkingLabel }.padding(horizontal = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {

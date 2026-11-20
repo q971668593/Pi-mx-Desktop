@@ -8,7 +8,12 @@ import dev.pi.remote.app.data.LocalUiPrefs
 import dev.pi.remote.app.data.UiPrefs
 import dev.pi.remote.app.ui.Banner
 import dev.pi.remote.app.ui.Segmented
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -57,6 +62,7 @@ import dev.pi.remote.app.ui.Spinner
 import dev.pi.remote.app.ui.countsLine
 import dev.pi.remote.app.ui.formatAgo
 import dev.pi.remote.app.ui.useTicker
+import dev.pi.remote.app.ui.QuietButton
 import dev.pi.remote.app.ui.PullRefresh
 import dev.pi.remote.app.ui.verbFor
 import dev.pi.remote.net.HostConnection
@@ -71,12 +77,12 @@ fun InboxScreen(repo: RemoteRepository, onOpen: (String) -> Unit, onHosts: () ->
     val active by repo.active.collectAsState()
     val connection by repo.connection.collectAsState()
     val prefs = LocalUiPrefs.current
-    val grouping by (prefs?.grouping ?: remember { kotlinx.coroutines.flow.MutableStateFlow("status") }).collectAsState()
     val scope = rememberCoroutineScope()
     var picking by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
     var pendingProject by remember { mutableStateOf<String?>(null) }
+    var pendingDelete by remember { mutableStateOf<dev.pi.remote.protocol.SessionSummary?>(null) }
     val shared by repo.pendingShare.collectAsState()
     val canCreate = repo.canWrite && connection is HostConnection.State.Ready
 
@@ -104,8 +110,13 @@ fun InboxScreen(repo: RemoteRepository, onOpen: (String) -> Unit, onHosts: () ->
             onHosts = onHosts,
             onRetry = repo::retry,
             onNew = { picking = true },
-            grouping = grouping,
             onNewIn = { create(it) },
+            onAskDelete = { pendingDelete = it },
+            onHideProject = { project, hide ->
+                scope.launch {
+                    if (repo.setProjectHidden(project.id, hide)) repo.refreshInbox()
+                }
+            },
             onMenu = { menu = true },
             refreshing = refreshing,
             onRefresh = {
@@ -120,6 +131,24 @@ fun InboxScreen(repo: RemoteRepository, onOpen: (String) -> Unit, onHosts: () ->
             },
             modifier = Modifier.weight(1f),
         )
+    }
+    pendingDelete?.let { target ->
+        PiSheet(onDismiss = { pendingDelete = null }) {
+            Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 22.dp)) {
+                Text(stringResource(R.string.session_delete_title), style = Pi.t.bodyMedium.copy(color = Pi.c.fg))
+                Spacer(Modifier.height(6.dp))
+                Text(target.title.ifEmpty { stringResource(R.string.session_untitled) }, style = Pi.t.secondary.copy(color = Pi.c.fg2), maxLines = 2)
+                Spacer(Modifier.height(14.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    QuietButton(stringResource(R.string.panel_cancel), { pendingDelete = null })
+                    QuietButton(stringResource(R.string.session_delete_confirm), {
+                        val key = target.sessionKey
+                        pendingDelete = null
+                        scope.launch { repo.deleteSession(key) }
+                    }, color = Pi.c.bad)
+                }
+            }
+        }
     }
     if (picking) {
         PiSheet(onDismiss = { picking = false }) {
@@ -198,27 +227,29 @@ fun InboxContent(
     onHosts: () -> Unit,
     onRetry: () -> Unit,
     onNew: () -> Unit,
-    grouping: String = "status",
     onNewIn: ((String) -> Unit)? = null,
     onMenu: (() -> Unit)? = null,
+    onHideProject: ((dev.pi.remote.protocol.ProjectInfo, Boolean) -> Unit)? = null,
+    /** 长按一行要删除：由外层弹二次确认（删了就没了，不能一手滑）。 */
+    onAskDelete: ((dev.pi.remote.protocol.SessionSummary) -> Unit)? = null,
     refreshing: Boolean = false,
     onRefresh: () -> Unit = {},
     modifier: Modifier = Modifier.fillMaxSize(),
 ) {
-    var filter by rememberSaveable { mutableStateOf<String?>(null) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var showHidden by rememberSaveable { mutableStateOf(false) }
     val collapsed = remember { mutableStateMapOf<String, Boolean>() }
-    val byProject = grouping == "project"
     val temporaryIds = inbox.projects.filter { it.temporary }.map { it.id }.toSet()
-    val regular = inbox.projects.filter { !it.temporary }
-    val sessions = inbox.sessions.filter {
-        byProject || filter == null || (if (filter == TEMPORARY) it.projectId in temporaryIds else it.projectId == filter)
-    }
-    val needs = sessions.filter { it.status == "needsInput" || it.status == "failed" }
-    val running = sessions.filter { it.status == "running" }
-    val recent = sessions.filter { it.status == "idle" }
+    // 和电脑侧栏同一份顺序：project.list 的顺序就是宿主顺序，这里不重排、也不按状态往顶上挪。
+    val real = inbox.projects.filter { !it.temporary }
+    val visible = real.filter { !it.hidden }
+    val hidden = real.filter { it.hidden }
+    val q = query.trim()
+    val matches = { text: String -> q.isEmpty() || text.contains(q, ignoreCase = true) }
+    val shownProjects = if (q.isEmpty()) visible else visible.filter { matches(it.name) }
+    val sessions = inbox.sessions
     val online = connection is HostConnection.State.Ready
-    val now = useTicker(running.isNotEmpty())
-    val dayLabels = listOf(stringResource(R.string.bucket_today), stringResource(R.string.bucket_yesterday), stringResource(R.string.bucket_week), stringResource(R.string.bucket_older))
+    val now = useTicker(sessions.any { it.status == "running" })
 
     Column(modifier.background(Pi.c.bg)) {
         Row(Modifier.fillMaxWidth().height(56.dp).padding(start = 12.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -228,65 +259,120 @@ fun InboxContent(
                     Spacer(Modifier.width(8.dp))
                     Text(hostName.ifEmpty { "pi" }, style = Pi.t.title.copy(color = Pi.c.fg), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                     Spacer(Modifier.width(4.dp))
-                    PiIcon(PiIcons.ChevronDown, Pi.c.fg3, 14.dp)
+                    PiIcon(PiIcons.ChevronDown, Pi.c.fg3, 12.dp)
                 }
             }
             if (canCreate) IconAction(PiIcons.Plus, stringResource(R.string.inbox_new), onNew)
             onMenu?.let { IconAction(PiIcons.More, stringResource(R.string.more), it) }
         }
         ConnectionBanner(connection, onRetry)
-        if (!byProject && inbox.projects.size > 1) {
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                FilterTab(stringResource(R.string.inbox_all), filter == null) { filter = null }
-                for (p in regular) FilterTab(p.name, filter == p.id) { filter = p.id }
-                if (temporaryIds.isNotEmpty()) FilterTab(stringResource(R.string.temporary_chats), filter == TEMPORARY) { filter = TEMPORARY }
-            }
-            Hairline()
+
+        // 项目多的时候先搜：按项目名过滤，顺手也能搜会话标题
+        Box(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                .clip(RoundedCornerShape(Pi.radius)).background(Pi.c.surface).padding(horizontal = 12.dp, vertical = 9.dp),
+        ) {
+            BasicTextField(
+                value = query,
+                onValueChange = { query = it },
+                singleLine = true,
+                textStyle = Pi.t.secondary.copy(color = Pi.c.fg),
+                cursorBrush = SolidColor(Pi.c.fg),
+                decorationBox = { inner ->
+                    if (query.isEmpty()) Text(stringResource(R.string.inbox_search), style = Pi.t.secondary.copy(color = Pi.c.fg3))
+                    inner()
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
+
         PullRefresh(refreshing, onRefresh, Modifier.fillMaxSize()) {
-            if (sessions.isEmpty() && !byProject) {
-                // Scrollable so the empty state can be pulled too.
-                LazyColumn(Modifier.fillMaxSize()) {
+            LazyColumn(Modifier.fillMaxSize()) {
+                if (inbox.projects.isEmpty() && !inbox.loaded) {
                     item("empty") {
                         Box(Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
-                            if (!inbox.loaded && online) Spinner(Pi.c.fg3, 18.dp) else Text(stringResource(R.string.inbox_empty), style = Pi.t.secondary.copy(color = Pi.c.fg3))
+                            if (online) Spinner(Pi.c.fg3, 18.dp) else Text(stringResource(R.string.inbox_empty), style = Pi.t.secondary.copy(color = Pi.c.fg3))
+                        }
+                    }
+                    return@LazyColumn
+                }
+                if (shownProjects.isEmpty() && q.isNotEmpty()) {
+                    item("no-match") { SectionLabel(stringResource(R.string.inbox_no_project_match)) }
+                }
+                for (p in shownProjects) {
+                    val list = sessions
+                        .filter { it.projectId == p.id && matches(it.title) }
+                        .sortedByDescending { it.updatedAt }
+                    val closed = collapsed[p.id] == true
+                    item("p-${p.id}") {
+                        ProjectHeader(
+                            name = p.name,
+                            count = list.size,
+                            closed = closed,
+                            onToggle = { collapsed[p.id] = !closed },
+                            onNew = if (canCreate && onNewIn != null) ({ onNewIn(p.id) }) else null,
+                            onHide = onHideProject?.let { hide -> { hide(p, true) } },
+                        )
+                    }
+                    if (!closed) {
+                        if (list.isEmpty()) {
+                            item("e-${p.id}") {
+                                Text(
+                                    stringResource(R.string.inbox_project_empty),
+                                    style = Pi.t.meta.copy(color = Pi.c.fg3),
+                                    modifier = Modifier.padding(start = 44.dp, end = 18.dp, top = 6.dp, bottom = 6.dp),
+                                )
+                            }
+                        }
+                        items(list, key = { it.sessionKey }) { SessionRow(it, now, onOpen, showProject = false, onLongPress = onAskDelete?.let { ask -> { ask(it) } }, modifier = Modifier.animateItem()) }
+                    }
+                }
+
+                // 电脑上隐藏的项目照样同步过来：折在最后，点眼睛就能恢复
+                if (hidden.isNotEmpty()) {
+                    val open = showHidden
+                    item("h-hidden") {
+                        Row(
+                            Modifier.fillMaxWidth().clickable(role = Role.Button) { showHidden = !open }
+                                .heightIn(min = 40.dp).padding(start = 18.dp, end = 18.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            PiIcon(PiIcons.Eye, Pi.c.fg3, 14.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.inbox_hidden_group, hidden.size), style = Pi.t.meta.copy(color = Pi.c.fg3), modifier = Modifier.weight(1f))
+                            PiIcon(PiIcons.ChevronDown, Pi.c.fg3, 12.dp, Modifier.rotate(if (open) 180f else 0f))
+                        }
+                    }
+                    if (open) {
+                        items(hidden, key = { "hidden-${it.id}" }) { p ->
+                            Row(
+                                Modifier.fillMaxWidth().heightIn(min = Pi.row).padding(horizontal = 18.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(p.name, style = Pi.t.secondary.copy(color = Pi.c.fg3), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                IconAction(PiIcons.Eye, stringResource(R.string.inbox_unhide), { onHideProject?.invoke(p, false) }, tint = Pi.c.fg3, size = 16.dp)
+                            }
                         }
                     }
                 }
-                return@PullRefresh
-            }
-            LazyColumn(Modifier.fillMaxSize()) {
-                if (needs.isNotEmpty()) {
-                    item("h-needs") { SectionLabel("${stringResource(R.string.inbox_needs)} · ${needs.size}") }
-                    items(needs, key = { it.sessionKey }) { SessionRow(it, now, onOpen, showProject = true, modifier = Modifier.animateItem()) }
+
+                val temp = sessions.filter { it.projectId in temporaryIds }.sortedByDescending { it.updatedAt }
+                if (temp.isNotEmpty()) {
+                    val closed = collapsed[TEMPORARY] ?: true
+                    item("p-temp") {
+                        ProjectHeader(
+                            name = stringResource(R.string.temporary_chats),
+                            count = temp.size,
+                            closed = closed,
+                            onToggle = { collapsed[TEMPORARY] = !closed },
+                            onNew = null,
+                            onHide = null,
+                        )
+                    }
+                    if (!closed) items(temp, key = { it.sessionKey }) { SessionRow(it, now, onOpen, showProject = false, onLongPress = onAskDelete?.let { ask -> { ask(it) } }, modifier = Modifier.animateItem()) }
                 }
-                if (running.isNotEmpty()) {
-                    item("h-run") { SectionLabel("${stringResource(R.string.inbox_running)} · ${running.size}") }
-                    items(running, key = { it.sessionKey }) { SessionRow(it, now, onOpen, showProject = true, modifier = Modifier.animateItem()) }
-                }
-                if (byProject) {
-                    // One collapsible group per project, idle sessions only (attention items stay on top).
-                    for (p in regular) {
-                        val list = recent.filter { it.projectId == p.id }
-                        val closed = collapsed[p.id] == true
-                        item("p-${p.id}") {
-                            ProjectHeader(p.name, list.size, closed, onToggle = { collapsed[p.id] = !closed }, onNew = if (canCreate && onNewIn != null) ({ onNewIn(p.id) }) else null)
-                        }
-                        if (!closed) items(list, key = { it.sessionKey }) { SessionRow(it, now, onOpen, showProject = false, modifier = Modifier.animateItem()) }
-                    }
-                    // All desktop temporary chats in one group, folded by default.
-                    val temp = recent.filter { it.projectId in temporaryIds }
-                    if (temp.isNotEmpty()) {
-                        val closed = collapsed[TEMPORARY] ?: true
-                        item("p-temp") { ProjectHeader(stringResource(R.string.temporary_chats), temp.size, closed, onToggle = { collapsed[TEMPORARY] = !closed }, onNew = null) }
-                        if (!closed) items(temp, key = { it.sessionKey }) { SessionRow(it, now, onOpen, showProject = false, modifier = Modifier.animateItem()) }
-                    }
-                } else {
-                    val buckets = recent.groupBy { dayBucket(it.updatedAt, now) }.toSortedMap()
-                    for ((b, list) in buckets) {
-                        item("d-$b") { SectionLabel(dayLabels[b]) }
-                        items(list, key = { it.sessionKey }) { SessionRow(it, now, onOpen, showProject = filter == null, modifier = Modifier.animateItem()) }
-                    }
+                if (inbox.projects.isNotEmpty() && sessions.isEmpty()) {
+                    item("no-sessions") { SectionLabel(stringResource(R.string.inbox_empty)) }
                 }
                 item("bottom") { Spacer(Modifier.height(24.dp)) }
             }
@@ -295,7 +381,7 @@ fun InboxContent(
 }
 
 @Composable
-private fun ProjectHeader(name: String, count: Int, closed: Boolean, onToggle: () -> Unit, onNew: (() -> Unit)?) {
+private fun ProjectHeader(name: String, count: Int, closed: Boolean, onToggle: () -> Unit, onNew: (() -> Unit)?, onHide: (() -> Unit)? = null) {
     val angle by animateFloatAsState(if (closed) 0f else 90f, label = "group")
     Row(Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onToggle).padding(start = 18.dp, end = 6.dp).heightIn(min = 40.dp), verticalAlignment = Alignment.CenterVertically) {
         PiIcon(PiIcons.ChevronRight, Pi.c.fg3, 12.dp, Modifier.rotate(angle))
@@ -305,6 +391,7 @@ private fun ProjectHeader(name: String, count: Int, closed: Boolean, onToggle: (
         Text("$count", style = Pi.t.meta.copy(color = Pi.c.fg3))
         Spacer(Modifier.weight(1f))
         onNew?.let { IconAction(PiIcons.Plus, stringResource(R.string.inbox_new), it, tint = Pi.c.fg3, size = 16.dp) }
+        onHide?.let { IconAction(PiIcons.Eye, stringResource(R.string.inbox_hide), it, tint = Pi.c.fg3, size = 16.dp) }
     }
 }
 
@@ -318,10 +405,25 @@ private fun FilterTab(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun SessionRow(s: SessionSummary, now: Long, onOpen: (String) -> Unit, showProject: Boolean = true, modifier: Modifier = Modifier) {
+private fun SessionRow(
+    s: SessionSummary,
+    now: Long,
+    onOpen: (String) -> Unit,
+    showProject: Boolean = true,
+    onLongPress: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
     val temporaryLabel = stringResource(R.string.temporary_chats)
     // animateItem() 由调用方的 LazyColumn 提供：新跑起来的会话、状态变化会平滑滑入而不是跳一下
-    Row(modifier.fillMaxWidth().heightIn(min = Pi.row).clickable(role = Role.Button) { onOpen(s.sessionKey) }.padding(horizontal = 18.dp, vertical = 11.dp)) {
+    Row(
+        modifier.fillMaxWidth().heightIn(min = Pi.row)
+            .combinedClickable(
+                role = Role.Button,
+                onClick = { onOpen(s.sessionKey) },
+                onLongClick = onLongPress,
+            )
+            .padding(horizontal = 18.dp, vertical = 11.dp),
+    ) {
         Box(Modifier.width(14.dp).padding(top = 3.dp), contentAlignment = Alignment.TopCenter) {
             when (s.status) {
                 "needsInput" -> PiIcon(PiIcons.Question, Pi.c.warn, 14.dp)

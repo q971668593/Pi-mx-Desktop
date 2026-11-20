@@ -4,7 +4,7 @@
 > 事实源：`src/main/**/*.ts` 中的 `registerHandler` / `registerHandlerWithSchema` 调用。
 > 手写文档在 `doc/IPC-CONTRACTS.md`；本文件保证「代码里注册了什么」与「文档里写了什么」不会漂移。
 
-- invoke 通道：**309** 个（唯一）
+- invoke 通道：**310** 个（唯一）
 - main → renderer 事件通道：**12** 个（唯一）
 - 非字面量注册：**0** 处
 - 动态事件通道（通道名非常量，未收录）：**7** 处
@@ -26,10 +26,10 @@
 | `remote` | 10 |
 | `mcp` | 9 |
 | `app` | 7 |
+| `sessionGoal` | 7 |
 | `asr` | 6 |
 | `pi` | 6 |
 | `prompt` | 6 |
-| `sessionGoal` | 6 |
 | `window` | 6 |
 | `adapter` | 5 |
 | `purge` | 5 |
@@ -296,6 +296,18 @@
 | `ipc:app.openRelease` | registerHandler | `src/main/ipc/handlers/settings.ts` |
 | `ipc:app.shellReady` | registerHandler | `src/main/ipc/handlers/desktop-chrome.ts` |
 
+### sessionGoal（7）
+
+| 通道 | 注册方式 | 注册位置 |
+| --- | --- | --- |
+| `ipc:sessionGoal.clear` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
+| `ipc:sessionGoal.continue` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
+| `ipc:sessionGoal.get` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
+| `ipc:sessionGoal.markDone` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
+| `ipc:sessionGoal.resume` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
+| `ipc:sessionGoal.set` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
+| `ipc:sessionGoal.toggleCriterion` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
+
 ### asr（6）
 
 | 通道 | 注册方式 | 注册位置 |
@@ -328,17 +340,6 @@
 | `ipc:prompt.followUp` | registerHandlerWithSchema | `src/main/ipc/handlers/prompt.ts` |
 | `ipc:prompt.send` | registerHandlerWithSchema | `src/main/ipc/handlers/prompt.ts` |
 | `ipc:prompt.steer` | registerHandlerWithSchema | `src/main/ipc/handlers/prompt.ts` |
-
-### sessionGoal（6）
-
-| 通道 | 注册方式 | 注册位置 |
-| --- | --- | --- |
-| `ipc:sessionGoal.clear` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
-| `ipc:sessionGoal.continue` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
-| `ipc:sessionGoal.get` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
-| `ipc:sessionGoal.markDone` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
-| `ipc:sessionGoal.set` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
-| `ipc:sessionGoal.toggleCriterion` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
 
 ### window（6）
 

@@ -52,18 +52,31 @@ export class RemoteRpc {
         assets: ctx.assets(),
         ...(ctx.endpoints ? { endpoints: ctx.endpoints() } : {}),
       }),
-      'project.list': async () => ({
-        projects: port
-          .trustedProjects()
-          .filter((p) => hub.isAllowedProject(p))
-          .map((id) => {
-            const info = port.projectInfo?.(id) ?? {}
-            const folder = id.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || id
-            return { id, name: info.label || folder, ...(info.temporary ? { temporary: true } : {}) }
-          })
-          // Temporary chats after real projects.
-          .sort((a, b) => Number(!!a.temporary) - Number(!!b.temporary)),
-      }),
+      'project.list': async () => {
+        // Desktop order = trust list order (MRU); hidden ones come along with a flag so the phone mirrors
+        // the sidebar exactly — same order, same hidden set, no list of its own.
+        const hidden = new Set(port.hiddenProjects().map((p) => normalizeSessionFileKey(p).replace(/\/+$/, '')))
+        return {
+          projects: port
+            .trustedProjects()
+            .filter((p) => hub.isAllowedProject(p))
+            .map((id) => {
+              const info = port.projectInfo?.(id) ?? {}
+              const folder = id.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || id
+              const isHidden = hidden.has(normalizeSessionFileKey(id).replace(/\/+$/, ''))
+              return { id, name: info.label || folder, ...(info.temporary ? { temporary: true } : {}), ...(isHidden ? { hidden: true } : {}) }
+            })
+            // Temporary chats after real projects.
+            .sort((a, b) => Number(!!a.temporary) - Number(!!b.temporary)),
+        }
+      },
+      'project.setHidden': async (_c, p) => {
+        const project = port.trustedProjects().find((t) => normalizeSessionFileKey(t) === normalizeSessionFileKey(p.projectId))
+        if (!project) throw new RpcFail('not_found', 'unknown project')
+        port.setProjectHidden(project, p.hidden)
+        port.notifySettingsChanged('projects')
+        return {}
+      },
       'session.watchList': async (caller, p) => ({ sessions: await hub.watchList(caller, p.projectId) }),
       'session.unwatchList': async (caller) => {
         hub.unwatchList(caller)
@@ -164,6 +177,19 @@ export class RemoteRpc {
         const file = await port.readFile(projectId, p.path)
         if (!file) throw new RpcFail('not_found', 'file not found in the project')
         return file
+      },
+      'session.delete': async (_c, p) => {
+        const { entry, projectId } = await hub.authorize(p.sessionKey)
+        const ok = await port.deleteSession(entry.sessionFile, projectId)
+        if (!ok) throw new RpcFail('internal', 'delete refused')
+        hub.forgetSession(entry.sessionFile)
+        return { deleted: true }
+      },
+      'file.write': async (_c, p) => {
+        const { projectId } = await hub.authorize(p.sessionKey)
+        const r = await port.writeFile(projectId, p.path, p.content, p.expectedRevision)
+        if (!r) throw new RpcFail('bad_request', 'write refused (path outside project, too large, or revision changed)')
+        return r
       },
       'git.log': async (_c, p) => {
         const { projectId } = await hub.authorize(p.sessionKey)

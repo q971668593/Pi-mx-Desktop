@@ -200,6 +200,19 @@ export class FakeHost implements RemoteHostPort {
   trustedProjects(): string[] {
     return this.projects
   }
+
+  hidden: string[] = []
+  readonly written = new Map<string, string>()
+
+  hiddenProjects(): string[] {
+    return this.hidden
+  }
+
+  setProjectHidden(projectId: string, hidden: boolean): void {
+    if (hidden) {
+      if (!this.hidden.includes(projectId)) this.hidden.push(projectId)
+    } else this.hidden = this.hidden.filter((p) => p !== projectId)
+  }
   projectInfo(path: string) {
     return path.includes('/sandbox-workspaces/') ? { temporary: true, label: '临时：问个问题' } : {}
   }
@@ -411,6 +424,17 @@ export class FakeHost implements RemoteHostPort {
   async readFile(_projectId: string, path: string) {
     return { path, size: 12, truncated: false, kind: 'text' as const, text: `// ${path}
 ` }
+  }
+
+  async deleteSession(sessionFile: string): Promise<boolean> {
+    return this.sessions.delete(sessionFile)
+  }
+
+  async writeFile(_projectId: string, path: string, content: string, expectedRevision?: string) {
+    const previous = this.written.get(path)
+    if (expectedRevision && previous && previous !== expectedRevision) return null
+    this.written.set(path, 'rev-2')
+    return { size: Buffer.byteLength(content, 'utf8'), revision: 'rev-2' }
   }
 
   async gitLog(_projectId: string, limit: number) {

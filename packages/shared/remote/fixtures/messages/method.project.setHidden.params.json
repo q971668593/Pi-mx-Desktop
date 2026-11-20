@@ -1,0 +1,7 @@
+{
+  "schema": "project.setHidden/params",
+  "value": {
+    "projectId": "/work/pi-app",
+    "hidden": true
+  }
+}

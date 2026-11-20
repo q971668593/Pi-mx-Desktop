@@ -175,6 +175,7 @@ const methodSamples: Samples = {
     },
   },
   'project.list': { params: {}, result: { projects: [{ id: '/work/pi-app', name: 'pi-app' }, { id: '/home/me/.config/pi-desktop/sandbox-workspaces/02c9a317', name: '帮我看下这个报错', temporary: true }] } },
+  'project.setHidden': { params: { projectId: '/work/pi-app', hidden: true }, result: {} },
   'session.watchList': {
     params: { projectId: '/work/pi-app' },
     result: {
@@ -296,6 +297,8 @@ const methodSamples: Samples = {
     params: { sessionKey, path: 'src/auth.ts' },
     result: { path: 'src/auth.ts', size: 24, truncated: false, kind: 'text', text: 'export const ok = true' },
   },
+  'session.delete': { params: { sessionKey }, result: { deleted: true } },
+  'file.write': { params: { sessionKey, path: 'src/auth.ts', content: 'export const ok = true' }, result: { size: 24, revision: 'rev-1' } },
   'git.log': {
     params: { sessionKey, limit: 2 },
     result: {
