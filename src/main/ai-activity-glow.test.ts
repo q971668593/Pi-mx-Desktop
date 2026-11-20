@@ -164,6 +164,24 @@ describe('ai activity glow', () => {
     expect(overlay().hide).toHaveBeenCalled()
   })
 
+  it('destroys the overlay a minute after hiding so no renderer or full-screen window idles', async () => {
+    observeAiActivityGlow(toolEvent('computer_click', 'start'))
+    await flush()
+    const first = overlay()
+    observeAiActivityGlow(toolEvent('computer_click', 'end'))
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(first.hide).toHaveBeenCalled()
+    expect(first.destroy).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(first.destroy).toHaveBeenCalled()
+
+    // 下一次操作重新建一个：销毁只是省内存，不影响功能
+    observeAiActivityGlow(toolEvent('computer_click', 'start'))
+    await flush()
+    expect(mocks.FakeBrowserWindow.instances).toHaveLength(2)
+  })
+
   it('re-reads the display layout on the next activation', async () => {
     observeAiActivityGlow(toolEvent('computer_click', 'start'))
     await flush()

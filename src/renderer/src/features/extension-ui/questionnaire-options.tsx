@@ -2,8 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check } from '@renderer/components/icons'
 import { cn } from '@renderer/lib/utils'
-import type { AskQuestionPayload } from './questionnaire-dialog'
-import type { QuestionDraft } from './questionnaire-model'
+import type { AskQuestionPayload, QuestionDraft } from './questionnaire-model'
 
 type QuestionnaireOptionsProps = {
   question: AskQuestionPayload

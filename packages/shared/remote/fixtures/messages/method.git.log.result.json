@@ -1,0 +1,25 @@
+{
+  "schema": "git.log/result",
+  "value": {
+    "isRepo": true,
+    "commits": [
+      {
+        "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "short": "aaaaaaa",
+        "subject": "fix: 并发刷新",
+        "author": "dev",
+        "at": 1760000000000,
+        "refs": [
+          "HEAD -> main"
+        ]
+      },
+      {
+        "sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "short": "bbbbbbb",
+        "subject": "init",
+        "author": "dev",
+        "at": 1759900000000
+      }
+    ]
+  }
+}

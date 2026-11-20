@@ -258,11 +258,11 @@ fun InboxContent(
             LazyColumn(Modifier.fillMaxSize()) {
                 if (needs.isNotEmpty()) {
                     item("h-needs") { SectionLabel("${stringResource(R.string.inbox_needs)} · ${needs.size}") }
-                    items(needs, key = { it.sessionKey }) { SessionRow(it, now, onOpen, showProject = true) }
+                    items(needs, key = { it.sessionKey }) { SessionRow(it, now, onOpen, showProject = true, modifier = Modifier.animateItem()) }
                 }
                 if (running.isNotEmpty()) {
                     item("h-run") { SectionLabel("${stringResource(R.string.inbox_running)} · ${running.size}") }
-                    items(running, key = { it.sessionKey }) { SessionRow(it, now, onOpen, showProject = true) }
+                    items(running, key = { it.sessionKey }) { SessionRow(it, now, onOpen, showProject = true, modifier = Modifier.animateItem()) }
                 }
                 if (byProject) {
                     // One collapsible group per project, idle sessions only (attention items stay on top).
@@ -272,20 +272,20 @@ fun InboxContent(
                         item("p-${p.id}") {
                             ProjectHeader(p.name, list.size, closed, onToggle = { collapsed[p.id] = !closed }, onNew = if (canCreate && onNewIn != null) ({ onNewIn(p.id) }) else null)
                         }
-                        if (!closed) items(list, key = { it.sessionKey }) { SessionRow(it, now, onOpen, showProject = false) }
+                        if (!closed) items(list, key = { it.sessionKey }) { SessionRow(it, now, onOpen, showProject = false, modifier = Modifier.animateItem()) }
                     }
                     // All desktop temporary chats in one group, folded by default.
                     val temp = recent.filter { it.projectId in temporaryIds }
                     if (temp.isNotEmpty()) {
                         val closed = collapsed[TEMPORARY] ?: true
                         item("p-temp") { ProjectHeader(stringResource(R.string.temporary_chats), temp.size, closed, onToggle = { collapsed[TEMPORARY] = !closed }, onNew = null) }
-                        if (!closed) items(temp, key = { it.sessionKey }) { SessionRow(it, now, onOpen, showProject = false) }
+                        if (!closed) items(temp, key = { it.sessionKey }) { SessionRow(it, now, onOpen, showProject = false, modifier = Modifier.animateItem()) }
                     }
                 } else {
                     val buckets = recent.groupBy { dayBucket(it.updatedAt, now) }.toSortedMap()
                     for ((b, list) in buckets) {
                         item("d-$b") { SectionLabel(dayLabels[b]) }
-                        items(list, key = { it.sessionKey }) { SessionRow(it, now, onOpen, showProject = filter == null) }
+                        items(list, key = { it.sessionKey }) { SessionRow(it, now, onOpen, showProject = filter == null, modifier = Modifier.animateItem()) }
                     }
                 }
                 item("bottom") { Spacer(Modifier.height(24.dp)) }
@@ -318,9 +318,10 @@ private fun FilterTab(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun SessionRow(s: SessionSummary, now: Long, onOpen: (String) -> Unit, showProject: Boolean = true) {
+private fun SessionRow(s: SessionSummary, now: Long, onOpen: (String) -> Unit, showProject: Boolean = true, modifier: Modifier = Modifier) {
     val temporaryLabel = stringResource(R.string.temporary_chats)
-    Row(Modifier.fillMaxWidth().clickable(role = Role.Button) { onOpen(s.sessionKey) }.padding(horizontal = 18.dp, vertical = 11.dp)) {
+    // animateItem() 由调用方的 LazyColumn 提供：新跑起来的会话、状态变化会平滑滑入而不是跳一下
+    Row(modifier.fillMaxWidth().heightIn(min = Pi.row).clickable(role = Role.Button) { onOpen(s.sessionKey) }.padding(horizontal = 18.dp, vertical = 11.dp)) {
         Box(Modifier.width(14.dp).padding(top = 3.dp), contentAlignment = Alignment.TopCenter) {
             when (s.status) {
                 "needsInput" -> PiIcon(PiIcons.Question, Pi.c.warn, 14.dp)

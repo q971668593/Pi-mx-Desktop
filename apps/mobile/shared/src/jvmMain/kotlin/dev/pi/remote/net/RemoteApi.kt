@@ -14,6 +14,10 @@ import dev.pi.remote.protocol.SwitchBranchParams
 import dev.pi.remote.protocol.RewindResult
 import dev.pi.remote.protocol.CommandListResult
 import dev.pi.remote.protocol.FileListParams
+import dev.pi.remote.protocol.FileReadParams
+import dev.pi.remote.protocol.FileReadResult
+import dev.pi.remote.protocol.GitLogParams
+import dev.pi.remote.protocol.GitLogResult
 import dev.pi.remote.protocol.FileListResult
 import dev.pi.remote.protocol.FileSearchParams
 import dev.pi.remote.protocol.FileSearchResult
@@ -64,6 +68,10 @@ class RemoteApi(private val c: HostConnection) {
         c.typedCall("file.list", FileListParams.serializer(), FileListParams(sessionKey, path, dotfiles.takeIf { it }), FileListResult.serializer())
     suspend fun searchFiles(sessionKey: String, query: String) =
         c.typedCall("file.search", FileSearchParams.serializer(), FileSearchParams(sessionKey, query), FileSearchResult.serializer()).entries
+    suspend fun readFile(sessionKey: String, path: String) =
+        c.typedCall("file.read", FileReadParams.serializer(), FileReadParams(sessionKey, path), FileReadResult.serializer(), timeoutMs = 60_000)
+    suspend fun gitLog(sessionKey: String, limit: Int = 20) =
+        c.typedCall("git.log", GitLogParams.serializer(), GitLogParams(sessionKey, limit), GitLogResult.serializer())
     suspend fun branches(sessionKey: String) = c.typedCall("session.branches", SessionKeyParams.serializer(), SessionKeyParams(sessionKey), BranchesResult.serializer()).branches
     suspend fun switchBranch(sessionKey: String, leafId: String) = c.typedCall("session.switchBranch", SwitchBranchParams.serializer(), SwitchBranchParams(sessionKey, leafId), Empty.serializer())
     suspend fun fork(sessionKey: String, anchor: String) = c.typedCall("session.fork", RewindParams.serializer(), RewindParams(sessionKey, anchor), ForkResult.serializer())

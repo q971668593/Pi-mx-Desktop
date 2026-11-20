@@ -5,7 +5,6 @@ import { SettingsPageHeader } from '@renderer/features/settings/settings-shell'
 import { SettingRow, SettingsSection, Toggle } from '@renderer/features/settings/settings-page-shared'
 import { btnCompact, numberInputCls, selectCls } from '@renderer/features/settings/settings-controls'
 import { cn } from '@renderer/lib/utils'
-import { projectGroups } from '@renderer/features/settings/mobile-project-groups'
 
 type Device = {
   id: string
@@ -25,7 +24,7 @@ type RemoteStatus = {
   port: number
   error?: string
   endpoints: string[]
-  endpointInfo?: { url: string; kind: 'lan' | 'tailscale' | 'overlay' }[]
+  endpointInfo?: { url: string; kind: 'lan' | 'tailscale' | 'overlay' | 'public' }[]
   hostName: string
   hostKeyEphemeral: boolean
   pairing: { link: string; exp: number } | null
@@ -34,11 +33,12 @@ type RemoteStatus = {
   projects: string[]
   trustedProjects: string[]
   projectInfo?: Record<string, { label?: string; temporary?: boolean }>
+  tls: { spki: string; fingerprint: string; notAfter: number; subjectAltNames: string[]; ephemeral: boolean } | null
+  publicHosts: string[]
 }
 
 const POLL_MS = 3000
 const projectName = (p: string) => p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || p
-const sameProject = (a: string, b: string) => a.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase() === b.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
 
 function useNow(active: boolean): number {
   const [now, setNow] = useState(() => Date.now())
@@ -56,9 +56,8 @@ export function MobileSettingsPanel() {
   const [status, setStatus] = useState<RemoteStatus | null>(null)
   const [busy, setBusy] = useState(false)
   const [portDraft, setPortDraft] = useState('')
+  const [hostDraft, setHostDraft] = useState('')
   const now = useNow(!!status?.pairing)
-  const [projectQuery, setProjectQuery] = useState('')
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
 
   const call = useCallback(async (channel: string, request?: unknown) => {
     setBusy(true)
@@ -102,12 +101,6 @@ export function MobileSettingsPanel() {
     return rtf.format(Math.round(s / 86400), 'day')
   }
 
-  const groups = useMemo(() => {
-    const q = projectQuery.trim().toLowerCase()
-    const list = (status?.trustedProjects ?? []).filter((p) => !q || p.toLowerCase().includes(q))
-    return projectGroups(list, status?.projectInfo ?? {}, t('settings:mobile.temporaryChats'))
-  }, [status?.trustedProjects, status?.projectInfo, projectQuery, t])
-
   if (!status) return <div className="text-[12.5px] text-foreground-secondary">{t('settings:mobile.loading')}</div>
 
   const statusLine = status.error
@@ -115,16 +108,6 @@ export function MobileSettingsPanel() {
     : status.listening
       ? t('settings:mobile.listening', { port: status.port })
       : t('settings:mobile.off')
-
-  const isOn = (p: string) => status.projects.some((x) => sameProject(x, p))
-  const setGroupProjects = (paths: string[], on: boolean) => {
-    const rest = status.projects.filter((x) => !paths.some((p) => sameProject(x, p)))
-    void call('remote.setProjects', { projects: on ? [...rest, ...paths] : rest })
-  }
-  const toggleProject = (p: string, on: boolean) => {
-    const next = on ? [...status.projects, p] : status.projects.filter((x) => !sameProject(x, p))
-    void call('remote.setProjects', { projects: next })
-  }
 
   return (
     <div className="space-y-8">
@@ -196,6 +179,76 @@ export function MobileSettingsPanel() {
         </SettingsSection>
       )}
 
+      {/* 广域网：证书指纹 + 公网地址（隧道或端口映射） */}
+      <SettingsSection title={t('settings:mobile.wideArea')} description={t('settings:mobile.wideAreaDesc')}>
+        <SettingRow
+          label={t('settings:mobile.certificate')}
+          description={
+            status.tls
+              ? t('settings:mobile.certificateDesc', {
+                  expires: new Date(status.tls.notAfter).toLocaleDateString(i18n.language),
+                  names: status.tls.subjectAltNames.length,
+                })
+              : t('settings:mobile.certificateOff')
+          }
+        >
+          <div className="flex max-w-[22rem] flex-col items-end gap-1">
+            <code className="max-w-full truncate font-mono text-[11px] text-foreground-secondary" title={status.tls?.fingerprint}>
+              {status.tls?.fingerprint ?? '—'}
+            </code>
+            <button
+              type="button"
+              className={btnCompact}
+              disabled={busy || !status.listening}
+              onClick={() => void call('remote.regenerateTls')}
+              title={t('settings:mobile.regenerateTlsHint')}
+            >
+              {t('settings:mobile.regenerateTls')}
+            </button>
+          </div>
+        </SettingRow>
+        <SettingRow label={t('settings:mobile.publicHosts')} description={t('settings:mobile.publicHostsDesc')}>
+          <div className="flex max-w-[22rem] flex-col items-end gap-1.5">
+            <div className="flex flex-wrap justify-end gap-1">
+              {(status.publicHosts ?? []).map((host) => (
+                <span key={host} className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-[var(--bg-2)]/50 px-1.5 py-0.5 font-mono text-[11px]">
+                  {host}
+                  <button
+                    type="button"
+                    aria-label={t('settings:mobile.removeHost', { host })}
+                    className="text-foreground-tertiary hover:text-foreground"
+                    onClick={() => void call('remote.setPublicHosts', { hosts: (status.publicHosts ?? []).filter((h) => h !== host) })}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+            <form
+              className="flex w-full items-center gap-1"
+              onSubmit={(event) => {
+                event.preventDefault()
+                const value = hostDraft.trim()
+                if (!value) return
+                void call('remote.setPublicHosts', { hosts: [...(status.publicHosts ?? []), value] })
+                setHostDraft('')
+              }}
+            >
+              <input
+                className={cn(numberInputCls, 'w-full text-left font-mono text-[11.5px]')}
+                placeholder={t('settings:mobile.publicHostPlaceholder')}
+                value={hostDraft}
+                onChange={(event) => setHostDraft(event.target.value)}
+              />
+              <button type="submit" className={btnCompact} disabled={busy || !hostDraft.trim()}>
+                {t('settings:mobile.addHost')}
+              </button>
+            </form>
+            <span className="text-[11px] leading-4 text-foreground-tertiary">{t('settings:mobile.tunnelHint')}</span>
+          </div>
+        </SettingRow>
+      </SettingsSection>
+
       <SettingsSection title={t('settings:mobile.devices')} description={status.devices.length ? undefined : t('settings:mobile.noDevices')}>
         {status.devices.map((d) => (
           <SettingRow
@@ -232,56 +285,25 @@ export function MobileSettingsPanel() {
         ))}
       </SettingsSection>
 
-      <SettingsSection title={t('settings:mobile.projects')} description={t('settings:mobile.projectsDesc')}>
-        {status.trustedProjects.length === 0 && <div className="settings-row text-[12.5px] text-foreground-secondary">{t('settings:mobile.noProjects')}</div>}
-        {status.trustedProjects.length > 10 && (
-          <div className="settings-row">
-            <input
-              className={cn(numberInputCls, 'w-full text-left')}
-              placeholder={t('settings:mobile.projectSearch')}
-              value={projectQuery}
-              onChange={(e) => setProjectQuery(e.target.value)}
-            />
+      {/* 不再逐个授权项目：手机与电脑同一份项目列表，这里只是只读一览。 */}
+      <SettingsSection title={t('settings:mobile.projects')} description={t('settings:mobile.projectsShared')}>
+        {status.trustedProjects.length === 0 ? (
+          <div className="settings-row text-[12.5px] text-foreground-secondary">{t('settings:mobile.noProjects')}</div>
+        ) : (
+          <div className="settings-row block">
+            <div className="flex flex-wrap gap-1.5 py-1">
+              {status.trustedProjects.map((p) => (
+                <span
+                  key={p}
+                  title={p}
+                  className="max-w-[15rem] truncate rounded-md border border-border/60 bg-[var(--bg-2)]/50 px-2 py-1 font-mono text-[11.5px] text-foreground-secondary"
+                >
+                  {projectName(p)}
+                </span>
+              ))}
+            </div>
           </div>
         )}
-        {groups.map((g) => {
-          const on = g.projects.filter((p) => isOn(p.path)).length
-          // Temporary chats start folded: usually many, rarely what the phone should see.
-          const open = projectQuery.trim() !== '' || (openGroups[g.key] ?? !g.temporary)
-          return (
-            <div key={g.key} className="settings-row block py-1">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="flex min-w-0 flex-1 items-center gap-1.5 py-1 text-left text-[12.5px] text-foreground-secondary hover:text-foreground"
-                  onClick={() => setOpenGroups((m) => ({ ...m, [g.key]: !open }))}
-                  title={g.label}
-                >
-                  <span className={cn('inline-block text-[10px] transition-transform', open && 'rotate-90')}>▸</span>
-                  <span className={cn('truncate text-[12px]', !g.temporary && 'font-mono')}>{g.label}</span>
-                  <span className="shrink-0 tabular-nums text-foreground-tertiary">
-                    {on}/{g.projects.length}
-                  </span>
-                </button>
-                <Toggle
-                  on={on === g.projects.length}
-                  disabled={busy}
-                  onChange={(v) => setGroupProjects(g.projects.map((p) => p.path), v)}
-                />
-              </div>
-              {open && (
-                <div className="ml-4 mt-0.5 grid grid-cols-1 gap-x-6 sm:grid-cols-2">
-                  {g.projects.map((p) => (
-                    <label key={p.path} className="flex cursor-pointer items-center justify-between gap-3 py-1 text-[13px]" title={p.path}>
-                      <span className="truncate">{p.name}</span>
-                      <Toggle on={isOn(p.path)} disabled={busy} onChange={(v) => toggleProject(p.path, v)} />
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-          )
-        })}
       </SettingsSection>
     </div>
   )

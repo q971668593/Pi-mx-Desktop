@@ -20,6 +20,8 @@ import dev.pi.remote.protocol.HelloParams
 import dev.pi.remote.protocol.HelloResult
 import dev.pi.remote.protocol.ModelListResult
 import dev.pi.remote.protocol.PairOffer
+import dev.pi.remote.protocol.FileReadResult
+import dev.pi.remote.protocol.GitLogResult
 import dev.pi.remote.protocol.ProjectInfo
 import dev.pi.remote.protocol.RemoteJson
 import dev.pi.remote.protocol.SessionSummary
@@ -111,6 +113,7 @@ class RemoteRepository(
     private var stopJob: Job? = null
     private var hello: HelloResult? = null
     private var foreground = false
+    private val projectImages = android.util.LruCache<String, android.graphics.Bitmap>(24)
 
     private val helloParams get() = HelloParams(AppInfo("pi-remote", appVersion, platform), CLIENT_CAPS)
 
@@ -126,10 +129,11 @@ class RemoteRepository(
         var saved: SavedHost? = null
         val c = HostConnection(
             scope, offer.endpoints, Base64Url.decode(offer.hostPub), keyVault.identity(), deviceName, platform, helloParams, offer.pairToken,
+            tlsPin = offer.tls,
             onPaired = { p: Hs2Payload ->
                 // Re-pairing the same computer keeps the addresses the user typed in.
                 val manual = hostStore.hosts.firstOrNull { it.hostId == p.hostId }?.manualEndpoints.orEmpty()
-                saved = SavedHost(p.hostId, p.hostName, offer.hostPub, offer.endpoints, p.deviceId, p.role, System.currentTimeMillis(), manual).also {
+                saved = SavedHost(p.hostId, p.hostName, offer.hostPub, offer.endpoints, p.deviceId, p.role, System.currentTimeMillis(), manual, offer.tls).also {
                     hostStore.upsert(it)
                     _hosts.value = hostStore.hosts
                 }
@@ -229,7 +233,10 @@ class RemoteRepository(
     private fun connect() {
         val host = _active.value ?: return
         if (conn != null) return
-        val c = HostConnection(scope, host.allEndpoints, Base64Url.decode(host.hostPub), keyVault.identity(), deviceName, platform, helloParams)
+        val c = HostConnection(
+            scope, host.allEndpoints, Base64Url.decode(host.hostPub), keyVault.identity(), deviceName, platform, helloParams,
+            tlsPin = host.tlsPin,
+        )
         conn = c
         api = RemoteApi(c)
         jobs += scope.launch { c.state.collect { s -> _connection.value = s; if (s is HostConnection.State.Ready) onReady(s) } }
@@ -422,6 +429,27 @@ class RemoteRepository(
         val a = api ?: error("offline")
         a.rewind(key, anchor).editorText.orEmpty()
     }.onSuccess { reopen(key, fresh = true) }
+
+    /** Commits of the session's project (phone Git view). */
+    suspend fun gitLog(key: String, limit: Int = 20): Result<GitLogResult> =
+        runCatching { api?.gitLog(key, limit) ?: error("offline") }
+
+    /** One file for the phone reader: text (capped) or an image as base64. */
+    suspend fun readFile(key: String, path: String): Result<FileReadResult> =
+        runCatching { api?.readFile(key, path) ?: error("offline") }
+
+    /**
+     * 项目内图片（生图结果、截图）解码成位图；按路径缓存，聊天里滚动不会反复拉取。
+     * 拉取失败返回 null，界面显示占位图标而不是报错。
+     */
+    suspend fun projectImage(key: String, path: String): android.graphics.Bitmap? = withContext(Dispatchers.IO) {
+        projectImages.get(path)?.let { return@withContext it }
+        val file = readFile(key, path).getOrNull() ?: return@withContext null
+        val data = file.data ?: return@withContext null
+        if (file.kind != "image") return@withContext null
+        val bytes = runCatching { android.util.Base64.decode(data, android.util.Base64.DEFAULT) }.getOrNull() ?: return@withContext null
+        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.also { projectImages.put(path, it) }
+    }
 
     suspend fun branches(key: String): Result<List<BranchInfo>> = runCatching { api?.branches(key) ?: error("offline") }
 

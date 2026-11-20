@@ -36,6 +36,7 @@ import { loadNormalizedRightPanelPrefs } from '@renderer/lib/right-panel-runtime
 import { normalizeTimelineMaxAutoExpandedTools, normalizeTimelineVisibleTurns } from '@shared/timeline-settings'
 import { SidePanelHost } from '@renderer/features/side-panels/side-panel-host'
 import { ExtensionUIHost } from '@renderer/features/extension-ui/extension-ui-host'
+import { QuestionnaireDock } from '@renderer/features/extension-ui/questionnaire-dock'
 import { AppToaster } from '@renderer/components/app/app-toaster'
 import { markExtensionNotifyAppReady } from '@renderer/lib/extension-notify-policy'
 import {
@@ -465,6 +466,8 @@ export default function App() {
               )}
               <MainColRightPanelToggle />
               <ComposerDock heroMode={showHome}>
+                {/* 确认问题不再整屏弹窗：贴在输入框上方，可折叠，答完自动收起。 */}
+                <QuestionnaireDock />
                 {/* The agent waiting on the user in their Chrome: answerable right above the composer. */}
                 <HelpBar activeTabId={null} where="chrome" className="mb-2 rounded-lg border" />
                 <Composer />

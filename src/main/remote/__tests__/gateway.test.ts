@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { base64UrlDecode, decodePairLink, type OpenResult, type PairOffer, type TurnPatch } from '@shared/remote'
+import { base64UrlDecode, decodePairLink, isAllowedEndpoint, type OpenResult, type PairOffer, type TurnPatch } from '@shared/remote'
 import { HandshakeError, generateKeyPair } from '@shared/remote/crypto'
 import { RemoteGateway, hostAddresses, lanAddresses } from '../gateway'
 import { remoteTap } from '../tap'
@@ -55,6 +55,38 @@ afterEach(async () => {
   await Promise.all(clients.splice(0).map((c) => c.close()))
   await gw.stop()
   host.dispose()
+})
+
+describe('transport security', () => {
+  it('serves wss:// and pins the certificate fingerprint in the pair link', async () => {
+    expect(gw.endpoints().every((url) => url.startsWith('wss://'))).toBe(true)
+    const o = await offer()
+    expect(o.tls).toBe(gw.status(true).tls?.spki)
+    const info = gw.status(true).tls!
+    expect(info.fingerprint).toMatch(/^([0-9a-f]{2}:){31}[0-9a-f]{2}$/)
+    expect(info.ephemeral).toBe(false)
+    expect(info.subjectAltNames).toContain('127.0.0.1')
+    // 配对链接里的地址都能被手机的地址策略接受
+    expect(o.endpoints.every((endpoint) => isAllowedEndpoint(endpoint))).toBe(true)
+  })
+
+  it('keeps the same certificate across restarts so the phone does not re-pair', async () => {
+    const before = gw.status(true).tls!.spki
+    await gw.stop()
+    await gw.start({ port: 0, host: '127.0.0.1' })
+    host.sink = gw.sink
+    expect(gw.status(true).tls!.spki).toBe(before)
+  })
+
+  it('adds wide-area endpoints from the public host list', async () => {
+    gw.setPublicHosts(['pi.example.com:8443', 'edge.trycloudflare.com:443'])
+    const info = gw.status(true).endpointInfo
+    expect(info.filter((e) => e.kind === 'public').map((e) => e.url)).toEqual([
+      'wss://pi.example.com:8443',
+      'wss://edge.trycloudflare.com:443',
+    ])
+    gw.setPublicHosts([])
+  })
 })
 
 describe('pairing and authentication', () => {
@@ -131,14 +163,14 @@ describe('pairing and authentication', () => {
 })
 
 describe('sessions', () => {
-  it('lists only whitelisted projects and refuses others', async () => {
+  it('shares every desktop project with the phone, with no whitelist', async () => {
     const c = await pairNew()
-    expect((await c.call('project.list', {})).projects).toEqual([{ id: '/work/pi-app', name: 'pi-app' }])
-    const { sessions } = await c.call('session.watchList', {})
-    expect(sessions.map((s) => s.title)).toEqual(['修复登录'])
-    const secret = [...host.sessions.keys()].find((k) => k.includes('secret'))!
-    await expect(c.call('session.open', { sessionKey: secret })).rejects.toMatchObject({ err: { code: 'forbidden' } })
-    await expect(c.call('session.watchList', { projectId: '/work/secret' })).rejects.toBeInstanceOf(RemoteRpcError)
+    expect((await c.call('project.list', {})).projects).toEqual([
+      { id: '/work/pi-app', name: 'pi-app' },
+      { id: '/work/secret', name: 'secret' },
+    ])
+    // 白名单里的旧值不再拦人
+    expect(gw.status(true).trustedProjects).toContain('/work/secret')
   })
 
   it('opens a snapshot, streams a run, and replays from a cursor after reconnect', async () => {
@@ -375,15 +407,18 @@ describe('sessions', () => {
     await c.call('session.watchList', {})
     await host.playRun(session, 'go')
     const update = await c.waitFor((e) => e.m === 'sessions.update', 3000)
-    expect((update.p as { sessions: Array<{ sessionKey: string }> }).sessions[0].sessionKey).toBe(session)
+    const keys = (update.p as { sessions: Array<{ sessionKey: string }> }).sessions.map((x) => x.sessionKey)
+    expect(keys).toContain(session)
   })
 
-  it('creates sessions in the background only in allowed projects', async () => {
+  it('creates sessions in any desktop project and refuses unknown ones', async () => {
     const c = await pairNew()
     const created = await c.call('session.create', { projectId: '/work/pi-app', capabilities: ['pi-ui', 'nope'] })
     expect(host.calls.created).toEqual([created.sessionKey])
     expect(host.capabilities[created.sessionKey]).toEqual(['pi-ui'])
-    await expect(c.call('session.create', { projectId: '/work/secret' })).rejects.toMatchObject({ err: { code: 'forbidden' } })
+    // 不再有项目白名单：电脑上的另一个项目同样能开会话
+    await expect(c.call('session.create', { projectId: '/work/secret' })).resolves.toMatchObject({ sessionKey: expect.any(String) })
+    await expect(c.call('session.create', { projectId: '/work/unknown' })).rejects.toMatchObject({ err: { code: 'forbidden' } })
   })
 
   it('a phone-created session opens empty, streams its first run, then tells the desktop list', async () => {
@@ -441,7 +476,8 @@ describe('extension UI', () => {
     const open = (await a.call('session.open', { sessionKey: session })) as OpenResult
     expect(open.pendingUi.map((u) => u.id)).toEqual(['q1'])
     const upd = await a.waitFor((e) => e.m === 'sessions.update', 3000)
-    expect((upd.p as { sessions: Array<{ status: string; preview?: string }> }).sessions[0]).toMatchObject({ status: 'needsInput', preview: '删除？' })
+    const rows = (upd.p as { sessions: Array<{ sessionKey: string; status: string; preview?: string }> }).sessions
+    expect(rows.find((row) => row.sessionKey === session)).toMatchObject({ status: 'needsInput', preview: '删除？' })
     remoteTap.uiResolved('q1', 'desktop')
     const d = await a.waitFor((e) => e.m === 'ui.dismiss')
     expect(d.p).toMatchObject({ id: 'q1', by: 'desktop' })

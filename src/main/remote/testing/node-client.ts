@@ -35,7 +35,9 @@ export class NodeRemoteClient {
   /** Connect and authenticate. Pass `pairToken` the first time. Rejects with HandshakeError on refusal. */
   connect(endpoint: string, hostPub: Uint8Array, pairToken?: string): Promise<Hs2Payload> {
     return new Promise((resolve, reject) => {
-      const ws = new WebSocket(endpoint.replace(/\/?$/, '/ws').replace(/\/ws\/ws$/, '/ws'))
+      // The probe is not the phone: it has no pin store, so it trusts whatever certificate the
+      // gateway minted. Session security comes from the hs1/hs2 handshake, not from this socket.
+      const ws = new WebSocket(endpoint.replace(/\/?$/, '/ws').replace(/\/ws\/ws$/, '/ws'), { rejectUnauthorized: false })
       this.ws = ws
       const { msg, state } = clientHs1({ hostPub, clientStatic: this.identity, payload: { name: this.name, platform: 'node', ...(pairToken ? { pair: pairToken } : {}) } })
       ws.on('open', () => ws.send(JSON.stringify(msg)))

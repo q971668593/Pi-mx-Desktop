@@ -52,6 +52,8 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import dev.pi.remote.app.theme.Pi
 import dev.pi.remote.app.theme.PiIcon
@@ -85,6 +87,10 @@ data class TurnCallbacks(
     val onOpen: (Turn, MessagePart) -> Unit = { _, _ -> },
     /** Long-press on a message: copy / select / share / edit. */
     val onActions: (Turn, MessagePart) -> Unit = { _, _ -> },
+    /** 加载工具输出里提到的项目内图片（生图结果等）；null = 拉不到。 */
+    val loadImage: suspend (String) -> android.graphics.Bitmap? = { null },
+    /** 点缩略图看大图。 */
+    val onOpenImage: (android.graphics.Bitmap, String) -> Unit = { _, _ -> },
 )
 
 enum class MessagePart { User, Answer }
@@ -295,6 +301,19 @@ private fun StepList(turn: Turn, steps: List<Step>, cb: TurnCallbacks, liveId: S
                         failed = s.status == "error",
                         onClick = { cb.onStep(turn, s) },
                     )
+                    // 生图/截图这类工具：输出里的图片路径直接出缩略图，不用点进去看文字
+                    val images = remember(s.id, s.node.preview, s.node.title) {
+                        ImagePaths.find(
+                            listOfNotNull(s.node.title, s.node.preview, (s.node.fields["path"] as? JsonPrimitive)?.content).joinToString(" "),
+                        )
+                    }
+                    if (images.isNotEmpty()) {
+                        RemoteImageStrip(
+                            paths = images,
+                            load = { path -> cb.loadImage(path)?.asImageBitmap() },
+                            onOpen = { bitmap, path -> cb.onOpenImage(bitmap.asAndroidBitmap(), path) },
+                        )
+                    }
                 }
                 is ProseStep -> Text(s.text.lines().firstOrNull { it.isNotBlank() }.orEmpty(), style = Pi.t.secondary.copy(color = Pi.c.fg3), maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(vertical = 4.dp, horizontal = 0.dp))
                 else -> Unit

@@ -292,6 +292,20 @@ const methodSamples: Samples = {
       truncated: false,
     },
   },
+  'file.read': {
+    params: { sessionKey, path: 'src/auth.ts' },
+    result: { path: 'src/auth.ts', size: 24, truncated: false, kind: 'text', text: 'export const ok = true' },
+  },
+  'git.log': {
+    params: { sessionKey, limit: 2 },
+    result: {
+      isRepo: true,
+      commits: [
+        { sha: 'a'.repeat(40), short: 'aaaaaaa', subject: 'fix: 并发刷新', author: 'dev', at: 1760000000000, refs: ['HEAD -> main'] },
+        { sha: 'b'.repeat(40), short: 'bbbbbbb', subject: 'init', author: 'dev', at: 1759900000000 },
+      ],
+    },
+  },
   'file.search': {
     params: { sessionKey, query: 'auth' },
     result: { entries: [{ name: 'auth.ts', path: 'src/auth.ts', dir: false }] },

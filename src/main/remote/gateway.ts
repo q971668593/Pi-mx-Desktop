@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import { createServer as createHttpsServer } from 'node:https'
 import { networkInterfaces } from 'node:os'
 import type { Duplex } from 'node:stream'
 import { WebSocketServer } from 'ws'
@@ -6,6 +7,7 @@ import { normalizeSessionFileKey } from '@shared/session-file-key'
 import { base64UrlEncode, encodePairLink, isPrivateHost, type Role } from '@shared/remote'
 import { AssetStore } from './assets'
 import { AuthStore, type DeviceRecord } from './auth-store'
+import { describeCert } from './cert'
 import { RemoteConnection } from './connection'
 import type { RemoteHostPort, RemoteTapSink } from './host-port'
 import { RemoteRpc } from './rpc'
@@ -15,6 +17,16 @@ import { UiRouter } from './ui-router'
 
 export const REMOTE_FEATURES = ['capabilities', 'cacheWarming', 'sessionCreate', 'assets']
 const HANDSHAKE_FAILS_PER_MIN = 20
+
+/** `host` / `host:port` / `[v6]:port` → parts, defaulting to `fallback` when no port is given. */
+export function splitHostPort(entry: string, fallback: number): [string, number] {
+  const text = String(entry || '').trim()
+  const v6 = /^\[([^\]]+)\](?::(\d+))?$/.exec(text)
+  if (v6) return [v6[1], v6[2] ? Number(v6[2]) : fallback]
+  const parts = text.split(':')
+  if (parts.length === 2 && /^\d+$/.test(parts[1])) return [parts[0], Number(parts[1])]
+  return [text, fallback]
+}
 
 const isLoopback = (ip: string): boolean => /^(::ffff:)?127\./.test(ip) || ip === '::1'
 const MAX_PAYLOAD = 16 * 1024 * 1024
@@ -37,9 +49,21 @@ export type GatewayStatus = {
   trustedProjects: string[]
   /** Labels for temporary-chat sandboxes (the folder name is a random id). */
   projectInfo: Record<string, { label?: string; temporary?: boolean }>
+  /** Transport security: what the phone pins, plus a few facts for the settings page. */
+  tls: GatewayTlsInfo | null
+  /** `host:port` entries used for wide-area access (tunnel or port forwarding). */
+  publicHosts: string[]
 }
 
-export type EndpointKind = 'lan' | 'tailscale' | 'overlay'
+export type GatewayTlsInfo = {
+  spki: string
+  fingerprint: string
+  notAfter: number
+  subjectAltNames: string[]
+  ephemeral: boolean
+}
+
+export type EndpointKind = 'lan' | 'tailscale' | 'overlay' | 'public'
 export type EndpointInfo = { url: string; kind: EndpointKind }
 
 /** Container bridges, proxy TUNs (Clash/mihomo, sing-box) and VM host-only nets: never reachable from the phone. */
@@ -117,11 +141,9 @@ export class RemoteGateway {
     })
   }
 
-  /** Whitelisted projects the desktop still trusts. */
+  /** Projects remote clients may use: everything the desktop itself trusts. 手机与电脑看同一份列表。 */
   allowedProjects(): string[] {
-    const trusted = this.port.trustedProjects()
-    const keys = new Set(this.auth.config.projects.map((p) => normalizeSessionFileKey(p).replace(/\/+$/, '')))
-    return trusted.filter((t) => keys.has(normalizeSessionFileKey(t).replace(/\/+$/, '')))
+    return this.port.trustedProjects()
   }
 
   get sink(): RemoteTapSink {
@@ -150,7 +172,11 @@ export class RemoteGateway {
     this.auth.hostKey()
     await this.assets.warm()
     const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD, perMessageDeflate: false })
-    const server = createServer((req, res) => void this.onHttp(req, res))
+    // TLS is transport only: the session itself is already X25519 + ChaCha20-Poly1305, and the
+    // phone authenticated the host key from the QR. `wss://` keeps rooms, hotels and carriers out.
+    const material = this.auth.tlsMaterial(this.certAltNames())
+    this.tlsInfo = { ...describeCert(material.certPem), spki: material.spki, ephemeral: material.ephemeral }
+    const server = createHttpsServer({ key: material.keyPem, cert: material.certPem }, (req, res) => void this.onHttp(req, res))
     server.on('upgrade', (req, socket, head) => this.onUpgrade(wss, req, socket, head))
     await new Promise<void>((resolve, reject) => {
       const onError = (e: NodeJS.ErrnoException) => {
@@ -181,6 +207,7 @@ export class RemoteGateway {
     this.conns.clear()
     this.hub.dispose()
     this.auth.clearPairing()
+    this.tlsInfo = null
     const server = this.server
     const wss = this.wss
     this.server = null
@@ -269,6 +296,7 @@ export class RemoteGateway {
         hostName: this.port.hostName(),
         hostPub: base64UrlEncode(this.auth.hostKey().pub),
         endpoints,
+        ...(this.tlsInfo ? { tls: this.tlsInfo.spki } : {}),
         pairToken: p.token,
         exp: p.exp,
       }),
@@ -280,11 +308,24 @@ export class RemoteGateway {
   endpointHosts: () => { host: string; kind: EndpointKind }[] = () => hostAddresses()
   /** This machine's Tailscale MagicDNS name (`pc.tail1234.ts.net`), found once the gateway starts. */
   tailnetName: string | null = null
+  private tlsInfo: GatewayTlsInfo | null = null
+
+  /** SAN list for the certificate: every address the phone might dial, plus user-declared public names. */
+  private certAltNames(): string[] {
+    const hosts = this.endpointHosts().map((e) => e.host)
+    if (this.tailnetName) hosts.push(this.tailnetName)
+    return [...hosts, ...this.auth.publicHosts.map((h) => h.replace(/:\d+$/, ''))]
+  }
 
   endpointInfo(): EndpointInfo[] {
     const hosts = this.endpointHosts()
-    const all = this.tailnetName ? [...hosts, { host: this.tailnetName, kind: 'tailscale' as const }] : hosts
-    return all.map(({ host, kind }) => ({ url: `ws://${host.includes(':') ? `[${host}]` : host}:${this.boundPort}`, kind }))
+    const all: { host: string; kind: EndpointKind }[] = this.tailnetName ? [...hosts, { host: this.tailnetName, kind: 'tailscale' }] : [...hosts]
+    // Wide-area entries come last: the phone tries LAN first and falls back here.
+    for (const entry of this.auth.publicHosts) all.push({ host: entry, kind: 'public' })
+    return all.map(({ host, kind }) => {
+      const [name, port] = splitHostPort(host, this.boundPort)
+      return { url: `wss://${name.includes(':') ? `[${name}]` : name}:${port}`, kind }
+    })
   }
 
   endpoints(): string[] {
@@ -312,6 +353,31 @@ export class RemoteGateway {
     return this.auth.setDeviceRole(id, role)
   }
 
+  /** Wide-area `host:port` list (tunnel hostname or a port-forward on the router). */
+  setPublicHosts(hosts: string[]): void {
+    this.auth.setPublicHosts(hosts)
+  }
+
+  /**
+   * Mint a new certificate. Only needed when the stored key is lost: every paired phone must scan
+   * the QR again because the pinned fingerprint changes.
+   */
+  regenerateTls(): void {
+    this.auth.regenerateTls(this.certAltNames())
+    this.tlsInfo = null
+    if (this.server) {
+      const material = this.auth.tlsMaterial(this.certAltNames())
+      this.tlsInfo = { ...describeCert(material.certPem), spki: material.spki, ephemeral: material.ephemeral }
+    }
+  }
+
+  /** Certificate facts for the settings page (never the key). */
+  private tlsStatus(): GatewayTlsInfo | null {
+    if (this.tlsInfo) return this.tlsInfo
+    const material = this.auth.tlsMaterial(this.certAltNames())
+    return { ...describeCert(material.certPem), spki: material.spki, ephemeral: material.ephemeral }
+  }
+
   status(enabled: boolean): GatewayStatus {
     const online = new Set([...this.conns].filter((c) => c.ready).map((c) => c.deviceId))
     return {
@@ -328,6 +394,8 @@ export class RemoteGateway {
       devices: this.auth.config.devices.map(({ pub, ...d }) => ({ ...d, fingerprint: pub.slice(0, 8), online: online.has(d.id) })),
       projects: this.auth.config.projects,
       trustedProjects: this.port.trustedProjects(),
+      tls: this.listening ? this.tlsStatus() : null,
+      publicHosts: this.auth.publicHosts,
       projectInfo: Object.fromEntries(
         this.port.trustedProjects().flatMap((p) => {
           const info = this.port.projectInfo?.(p)

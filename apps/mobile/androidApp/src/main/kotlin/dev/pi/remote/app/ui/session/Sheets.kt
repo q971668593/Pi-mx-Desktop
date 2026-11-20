@@ -24,6 +24,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
@@ -83,7 +85,14 @@ private fun parseUnified(diff: String): List<DLine> {
 }
 
 @Composable
-fun StepDetailSheet(steps: List<ToolStep>, start: Int, loadDetail: suspend (ToolStep) -> String?, onDismiss: () -> Unit) {
+fun StepDetailSheet(
+    steps: List<ToolStep>,
+    start: Int,
+    loadDetail: suspend (ToolStep) -> String?,
+    onDismiss: () -> Unit,
+    loadImage: suspend (String) -> android.graphics.Bitmap? = { null },
+    onOpenImage: (android.graphics.Bitmap, String) -> Unit = { _, _ -> },
+) {
     var index by remember { mutableStateOf(start.coerceIn(0, (steps.size - 1).coerceAtLeast(0))) }
     val step = steps.getOrNull(index) ?: return onDismiss()
     var full by remember(step.id) { mutableStateOf<String?>(null) }
@@ -105,6 +114,14 @@ fun StepDetailSheet(steps: List<ToolStep>, start: Int, loadDetail: suspend (Tool
                 IconAction(PiIcons.Copy, stringResource(R.string.copy), { clipboard.setText(AnnotatedString(full ?: step.node.preview ?: step.node.title)) })
             }
             Hairline()
+            // 图片放在最前面：生图/截图的结果一眼就能看到，正文再往下翻
+            RemoteImageStrip(
+                paths = ImagePaths.find(
+                    listOfNotNull(step.node.title, full ?: step.node.preview, (step.node.fields["path"] as? JsonPrimitive)?.content).joinToString(" "),
+                ),
+                load = { path -> loadImage(path)?.asImageBitmap() },
+                onOpen = { bitmap, path -> onOpenImage(bitmap.asAndroidBitmap(), path) },
+            )
             Box(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
                 Column(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 6.dp)) {
                     val body = full ?: step.node.preview.orEmpty()

@@ -8,9 +8,9 @@ import org.junit.Test
 
 class ManualEndpointTest {
     @Test fun acceptsOverlayAndLanAddresses() {
-        assertEquals("ws://100.101.1.2:47900", manualEndpoint(" 100.101.1.2:47900 "))
-        assertEquals("ws://pc.tail1234.ts.net:47900", manualEndpoint("ws://pc.tail1234.ts.net:47900/"))
-        assertEquals("ws://192.168.1.5:47900", manualEndpoint("192.168.1.5:47900"))
+        assertEquals("wss://100.101.1.2:47900", manualEndpoint(" 100.101.1.2:47900 "))
+        assertEquals("wss://pc.tail1234.ts.net:47900", manualEndpoint("ws://pc.tail1234.ts.net:47900/"))
+        assertEquals("wss://192.168.1.5:47900", manualEndpoint("192.168.1.5:47900"))
     }
 
     @Test fun rejectsPublicHostsAndMissingPort() {
@@ -21,10 +21,10 @@ class ManualEndpointTest {
     }
 
     @Test fun acceptsPublicHostsOnlyWhenOptedIn() {
-        assertEquals("ws://203.0.113.7:7000", manualEndpoint("203.0.113.7:7000", allowPublic = true))
-        assertEquals("ws://pi.example.com:7000", manualEndpoint("ws://pi.example.com:7000/", allowPublic = true))
-        assertEquals("ws://[2001:db8::1]:7000", manualEndpoint("[2001:db8::1]:7000", allowPublic = true))
-        assertEquals("ws://192.168.1.5:47900", manualEndpoint("192.168.1.5:47900", allowPublic = true))
+        assertEquals("wss://203.0.113.7:7000", manualEndpoint("203.0.113.7:7000", allowPublic = true))
+        assertEquals("wss://pi.example.com:7000", manualEndpoint("wss://pi.example.com:7000/", allowPublic = true))
+        assertEquals("wss://[2001:db8::1]:7000", manualEndpoint("[2001:db8::1]:7000", allowPublic = true))
+        assertEquals("wss://192.168.1.5:47900", manualEndpoint("192.168.1.5:47900", allowPublic = true))
         assertNull(manualEndpoint("203.0.113.7:7000"))
     }
 

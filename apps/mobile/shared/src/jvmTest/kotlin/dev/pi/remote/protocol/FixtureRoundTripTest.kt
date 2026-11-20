@@ -68,9 +68,10 @@ class FixtureRoundTripTest {
 
     @Test
     fun pairLinksRoundTripAndRejectPublicHosts() {
-        val offer = PairOffer(1, "h_1", "桌面", Base64Url.encode(ByteArray(32) { 7 }), listOf("ws://192.168.1.23:47900", "ws://8.8.8.8:47900"), "pt_abcdefghijklmnop", 1L)
+        val offer = PairOffer(v = 1, hostId = "h_1", hostName = "桌面", hostPub = Base64Url.encode(ByteArray(32) { 7 }), endpoints = listOf("ws://192.168.1.23:47900", "wss://8.8.8.8:47900"), pairToken = "pt_abcdefghijklmnop", exp = 1L)
         val back = Pairing.decodeLink(Pairing.encodeLink(offer))!!
-        assertEquals(listOf("ws://192.168.1.23:47900"), back.endpoints)
+        // 私网 ws 与公网 wss 都保留；明文公网会被丢掉
+        assertEquals(listOf("ws://192.168.1.23:47900", "wss://8.8.8.8:47900"), back.endpoints)
         assertEquals(null, Pairing.decodeLink("https://example.com"))
         for (h in listOf("10.0.0.5", "172.31.0.1", "100.101.1.1", "fd12:3456::1", "[fe80::1]", "pc.tail1234.ts.net", "my-box.tail-ab.ts.net.")) assertTrue(Pairing.isPrivateHost(h), h)
         for (h in listOf("8.8.8.8", "172.32.0.1", "example.com", "2001:db8::1", "ts.net", "evil.ts.net.example.com", "-x.ts.net")) assertTrue(!Pairing.isPrivateHost(h), h)

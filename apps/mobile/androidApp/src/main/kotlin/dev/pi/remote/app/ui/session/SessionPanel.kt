@@ -136,6 +136,8 @@ fun SessionPanel(
     onChanges: (() -> Unit)? = null,
     branchCount: Int? = null,
     onBranches: (() -> Unit)? = null,
+    onGit: (() -> Unit)? = null,
+    onFiles: (() -> Unit)? = null,
     usage: SessionUsage? = null,
 ) {
     val p = progress()
@@ -194,6 +196,30 @@ fun SessionPanel(
                     }
                 }
 
+                if (onGit != null) {
+                    Section(stringResource(R.string.panel_git)) {
+                        Row(
+                            Modifier.fillMaxWidth().heightIn(min = 40.dp).clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button, onClick = onGit),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(stringResource(R.string.git_title), style = Pi.t.secondary.copy(color = Pi.c.fg), modifier = Modifier.weight(1f))
+                            PiIcon(PiIcons.ChevronRight, Pi.c.fg3, 14.dp)
+                        }
+                    }
+                }
+
+                if (onFiles != null) {
+                    Section(stringResource(R.string.panel_project_files)) {
+                        Row(
+                            Modifier.fillMaxWidth().heightIn(min = 40.dp).clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button, onClick = onFiles),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(stringResource(R.string.projfiles_title), style = Pi.t.secondary.copy(color = Pi.c.fg), modifier = Modifier.weight(1f))
+                            PiIcon(PiIcons.ChevronRight, Pi.c.fg3, 14.dp)
+                        }
+                    }
+                }
+
                 if (onBranches != null) {
                     Section(stringResource(R.string.panel_branches)) {
                         Row(
@@ -219,7 +245,7 @@ fun SessionPanel(
                     Fact(stringResource(R.string.panel_turns), "${facts.turns}")
                     if (usage != null && usage.calls > 0) Fact(stringResource(R.string.panel_cost), pluralStringResource(R.plurals.panel_cost_value, usage.calls, formatCost(usage.cost), usage.calls))
                     Fact(stringResource(R.string.panel_tool_calls), "${facts.toolCalls}")
-                    if (facts.files > 0) Fact(stringResource(R.string.panel_files), stringResource(R.string.panel_files_value, facts.files, facts.added, facts.deleted))
+                    if (facts.files > 0) Fact(stringResource(R.string.panel_project_files), stringResource(R.string.panel_files_value, facts.files, facts.added, facts.deleted))
                     if (facts.workedMs > 0) Fact(stringResource(R.string.panel_worked), formatClock(facts.workedMs))
                     Fact(stringResource(R.string.panel_capabilities), "${facts.toolsOn}")
                     if (facts.queued > 0) Fact(stringResource(R.string.panel_queued), "${facts.queued}")

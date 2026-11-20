@@ -12,6 +12,8 @@ export const PairOfferSchema = z
     hostName: z.string(),
     hostPub: z.string().min(1),
     endpoints: z.array(z.string().min(1)).min(1),
+    /** base64url(sha256(SPKI)) of the TLS certificate the host serves. Phones pin it. */
+    tls: z.string().min(1).optional(),
     pairToken: z.string().min(16),
     exp: z.number().int(),
   })
@@ -77,11 +79,26 @@ export function isPrivateHost(host: string): boolean {
   return h === '::1' || /^f[cd][0-9a-f]{2}:/.test(h) || /^fe[89ab][0-9a-f]:/.test(h)
 }
 
-/** `ws://host:port` endpoints only, with a private host. */
+/** `ws://` (loopback dev) or `wss://` endpoint on a private / overlay host. */
 export function isAllowedEndpoint(endpoint: string): boolean {
   try {
     const url = new URL(endpoint)
-    return url.protocol === 'ws:' && !!url.port && isPrivateHost(url.hostname)
+    return (url.protocol === 'ws:' || url.protocol === 'wss:') && !!url.port && isPrivateHost(url.hostname)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Public endpoint: a tunnel hostname (`xxx.trycloudflare.com`) or a forwarded domain. Only `wss://`
+ * is allowed here — a plaintext public socket would leak who talks to whom even though frames are
+ * encrypted. The phone still pins the host key from the QR, so the transport certificate is
+ * interchangeable (Cloudflare's own certificate is fine).
+ */
+export function isPublicEndpoint(endpoint: string): boolean {
+  try {
+    const url = new URL(endpoint)
+    return url.protocol === 'wss:' && !!url.port && !isPrivateHost(url.hostname) && /^[a-z0-9.-]+$/i.test(url.hostname)
   } catch {
     return false
   }

@@ -202,9 +202,11 @@ private fun HostRow(h: SavedHost, online: Boolean, onClick: () -> Unit, onForget
  * With [allowPublic] (the user's explicit opt-in, for frp or port forwarding) any IP or DNS name is accepted.
  */
 internal fun manualEndpoint(text: String, allowPublic: Boolean = false): String? {
-    val t = text.trim().removePrefix("ws://").removeSuffix("/")
-    if (t.isEmpty()) return null
-    val ep = "ws://$t"
+    val bare = text.trim().removeSuffix("/").removePrefix("wss://").removePrefix("ws://")
+    if (bare.isEmpty()) return null
+    // 网关现在只服务 wss://（自签证书 + 指纹固定），所以手输地址也一律加密；
+    // 公网地址还要求用户明确打开「公网地址」开关。
+    val ep = "wss://$bare"
     return ep.takeIf { Pairing.isAllowedEndpoint(it) || (allowPublic && Pairing.isPublicEndpoint(it)) }
 }
 

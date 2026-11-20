@@ -68,6 +68,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.TextFieldValue
@@ -237,6 +238,9 @@ fun SessionScreen(repo: RemoteRepository, sessionKey: String, onBack: () -> Unit
     var branches by remember(sessionKey) { mutableStateOf<List<BranchInfo>?>(null) }
     var branchesFailed by remember(sessionKey) { mutableStateOf(false) }
     var branchSheet by remember { mutableStateOf(false) }
+    var gitSheet by remember { mutableStateOf(false) }
+    var filesSheet by remember { mutableStateOf(false) }
+    var imagePreview by remember { mutableStateOf<Pair<android.graphics.Bitmap, String>?>(null) }
     fun loadBranches() {
         branchesFailed = false
         scope.launch { repo.branches(sessionKey).onSuccess { branches = it }.onFailure { branchesFailed = true } }
@@ -369,6 +373,10 @@ fun SessionScreen(repo: RemoteRepository, sessionKey: String, onBack: () -> Unit
             branchSheet = true
             loadBranches()
         },
+        onGitLog = { gitSheet = true },
+        onProjectFiles = { filesSheet = true },
+        loadImage = { path -> repo.projectImage(sessionKey, path) },
+        onOpenImage = { bitmap, path -> imagePreview = bitmap to path },
         onFork = { anchor ->
             scope.launch {
                 repo.fork(sessionKey, anchor)
@@ -424,6 +432,18 @@ fun SessionScreen(repo: RemoteRepository, sessionKey: String, onBack: () -> Unit
             },
             onDismiss = { branchSheet = false },
         )
+    }
+
+    if (gitSheet) {
+        GitLogSheet(repo = repo, sessionKey = sessionKey, onDismiss = { gitSheet = false })
+    }
+
+    if (filesSheet) {
+        FilesSheet(repo = repo, sessionKey = sessionKey, onDismiss = { filesSheet = false })
+    }
+
+    imagePreview?.let { (bitmap, path) ->
+        ImagePreviewDialog(bitmap.asImageBitmap(), path, onDismiss = { imagePreview = null })
     }
 
     review?.let { target ->
@@ -533,6 +553,13 @@ fun SessionContent(
     onSlashPick: (SlashItem) -> Unit = {},
     onCommands: () -> Unit = {},
     onFiles: () -> Unit = {},
+    /** 会话面板里的「项目文件」（不是输入框的文件选择）。 */
+    onGitLog: () -> Unit = {},
+    onProjectFiles: () -> Unit = {},
+    /** 聊天里加载项目内图片（生图/截图）；外层把 repo + sessionKey 绑好传进来。 */
+    loadImage: suspend (String) -> android.graphics.Bitmap? = { null },
+    /** 点缩略图看大图：外层负责弹全屏。 */
+    onOpenImage: (android.graphics.Bitmap, String) -> Unit = { _, _ -> },
     onRewind: (String) -> Unit = {},
     projectPath: String = "",
     stats: ContextStats? = null,
@@ -578,6 +605,8 @@ fun SessionContent(
             onFile = { turn, path -> reviewNow(ReviewTarget("turn", turn.id, path)) },
             onOpen = { turn, part -> viewing = turn.id to part },
             onActions = { turn, part -> acting = turn.id to part },
+            loadImage = loadImage,
+            onOpenImage = onOpenImage,
         )
     }
     // Parse settled markdown off the main thread so items entering the viewport render from cache.
@@ -734,6 +763,14 @@ fun SessionContent(
             settlePanel(1000f)
             onBranches()
         },
+        onGit = {
+            settlePanel(1000f)
+            onGitLog()
+        },
+        onFiles = {
+            settlePanel(1000f)
+            onProjectFiles()
+        },
         onChanges = {
             settlePanel(1000f)
             onReview(ReviewTarget("git", turns.lastOrNull()?.id))
@@ -763,5 +800,12 @@ fun SessionContent(
         turns.firstOrNull { it.id == id }?.let { t -> MessageViewer(t, part, mermaid, onDismiss = { viewing = null }) } ?: run { viewing = null }
     }
 
-    detail?.let { (steps, start) -> StepDetailSheet(steps, start, loadDetail, onDismiss = { detail = null }) }
+    detail?.let { (steps, start) ->
+        StepDetailSheet(
+            steps, start, loadDetail,
+            onDismiss = { detail = null },
+            loadImage = loadImage,
+            onOpenImage = onOpenImage,
+        )
+    }
 }

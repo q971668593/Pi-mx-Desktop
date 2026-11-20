@@ -92,8 +92,30 @@ function scheduleExpire(): void {
   }, wait)
 }
 
+/** Idle card host: hide now, destroy after a grace period so the renderer stops costing RAM. */
+const HOST_IDLE_DESTROY_MS = 90_000
+let hostDestroyTimer: ReturnType<typeof setTimeout> | null = null
+
+function cancelHostDestroy(): void {
+  if (hostDestroyTimer) {
+    clearTimeout(hostDestroyTimer)
+    hostDestroyTimer = null
+  }
+}
+
 function hideHost(): void {
-  if (host && !host.isDestroyed()) host.hide()
+  if (!host || host.isDestroyed()) return
+  host.hide()
+  cancelHostDestroy()
+  hostDestroyTimer = setTimeout(() => {
+    hostDestroyTimer = null
+    // A card appeared or a sound is queued meanwhile: keep the host alive.
+    if (active.length > 0 || pendingSounds.length > 0) return
+    const current = host
+    host = null
+    hostReady = false
+    if (current && !current.isDestroyed()) current.destroy()
+  }, HOST_IDLE_DESTROY_MS)
 }
 
 function flushPendingSounds(): void {
@@ -174,6 +196,7 @@ function dismissCard(id: string): void {
 }
 
 async function createHost(): Promise<boolean> {
+  cancelHostDestroy()
   if (host && !host.isDestroyed()) return true
   ensureListeners()
   try {
@@ -184,6 +207,7 @@ async function createHost(): Promise<boolean> {
     host.on('closed', () => {
       host = null
       hostReady = false
+      cancelHostDestroy()
     })
     await host.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(notificationHostPageHtml())}`)
     return placeHost()

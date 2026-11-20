@@ -13,6 +13,19 @@ import type { ToolCardDef } from '../../extension-compat/adapter-schema'
  * pending bind or current workspace (no `session.open` / `setPendingBind` / `workspace.switch`).
  */
 
+export type HostFileRead = {
+  path: string
+  size: number
+  truncated: boolean
+  kind: 'text' | 'image' | 'binary'
+  text?: string
+  mime?: string
+  /** base64, images only. */
+  data?: string
+}
+
+export type HostGitCommit = { sha: string; short: string; subject: string; author: string; at: number; refs?: string[] }
+
 export type HostSessionRow = {
   sessionFile: string
   projectId: string
@@ -118,6 +131,10 @@ export interface RemoteHostPort {
   /** The project's working tree against HEAD as `git diff` text (incl. untracked text files). */
   gitDiff(projectId: string): Promise<{ isRepo: boolean; branch: string; raw: string; message?: string }>
   listDir(projectId: string, path: string, dotfiles: boolean): Promise<{ entries: FileEntry[]; truncated: boolean } | null>
+  /** One file inside the project: text (capped) or an image as base64; null when unreadable/outside. */
+  readFile(projectId: string, path: string): Promise<HostFileRead | null>
+  /** `git log` of the project (the phone's Git view); `isRepo:false` outside a repository. */
+  gitLog(projectId: string, limit: number): Promise<{ isRepo: boolean; commits: HostGitCommit[] }>
   searchFiles(projectId: string, query: string): Promise<FileEntry[]>
   capabilityCatalog(): CapabilityInfo[]
   sessionCapabilities(sessionFile: string): string[]

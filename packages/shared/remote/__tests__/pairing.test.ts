@@ -43,7 +43,7 @@ describe('private hosts', () => {
   )
   it('endpoint must be ws:// with a port and private host', () => {
     expect(isAllowedEndpoint('ws://192.168.1.23:47900')).toBe(true)
-    expect(isAllowedEndpoint('wss://192.168.1.23:47900')).toBe(false)
+    expect(isAllowedEndpoint('wss://192.168.1.23:47900')).toBe(true)
     expect(isAllowedEndpoint('ws://192.168.1.23')).toBe(false)
     expect(isAllowedEndpoint('ws://8.8.8.8:47900')).toBe(false)
     expect(isAllowedEndpoint('ws://pc.tail1234.ts.net:47900')).toBe(true)

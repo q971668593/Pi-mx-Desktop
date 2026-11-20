@@ -1,0 +1,10 @@
+{
+  "schema": "file.read/result",
+  "value": {
+    "path": "src/auth.ts",
+    "size": 24,
+    "truncated": false,
+    "kind": "text",
+    "text": "export const ok = true"
+  }
+}

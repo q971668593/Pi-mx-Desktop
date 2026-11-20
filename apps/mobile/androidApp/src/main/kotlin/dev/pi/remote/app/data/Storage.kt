@@ -81,6 +81,8 @@ data class SavedHost(
     val lastConnectedAt: Long = 0,
     /** Addresses the user typed in (overlay VPN, other networks); always tried, never pruned. */
     val manualEndpoints: List<String> = emptyList(),
+    /** SPKI fingerprint of the desktop's certificate, pinned when this phone paired. */
+    val tlsPin: String? = null,
 ) {
     /** Everything to probe: what worked and what the host announced, then the user's own addresses. */
     val allEndpoints: List<String> get() = (endpoints + manualEndpoints).distinct()

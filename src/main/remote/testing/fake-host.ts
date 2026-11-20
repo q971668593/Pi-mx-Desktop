@@ -408,6 +408,25 @@ export class FakeHost implements RemoteHostPort {
       .sort((a, b) => (a.dir === b.dir ? a.name.localeCompare(b.name) : a.dir ? -1 : 1))
     return { entries, truncated: false }
   }
+  async readFile(_projectId: string, path: string) {
+    return { path, size: 12, truncated: false, kind: 'text' as const, text: `// ${path}
+` }
+  }
+
+  async gitLog(_projectId: string, limit: number) {
+    return {
+      isRepo: true,
+      commits: Array.from({ length: Math.min(limit, 2) }, (_value, index) => ({
+        sha: `${index + 1}`.repeat(40).slice(0, 40),
+        short: `${index + 1}`.repeat(7),
+        subject: index === 0 ? 'feat: 首条提交' : 'fix: 第二条',
+        author: 'dev',
+        at: 1_700_000_000_000 - index * 86_400_000,
+        ...(index === 0 ? { refs: ['HEAD -> main', 'origin/main'] } : {}),
+      })),
+    }
+  }
+
   async searchFiles(_projectId: string, query: string): Promise<FileEntry[]> {
     const q = query.toLowerCase()
     return this.files

@@ -152,6 +152,27 @@ export const ContextStatsSchema = z
   .strict()
 export type ContextStats = z.infer<typeof ContextStatsSchema>
 
+/** One file inside the project: text (UTF-8, capped) or an image the phone can render. */
+export const FileReadResultSchema = z
+  .object({
+    path: z.string(),
+    size: z.number().int().nonnegative(),
+    truncated: z.boolean(),
+    kind: z.enum(['text', 'image', 'binary']),
+    text: z.string().optional(),
+    mime: z.string().optional(),
+    /** base64, images only. */
+    data: z.string().optional(),
+  })
+  .strict()
+export type FileReadResult = z.infer<typeof FileReadResultSchema>
+
+/** `git log` row for the phone's Git view; `refs` are decorations (`HEAD -> main`, `origin/main`). */
+export const GitCommitSchema = z
+  .object({ sha: z.string(), short: z.string(), subject: z.string(), author: z.string(), at: z.number().int(), refs: z.array(z.string()).optional() })
+  .strict()
+export type GitCommit = z.infer<typeof GitCommitSchema>
+
 function method<P extends z.ZodTypeAny, R extends z.ZodTypeAny>(params: P, result: R, role: Role) {
   return { params, result, role }
 }
@@ -285,6 +306,14 @@ export const REMOTE_METHODS = {
     'viewer',
   ),
   /** Fuzzy path search across the project (desktop `@` search). */
+  /** One file for the phone's reader (text or image); paths stay inside the session's project. */
+  'file.read': method(z.object({ sessionKey, path: z.string().min(1).max(4096) }).strict(), FileReadResultSchema, 'viewer'),
+  /** Commits of the session's project (empty list outside a repository). */
+  'git.log': method(
+    z.object({ sessionKey, limit: z.number().int().min(1).max(50).optional() }).strict(),
+    z.object({ isRepo: z.boolean(), commits: z.array(GitCommitSchema) }).strict(),
+    'viewer',
+  ),
   'file.search': method(
     z.object({ sessionKey, query: z.string().max(512) }).strict(),
     z.object({ entries: z.array(FileEntrySchema) }).strict(),

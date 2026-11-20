@@ -4,7 +4,7 @@
 > 事实源：`src/main/**/*.ts` 中的 `registerHandler` / `registerHandlerWithSchema` 调用。
 > 手写文档在 `doc/IPC-CONTRACTS.md`；本文件保证「代码里注册了什么」与「文档里写了什么」不会漂移。
 
-- invoke 通道：**307** 个（唯一）
+- invoke 通道：**309** 个（唯一）
 - main → renderer 事件通道：**12** 个（唯一）
 - 非字面量注册：**0** 处
 - 动态事件通道（通道名非常量，未收录）：**7** 处
@@ -23,8 +23,8 @@
 | `extensions` | 14 |
 | `teamBoard` | 14 |
 | `desktop` | 11 |
+| `remote` | 10 |
 | `mcp` | 9 |
-| `remote` | 8 |
 | `app` | 7 |
 | `asr` | 6 |
 | `pi` | 6 |
@@ -255,6 +255,21 @@
 | `ipc:desktop.setSleepBlock` | registerHandlerWithSchema | `src/main/ipc/handlers/desktop-chrome.ts` |
 | `ipc:desktop.status` | registerHandler | `src/main/ipc/handlers/desktop-chrome.ts` |
 
+### remote（10）
+
+| 通道 | 注册方式 | 注册位置 |
+| --- | --- | --- |
+| `ipc:remote.regeneratePairing` | registerHandler | `src/main/ipc/handlers/remote.ts` |
+| `ipc:remote.regenerateTls` | registerHandler | `src/main/ipc/handlers/remote.ts` |
+| `ipc:remote.removeDevice` | registerHandlerWithSchema | `src/main/ipc/handlers/remote.ts` |
+| `ipc:remote.revokeDevice` | registerHandlerWithSchema | `src/main/ipc/handlers/remote.ts` |
+| `ipc:remote.setDeviceRole` | registerHandlerWithSchema | `src/main/ipc/handlers/remote.ts` |
+| `ipc:remote.setEnabled` | registerHandlerWithSchema | `src/main/ipc/handlers/remote.ts` |
+| `ipc:remote.setPort` | registerHandlerWithSchema | `src/main/ipc/handlers/remote.ts` |
+| `ipc:remote.setProjects` | registerHandlerWithSchema | `src/main/ipc/handlers/remote.ts` |
+| `ipc:remote.setPublicHosts` | registerHandlerWithSchema | `src/main/ipc/handlers/remote.ts` |
+| `ipc:remote.status` | registerHandler | `src/main/ipc/handlers/remote.ts` |
+
 ### mcp（9）
 
 | 通道 | 注册方式 | 注册位置 |
@@ -268,19 +283,6 @@
 | `ipc:mcp.server.remove` | registerHandler | `src/main/ipc/handlers/mcp.ts` |
 | `ipc:mcp.server.save` | registerHandler | `src/main/ipc/handlers/mcp.ts` |
 | `ipc:mcp.status` | registerHandler | `src/main/ipc/handlers/mcp.ts` |
-
-### remote（8）
-
-| 通道 | 注册方式 | 注册位置 |
-| --- | --- | --- |
-| `ipc:remote.regeneratePairing` | registerHandler | `src/main/ipc/handlers/remote.ts` |
-| `ipc:remote.removeDevice` | registerHandlerWithSchema | `src/main/ipc/handlers/remote.ts` |
-| `ipc:remote.revokeDevice` | registerHandlerWithSchema | `src/main/ipc/handlers/remote.ts` |
-| `ipc:remote.setDeviceRole` | registerHandlerWithSchema | `src/main/ipc/handlers/remote.ts` |
-| `ipc:remote.setEnabled` | registerHandlerWithSchema | `src/main/ipc/handlers/remote.ts` |
-| `ipc:remote.setPort` | registerHandlerWithSchema | `src/main/ipc/handlers/remote.ts` |
-| `ipc:remote.setProjects` | registerHandlerWithSchema | `src/main/ipc/handlers/remote.ts` |
-| `ipc:remote.status` | registerHandler | `src/main/ipc/handlers/remote.ts` |
 
 ### app（7）
 

@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { ipcClient } from '@renderer/lib/ipc-client'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { sessionFilesEqual } from '@renderer/lib/session-file-key'
-import type { AskQuestionPayload } from '@renderer/features/extension-ui/questionnaire-dialog'
+import type { AskQuestionPayload } from '@renderer/features/extension-ui/questionnaire-model'
 import type { ImageReviewPayload } from '@renderer/features/extension-ui/image-review-dialog'
 
 export type ExtensionUIPending =

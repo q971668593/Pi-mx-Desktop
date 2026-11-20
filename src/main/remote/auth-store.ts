@@ -1,6 +1,7 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { PAIR_TOKEN_TTL_MS, base64UrlDecode, base64UrlEncode, type Role } from '@shared/remote'
 import { generateKeyPair, keyPairFromPrivate, type KeyPair } from '@shared/remote/crypto'
+import { createSelfSignedCert, spkiFingerprint } from './cert'
 import type { RemoteHostPort } from './host-port'
 
 /** Persisted gateway settings (config-store key `remote`). */
@@ -25,6 +26,13 @@ export type RemoteStoredConfig = {
   devices: DeviceRecord[]
   /** Workspace paths remote clients may see and create sessions in. */
   projects: string[]
+  /** TLS server key, sealed with safeStorage (PEM inside). The certificate itself is public. */
+  tlsKeySealed?: string
+  tlsCertPem?: string
+  /** base64url(sha256(SPKI)) — phones pin this at pairing time. */
+  tlsSpki?: string
+  /** Public `host:port` entries (tunnel / port-forward) offered in the pair link. */
+  publicHosts?: string[]
 }
 
 export const DEFAULT_REMOTE_PORT = 47900
@@ -47,6 +55,7 @@ export class AuthStore {
   /** Tokens already exchanged (or replaced), kept briefly so a retry reports "used" instead of "unpaired". */
   private spentTokens: Array<{ token: string; at: number }> = []
   private ephemeralHostKey = false
+  private tls: { keyPem: string; certPem: string; spki: string; ephemeral: boolean } | null = null
 
   constructor(
     private readonly port: RemoteHostPort,
@@ -60,6 +69,10 @@ export class AuthStore {
       ...(typeof raw?.hostKeySealed === 'string' ? { hostKeySealed: raw.hostKeySealed } : {}),
       devices: Array.isArray(raw?.devices) ? raw.devices.filter((d) => d && typeof d.pub === 'string' && typeof d.id === 'string') : [],
       projects: Array.isArray(raw?.projects) ? raw.projects.filter((p): p is string => typeof p === 'string') : [],
+      ...(typeof raw?.tlsKeySealed === 'string' ? { tlsKeySealed: raw.tlsKeySealed } : {}),
+      ...(typeof raw?.tlsCertPem === 'string' ? { tlsCertPem: raw.tlsCertPem } : {}),
+      ...(typeof raw?.tlsSpki === 'string' ? { tlsSpki: raw.tlsSpki } : {}),
+      publicHosts: Array.isArray(raw?.publicHosts) ? raw.publicHosts.filter((h): h is string => typeof h === 'string') : [],
     }
     if (!raw?.hostId) this.save()
   }
@@ -114,6 +127,54 @@ export class AuthStore {
     return kp
   }
 
+  /** Server certificate for `wss://`. Minted once and reused so the phone's pin keeps working. */
+  tlsMaterial(altNames: string[]): { keyPem: string; certPem: string; spki: string; ephemeral: boolean } {
+    if (this.tls) return this.tls
+    if (this.cfg.tlsKeySealed && this.cfg.tlsCertPem) {
+      const keyPem = this.port.secrets.open(this.cfg.tlsKeySealed)
+      if (keyPem) {
+        const spki = this.cfg.tlsSpki ?? spkiFingerprint(this.cfg.tlsCertPem)
+        this.tls = { keyPem, certPem: this.cfg.tlsCertPem, spki, ephemeral: false }
+        return this.tls
+      }
+      // Keychain locked: keep the stored certificate and pairings, serve with a throwaway key for
+      // this run (phones fall back to the pinned SPKI of the new cert only after re-pairing).
+      this.port.log('warn', '[remote] could not unseal the TLS key; using a temporary one for this run')
+    }
+    const fresh = createSelfSignedCert(altNames)
+    const sealed = this.port.secrets.available() ? this.port.secrets.seal(fresh.keyPem) : null
+    if (sealed) {
+      this.cfg.tlsKeySealed = sealed
+      this.cfg.tlsCertPem = fresh.certPem
+      this.cfg.tlsSpki = fresh.spki
+      this.save()
+      this.tls = { keyPem: fresh.keyPem, certPem: fresh.certPem, spki: fresh.spki, ephemeral: false }
+    } else {
+      this.tls = { keyPem: fresh.keyPem, certPem: fresh.certPem, spki: fresh.spki, ephemeral: true }
+    }
+    return this.tls
+  }
+
+  /** New certificate (SAN list changed / lost key). Phones must pair again: the pin changes. */
+  regenerateTls(altNames: string[]): void {
+    this.cfg.tlsKeySealed = undefined
+    this.cfg.tlsCertPem = undefined
+    this.cfg.tlsSpki = undefined
+    this.tls = null
+    this.cfg.devices = []
+    this.save()
+    this.tlsMaterial(altNames)
+  }
+
+  setPublicHosts(hosts: string[]): void {
+    this.cfg.publicHosts = [...new Set(hosts.map((h) => h.trim()).filter(Boolean))].slice(0, 8)
+    this.save()
+  }
+
+  get publicHosts(): string[] {
+    return [...(this.cfg.publicHosts ?? [])]
+  }
+
   setEnabled(enabled: boolean): void {
     this.cfg.enabled = enabled
     if (!enabled) this.pairing = null
@@ -126,6 +187,10 @@ export class AuthStore {
     this.save()
   }
 
+  /**
+   * 保留字段：现在手机直接看全部项目（`allowedProjects()` 取电脑信任的项目），
+   * 这里只用来存旧版本的白名单，读写都不再拦人。
+   */
   setProjects(projects: string[]): void {
     this.cfg.projects = [...new Set(projects.filter((p) => typeof p === 'string' && p.trim()))]
     this.save()

@@ -13,7 +13,10 @@ import { applySessionCapabilities, storedCapabilities } from './capabilities/ses
 import { readRemoteAttachment, writeRemoteAttachment } from './clipboard-temp-images'
 import { configStore } from './config-store'
 import { getSessionLeafOverride, setSessionLeafOverride } from './session-leaf-override'
-import { workspaceFsListDir } from './workspace-fs'
+import { resolvePathUnderWorkspace, workspaceFsListDir, workspaceFsReadText } from './workspace-fs'
+import { extname } from 'node:path'
+import { readFile as readFileBytes, stat as statFile } from 'node:fs/promises'
+import { gitExec, isGitRepository } from './git-workspace'
 import { workspaceFsSearch } from './workspace-file-search'
 import { scanStaticSlashCommands } from './commands-catalog'
 import { probeExtensionsShared } from './extension-probe-cache'
@@ -57,6 +60,19 @@ function safeStorageAvailable(): boolean {
   }
 }
 /** Same scale as the desktop thinking picker (renderer `THINKING_LEVELS`). */
+const PHONE_TEXT_MAX_BYTES = 512 * 1024
+const PHONE_IMAGE_MAX_BYTES = 8 * 1024 * 1024
+const PHONE_IMAGE_MIME: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.bmp': 'image/bmp',
+  '.svg': 'image/svg+xml',
+  '.avif': 'image/avif',
+}
+
 const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
 const comparable = (p: string) => normalizeSessionFileKey(p).replace(/\/+$/, '').toLowerCase()
 
@@ -307,6 +323,44 @@ export function createElectronRemoteHost(): RemoteHostPort {
         entries: r.entries.map((e) => ({ name: e.name, path: e.path, dir: e.isDirectory, size: e.size, mtime: e.mtimeMs == null ? undefined : Math.round(e.mtimeMs) })),
         truncated: r.truncated,
       }
+    },
+
+    async readFile(projectId: string, path: string) {
+      const text = await workspaceFsReadText({ workspaceRoot: projectId, path, maxBytes: PHONE_TEXT_MAX_BYTES })
+      if (text.ok) return { path, size: text.size, truncated: text.truncated, kind: 'text' as const, text: text.content }
+      if (text.error !== 'binary') return null
+      const resolved = await resolvePathUnderWorkspace(projectId, path)
+      if (!resolved.ok) return null
+      const info = await statFile(resolved.abs).catch(() => null)
+      if (!info?.isFile()) return null
+      const mime = PHONE_IMAGE_MIME[extname(resolved.abs).toLowerCase()]
+      if (!mime || info.size > PHONE_IMAGE_MAX_BYTES) {
+        return { path, size: info.size, truncated: info.size > PHONE_IMAGE_MAX_BYTES, kind: 'binary' as const }
+      }
+      const bytes = await readFileBytes(resolved.abs).catch(() => null)
+      if (!bytes) return null
+      return { path, size: info.size, truncated: false, kind: 'image' as const, mime, data: bytes.toString('base64') }
+    },
+
+    async gitLog(projectId: string, limit: number) {
+      if (!(await isGitRepository(projectId))) return { isRepo: false, commits: [] }
+      const r = await gitExec(projectId, ['--no-optional-locks', 'log', `-n${limit}`, '--pretty=format:%H%x00%h%x00%an%x00%at%x00%s%x00%D'], { timeout: 8000 })
+      if (r.status !== 0) return { isRepo: false, commits: [] }
+      const commits = r.stdout
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => {
+          const [sha, short, author, at, subject, refs] = line.split('\u0000')
+          return {
+            sha,
+            short,
+            author,
+            at: Number(at) * 1000,
+            subject,
+            ...(refs ? { refs: refs.split(',').map((x) => x.trim()).filter(Boolean) } : {}),
+          }
+        })
+      return { isRepo: true, commits }
     },
 
     async searchFiles(projectId: string, query: string) {

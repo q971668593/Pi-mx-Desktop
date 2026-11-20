@@ -221,6 +221,21 @@
     <string name="review_remove_comment">Remove comment</string>
     <string name="review_insert">Insert into message</string>
     <plurals name="review_comment_count"><item quantity="one">%d comment</item><item quantity="other">%d comments</item></plurals>
+    <string name="panel_git">Recent commits</string>
+    <string name="panel_project_files">Project files</string>
+    <string name="git_title">Commits</string>
+    <string name="git_failed">Could not load commits: %s</string>
+    <string name="git_not_repo">This project is not a git repository</string>
+    <string name="git_empty">No commits yet</string>
+    <string name="git_by">%1$s · %2$s</string>
+    <string name="projfiles_title">Files</string>
+    <string name="projfiles_search">Search files in this project</string>
+    <string name="projfiles_failed">Could not list files</string>
+    <string name="projfiles_empty">Nothing here</string>
+    <string name="projfiles_truncated">truncated</string>
+    <string name="projfiles_image_failed">Could not decode this image</string>
+    <string name="projfiles_binary">Binary file — no preview</string>
+    <string name="projfiles_root">Project</string>
     <string name="panel_changes">Changes</string>
     <string name="panel_changes_open">Review working tree</string>
     <string name="panel_changes_none">No uncommitted changes</string>

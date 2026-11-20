@@ -1314,7 +1314,8 @@
     "addressKind": {
       "lan": "局域网",
       "tailscale": "Tailscale",
-      "overlay": "组网"
+      "overlay": "组网",
+      "public": "广域网"
     },
     "pairing": "配对",
     "pairingDesc": "用手机 App 扫描二维码完成配对。Windows 需要在防火墙中允许 pi Desktop 使用专用网络。",
@@ -1327,6 +1328,19 @@
     "regenerate": "重新生成",
     "copyLink": "复制配对链接",
     "ephemeralKey": "系统加密不可用，主机密钥只保存在内存中；重启后手机需要重新配对。",
+    "wideArea": "广域网访问",
+    "wideAreaDesc": "不在同一个 Wi‑Fi 也能连：连上一条隧道，或把端口映射出去。传输一律走 wss，手机在配对时记住了这把证书的指纹。",
+    "certificate": "连接证书",
+    "certificateDesc": "有效期至 {{expires}}，包含 {{names}} 个地址。手机靠指纹认这台电脑，不依赖公共证书机构。",
+    "certificateOff": "网关未启动时没有证书。",
+    "regenerateTls": "重新签发",
+    "regenerateTlsHint": "只有换电脑或证书丢失时才需要：重新签发后所有手机都要重新扫码配对。",
+    "publicHosts": "公网地址",
+    "publicHostsDesc": "隧道域名或路由器映射出来的 域名:端口，会写进二维码，手机在外网时自动回落到这些地址。",
+    "publicHostPlaceholder": "pi.example.com:8443",
+    "addHost": "添加",
+    "removeHost": "移除 {{host}}",
+    "tunnelHint": "隧道示例：cloudflared tunnel --url https://127.0.0.1:{{port}} --no-tls-verify，然后把分配到的域名加进来。",
     "devices": "设备",
     "noDevices": "还没有配对过的手机。",
     "online": "在线",
@@ -1340,9 +1354,8 @@
     "unpair": "解绑",
     "forget": "移除",
     "projects": "项目",
-    "projectsDesc": "手机只能看到并新建勾选项目里的会话。",
-    "projectSearch": "搜索项目",
-    "temporaryChats": "临时对话",
+    "projectsDesc": "手机与电脑看到同一份项目列表，不再需要逐个授权。",
+    "projectsShared": "新开的项目会自动出现在手机上；想限制手机能看什么，请直接改电脑上的项目列表。",
     "noProjects": "还没有打开过项目。"
   },
   "purge": {

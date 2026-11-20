@@ -13,6 +13,8 @@ data class PairOffer(
     val hostName: String,
     val hostPub: String,
     val endpoints: List<String>,
+    /** base64url(sha256(SPKI)) of the host's TLS certificate; the phone pins it. */
+    val tls: String? = null,
     val pairToken: String,
     val exp: Long,
 )
@@ -74,8 +76,8 @@ object Pairing {
         }
         if (offer.v != 1) throw PairLinkException("unsupported pair link version")
         if (offer.pairToken.length < 16 || offer.endpoints.isEmpty()) throw PairLinkException("incomplete pair offer")
-        val allowed = offer.endpoints.filter(::isAllowedEndpoint)
-        if (allowed.isEmpty()) throw PairLinkException("no private-network endpoint")
+        val allowed = offer.endpoints.filter { isAllowedEndpoint(it) || isPublicEndpoint(it) }
+        if (allowed.isEmpty()) throw PairLinkException("no reachable endpoint")
         return offer.copy(endpoints = allowed)
     }
 
@@ -103,7 +105,7 @@ object Pairing {
         return h == "::1" || Regex("^f[cd][0-9a-f]{2}:").containsMatchIn(h) || Regex("^fe[89ab][0-9a-f]:").containsMatchIn(h)
     }
 
-    /** `ws://host:port` with a private host. */
+    /** `ws://` (dev relay) or `wss://` host:port on a private / overlay network. */
     fun isAllowedEndpoint(endpoint: String): Boolean = endpointHost(endpoint)?.let(::isPrivateHost) ?: false
 
     /**
@@ -111,14 +113,17 @@ object Pairing {
      * (frp, port forwarding); pair links stay private-only. The channel is still end-to-end encrypted.
      */
     fun isPublicEndpoint(endpoint: String): Boolean {
+        // Wide-area hops must be encrypted: wss:// only (mirror of `isPublicEndpoint` in pairing.ts).
+        if (!endpoint.startsWith("wss://", ignoreCase = true)) return false
         val host = endpointHost(endpoint) ?: return false
+        if (isPrivateHost(host)) return false
         return ipv4(host) != null || host.startsWith("[") || dnsName.matches(host)
     }
 
     private val dnsName = Regex("^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*\\.?$")
 
     private fun endpointHost(endpoint: String): String? {
-        val m = Regex("^ws://(\\[[^\\]]+]|[^:/]+):(\\d{1,5})/?$").matchEntire(endpoint) ?: return null
+        val m = Regex("^wss?://(\\[[^\\]]+]|[^:/]+):(\\d{1,5})/?$").matchEntire(endpoint) ?: return null
         return m.groupValues[1].takeIf { m.groupValues[2].toInt() in 1..65535 }
     }
 }

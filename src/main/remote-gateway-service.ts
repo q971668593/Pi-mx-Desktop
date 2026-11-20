@@ -95,6 +95,32 @@ export async function setRemoteProjects(projects: string[]): Promise<RemoteStatu
   return remoteStatus()
 }
 
+/** Wide-area `host:port` list: tunnel hostname or a forwarded port on the router. */
+export async function setRemotePublicHosts(hosts: string[]): Promise<RemoteStatus> {
+  instance().setPublicHosts(hosts)
+  return remoteStatus()
+}
+
+/**
+ * Re-issue the TLS certificate and restart the listener. Every paired phone must scan the QR again
+ * (its pin no longer matches), so the settings page asks for confirmation first.
+ */
+export async function regenerateRemoteTls(): Promise<RemoteStatus> {
+  const gw = instance()
+  const listening = gw.listening
+  if (listening) await gw.stop()
+  gw.regenerateTls()
+  if (listening) {
+    try {
+      await gw.start()
+      gw.regeneratePairing()
+    } catch {
+      /* status carries the error */
+    }
+  }
+  return remoteStatus()
+}
+
 export async function revokeRemoteDevice(id: string): Promise<RemoteStatus> {
   instance().revokeDevice(id)
   return remoteStatus()

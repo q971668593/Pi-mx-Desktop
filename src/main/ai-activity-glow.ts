@@ -19,6 +19,11 @@ const FADE_OUT_MS = 380
 const IDLE_HIDE_MS = 1200
 /** Never keep the glow on forever if a tool-end event gets lost. */
 const SAFETY_HIDE_MS = 60_000
+/**
+ * A hidden full-screen transparent window still costs a renderer + compositing. Keep it for a
+ * minute (the agent often fires several computer_* calls in a row), then destroy it outright.
+ */
+const IDLE_DESTROY_MS = 60_000
 const FRAME_MS = 16
 
 const BLUE = '88, 150, 255'
@@ -56,6 +61,7 @@ let opacity = 0
 let fadeTimer: ReturnType<typeof setInterval> | null = null
 let idleTimer: ReturnType<typeof setTimeout> | null = null
 let safetyTimer: ReturnType<typeof setTimeout> | null = null
+let destroyTimer: ReturnType<typeof setTimeout> | null = null
 const activeToolCalls = new Set<string>()
 
 function clearTimer(timer: ReturnType<typeof setTimeout> | null): null {
@@ -113,7 +119,9 @@ async function ensureWindow(): Promise<BrowserWindow | null> {
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
-      backgroundThrottling: false,
+      // Hidden overlays must not keep animating (the CSS pulse is infinite): the window is
+      // destroyed after a minute anyway, and throttling while hidden saves the GPU in the gap.
+      backgroundThrottling: true,
     },
   })
   win = created
@@ -186,6 +194,25 @@ function fadeTo(target: number, durationMs: number, onDone?: () => void): void {
   }, FRAME_MS)
 }
 
+/** Tear the window down instead of parking a hidden one (see IDLE_DESTROY_MS). */
+function destroyWindow(): void {
+  destroyTimer = clearTimer(destroyTimer)
+  const host = win
+  win = null
+  winReady = false
+  visible = false
+  opacity = 0
+  if (host && !host.isDestroyed()) host.destroy()
+}
+
+function scheduleDestroy(): void {
+  destroyTimer = clearTimer(destroyTimer)
+  destroyTimer = setTimeout(() => {
+    destroyTimer = null
+    if (!visible) destroyWindow()
+  }, IDLE_DESTROY_MS)
+}
+
 function hideNow(): void {
   clearFade()
   idleTimer = clearTimer(idleTimer)
@@ -198,6 +225,7 @@ function hideNow(): void {
     if (!h || h.isDestroyed()) return
     h.setOpacity(0)
     h.hide()
+    scheduleDestroy()
   }
   if (!host || host.isDestroyed() || !host.isVisible()) {
     finish()
@@ -207,6 +235,7 @@ function hideNow(): void {
 }
 
 function showNow(): void {
+  destroyTimer = clearTimer(destroyTimer)
   if (visible) {
     idleTimer = clearTimer(idleTimer)
     safetyTimer = clearTimer(safetyTimer)
@@ -282,6 +311,7 @@ export function disposeAiActivityGlow(): void {
   clearFade()
   idleTimer = clearTimer(idleTimer)
   safetyTimer = clearTimer(safetyTimer)
+  destroyTimer = clearTimer(destroyTimer)
   visible = false
   opacity = 0
   const host = win

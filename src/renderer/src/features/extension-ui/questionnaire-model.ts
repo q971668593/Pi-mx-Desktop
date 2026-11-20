@@ -1,4 +1,11 @@
-import type { AskQuestionPayload } from './questionnaire-dialog'
+/** One question as the extension sent it (`ask_user_question`). Lives here so every surface —
+ *  composer dock, timeline row — can share it without importing a dialog. */
+export type AskQuestionPayload = {
+  question: string
+  header?: string
+  multiSelect?: boolean
+  options: { label: string; description?: string; hasPreview?: boolean; preview?: string }[]
+}
 
 /** One question's in-progress answer. `useCustom` makes the free-text answer the choice. */
 export type QuestionDraft = { selected: string[]; custom: string; useCustom: boolean }

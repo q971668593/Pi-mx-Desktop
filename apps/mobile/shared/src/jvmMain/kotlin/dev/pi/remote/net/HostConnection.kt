@@ -12,6 +12,7 @@ import dev.pi.remote.protocol.PROTOCOL_VERSION
 import dev.pi.remote.protocol.RemoteJson
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
+import javax.net.ssl.TrustManager
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.websocket.Frame as WsFrame
@@ -60,7 +61,9 @@ class HostConnection(
     private val hello: HelloParams,
     pairToken: String? = null,
     private val onPaired: (Hs2Payload) -> Unit = {},
-    private val client: HttpClient = defaultHttpClient(),
+    /** SPKI fingerprint pinned at pairing; null = system certificates only (manual addresses). */
+    private val tlsPin: String? = null,
+    private val client: HttpClient = httpClientFor(tlsPin),
     private val pingIntervalMs: Long = 15_000,
 ) {
     sealed interface State {
@@ -274,13 +277,28 @@ class HostConnection(
     companion object {
         private const val PROBE_TIMEOUT_MS = 1500
 
-        fun defaultHttpClient(): HttpClient = HttpClient(OkHttp) {
+        fun defaultHttpClient(): HttpClient = httpClientFor(null)
+
+        /**
+         * One client per pin: the trust manager is baked into the engine, and a `wss://` socket needs
+         * both the trust manager and (for self-signed certificates) a hostname verifier that defers
+         * to the pin instead of the certificate's names.
+         */
+        fun httpClientFor(tlsPin: String?): HttpClient = HttpClient(OkHttp) {
             install(WebSockets)
             engine {
                 config {
                     connectTimeout(4, TimeUnit.SECONDS)
                     readTimeout(0, TimeUnit.SECONDS)
                     pingInterval(0, TimeUnit.SECONDS)
+                    val trust = PinnedTrustManager(tlsPin)
+                    runCatching {
+                        val factory = javax.net.ssl.SSLContext.getInstance("TLS").apply {
+                            init(null, arrayOf<TrustManager>(trust), null)
+                        }.socketFactory
+                        sslSocketFactory(factory, trust)
+                    }
+                    hostnameVerifier(pinnedHostnameVerifier(tlsPin))
                 }
             }
         }

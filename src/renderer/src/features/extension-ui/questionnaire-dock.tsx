@@ -1,0 +1,91 @@
+import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { ChevronDown, X } from '@renderer/components/icons'
+import { cn } from '@renderer/lib/utils'
+import { useExtensionUIStore } from '@renderer/stores/extension-ui-store'
+import { useUIStore } from '@renderer/stores/ui-store'
+import { QuestionnairePanel } from './questionnaire-panel'
+import { answerQuestionnaire, cancelQuestionnaire, suspendActiveDialog } from './extension-ui-actions'
+
+/**
+ * 「确认问题」坞：停在输入框正上方的一条可折叠卡，不再整屏弹窗 ——
+ * 提问时照样能翻右侧文件、切换会话，答完自动收掉；收起后只剩一行标题。
+ */
+export function QuestionnaireDock() {
+  const pending = useExtensionUIStore((s) => s.activePending)
+  // 时间线工具行自己已经画了行内小卡时，这里不再叠一份。
+  const claimedInline = useUIStore((s) =>
+    !!pending && s.timelineItems.some((item) => item.extensionUiRequestId === pending.id),
+  )
+  if (!pending || pending.method !== 'ask_user_question') return null
+  if (claimedInline) return null
+  // key = 请求 id：下一个提问不会继承上一次的收起状态。
+  return <DockCard key={pending.id} id={pending.id} questions={pending.questions} />
+}
+
+function DockCard({ id, questions }: { id: string; questions: Parameters<typeof QuestionnairePanel>[0]['questions'] }) {
+  const { t } = useTranslation()
+  const [collapsed, setCollapsed] = useState(false)
+  const pendingCount = questions.length
+  const summary = questions[0]?.question ?? ''
+
+  return (
+    <section
+      className="questionnaire-dock mb-2 overflow-hidden rounded-xl border border-primary/30 bg-background shadow-sm"
+      data-testid="questionnaire-dock"
+      aria-label={t('extension:qDockTitle')}
+    >
+      <div
+        className={cn(
+          'flex items-center gap-2 px-3 py-2 transition-colors',
+          collapsed ? 'bg-primary/[0.05]' : 'bg-primary/[0.07]',
+        )}
+      >
+        <button
+          type="button"
+          onClick={() => setCollapsed((value) => !value)}
+          aria-expanded={!collapsed}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        >
+          <span className="relative flex h-1.5 w-1.5 shrink-0" aria-hidden>
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/70" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
+          </span>
+          <span className="shrink-0 text-[12px] font-medium text-primary">{t('extension:qDockTitle')}</span>
+          {pendingCount > 1 && (
+            <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-px text-[10.5px] tabular-nums text-primary">
+              {t('extension:qDockCount', { count: pendingCount })}
+            </span>
+          )}
+          <span className="min-w-0 flex-1 truncate text-[12.5px] text-foreground-secondary">{summary}</span>
+          <ChevronDown
+            className={cn('h-3.5 w-3.5 shrink-0 text-foreground-tertiary transition-transform', collapsed && '-rotate-90')}
+            aria-hidden
+          />
+        </button>
+        <button
+          type="button"
+          className="shrink-0 rounded-md p-1 text-foreground-tertiary transition-colors hover:bg-[var(--bg-hover)] hover:text-foreground"
+          aria-label={t('extension:answerLater')}
+          title={t('extension:answerLater')}
+          onClick={() => suspendActiveDialog()}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {!collapsed && (
+        <div className="border-t border-border/60 px-4 pb-3 pt-3">
+          <QuestionnairePanel
+            requestId={id}
+            questions={questions}
+            variant="dock"
+            onSubmit={(answers) => answerQuestionnaire(id, answers)}
+            onSuspend={() => suspendActiveDialog()}
+            onCancel={() => cancelQuestionnaire(id)}
+          />
+        </div>
+      )}
+    </section>
+  )
+}

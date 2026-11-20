@@ -1319,7 +1319,8 @@
     "addressKind": {
       "lan": "LAN",
       "tailscale": "Tailscale",
-      "overlay": "VPN"
+      "overlay": "VPN",
+      "public": "Wide area"
     },
     "pairing": "Pairing",
     "pairingDesc": "Scan the code with the phone app to pair. On Windows, allow pi Desktop on private networks in the firewall.",
@@ -1332,6 +1333,20 @@
     "regenerate": "New code",
     "copyLink": "Copy pairing link",
     "ephemeralKey": "OS encryption is unavailable, so the host key lives in memory only; phones must pair again after a restart.",
+    "wideArea": "Wide-area access",
+    "wideAreaDesc": "Connect from outside your Wi-Fi: run a tunnel or forward the port. Traffic is always wss, and the phone remembers this certificate's fingerprint from pairing.",
+    "certificate": "Connection certificate",
+    "certificateDesc": "Valid until {{expires}}, covers {{names}} addresses. The phone recognises this desktop by fingerprint, not through a public CA.",
+    "certificateOff": "No certificate while the gateway is stopped.",
+    "regenerateTls": "Re-issue",
+    "regenerateTlsHint": "Only for a new machine or a lost certificate: every phone has to scan the QR again afterwards.",
+    "publicHosts": "Public addresses",
+    "publicHostsDesc": "Tunnel hostnames or a forwarded domain:port. They go into the QR, so the phone can fall back to them when away from home.",
+    "publicHostPlaceholder": "pi.example.com:8443",
+    "addHost": "Add",
+    "removeHost": "Remove {{host}}",
+    "tunnelHint": "Tunnel example: cloudflared tunnel --url https://127.0.0.1:{{port}} --no-tls-verify, then add the hostname it prints.",
+
     "devices": "Devices",
     "noDevices": "No phones paired yet.",
     "online": "Online",
@@ -1345,9 +1360,8 @@
     "unpair": "Unpair",
     "forget": "Remove",
     "projects": "Projects",
-    "projectsDesc": "Phones only see, and start sessions in, the projects you check.",
-    "projectSearch": "Search projects",
-    "temporaryChats": "Temporary chats",
+    "projectsDesc": "Phones see the same project list as this desktop — no per-project approval.",
+    "projectsShared": "Projects you open later appear on the phone automatically; to limit what the phone sees, change the project list on this desktop.",
     "noProjects": "No projects opened yet."
   },
   "purge": {

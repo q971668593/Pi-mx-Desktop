@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
-import i18n from '@renderer/lib/i18n'
 import { cn } from '@renderer/lib/utils'
 import { ipcClient } from '@renderer/lib/ipc-client'
-import { QuestionnaireDialog, type AskQuestionPayload } from './questionnaire-dialog'
 import { ImageReviewDialog, type ImageReviewPayload } from './image-review-dialog'
 import { ExtensionDialogShell } from './extension-dialog-shell'
+import { findToolContextForUi, suspendActiveDialog } from './extension-ui-actions'
 import {
   useExtensionUIStore,
   type ExtensionUIPending,
@@ -20,43 +18,6 @@ import { respondToExtensionUI } from '@renderer/lib/extension-ui-respond'
 
 
 const respond = respondToExtensionUI
-
-function findToolContextForUi(): { toolCallId?: string; toolName?: string; timelineItemId?: string } {
-  const items = useUIStore.getState().timelineItems
-  for (let i = items.length - 1; i >= 0; i--) {
-    const it = items[i]
-    if (it.type !== 'tool-call') continue
-    if (it.toolPhase === 'start' || it.toolPhase === 'update') {
-      return {
-        toolCallId: it.toolCallId,
-        toolName: it.toolName,
-        timelineItemId: it.id,
-      }
-    }
-  }
-  const suspended = useExtensionUIStore.getState().suspended
-  if (suspended?.timelineItemId) {
-    return {
-      toolCallId: suspended.toolCallId,
-      toolName: suspended.toolName,
-      timelineItemId: suspended.timelineItemId,
-    }
-  }
-  return {}
-}
-
-function suspendActiveDialog() {
-  const meta = findToolContextForUi()
-  useExtensionUIStore.getState().suspendActive(meta)
-  const { timelineItemId } = meta
-  if (timelineItemId) {
-    useUIStore.getState().updateTimelineItem(timelineItemId, {
-      extensionUiSuspended: true,
-      toolStatusLine: i18n.t('extension:waitingAnswer'),
-    })
-  }
-  toast.message(i18n.t('extension:suspendedToast'))
-}
 
 /** Option list for `ui.select`: number keys pick, arrows move focus. */
 function SelectDialog({ title, options, onPick, onSuspend, onCancel }: {
@@ -202,10 +163,6 @@ function InputDialog({ title, placeholder, onSubmit, onSuspend, onCancel }: {
 export function ExtensionUIHost() {
   const pending = useExtensionUIStore((s) => s.activePending)
   const clearAfterRespond = useExtensionUIStore((s) => s.clearAfterRespond)
-  // 工具行里的行内小卡已经接管了这个问答：别再叠一个全屏弹窗。
-  const claimedInline = useUIStore((s) =>
-    !!pending && s.timelineItems.some((item) => item.extensionUiRequestId === pending.id),
-  )
 
   const cancelWorker = (id: string) => {
     const tid = findToolContextForUi().timelineItemId
@@ -216,7 +173,8 @@ export function ExtensionUIHost() {
   }
 
   if (!pending) return null
-  if (pending.method === 'ask_user_question' && claimedInline) return null
+  // 问答不再走整屏弹窗：输入框上方的坞（QuestionnaireDock）或时间线工具行接管。
+  if (pending.method === 'ask_user_question') return null
 
   const answer = (payload: { value?: string; confirmed?: boolean }) => {
     respond({ id: pending.id, ...payload })
@@ -225,24 +183,6 @@ export function ExtensionUIHost() {
 
   // Keyed by request id: a new request never inherits the previous dialog's state.
   switch (pending.method) {
-    case 'ask_user_question':
-      return (
-        <QuestionnaireDialog
-          key={pending.id}
-          requestId={pending.id}
-          questions={pending.questions}
-          onSubmit={(result) => {
-            const s = useExtensionUIStore.getState().suspended
-            const tid = findToolContextForUi().timelineItemId || s?.timelineItemId
-            respond({ id: pending.id, result })
-            clearExtensionToolRowFlags(tid)
-            clearAfterRespond()
-            if (result.cancelled) reconcileStaleInteractiveToolRows(pending.id)
-          }}
-          onSuspend={suspendActiveDialog}
-          onCancel={() => cancelWorker(pending.id)}
-        />
-      )
     case 'image_review':
       return (
         <ImageReviewDialog

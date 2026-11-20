@@ -12,6 +12,8 @@ val appVersionCode: Int = appVersion.substringBefore('-').split('.').map { it.to
 
 // Release signing comes from the environment (CI restores the keystore from secrets).
 val releaseKeystore: String? = System.getenv("ANDROID_KEYSTORE_PATH")?.takeIf { it.isNotBlank() }
+// R8 出问题时的逃生门：-Ppi.minify=false 打一个不混淆、不裁资源的签名包。
+val minifyRelease: Boolean = providers.gradleProperty("pi.minify").orNull != "false"
 val requireReleaseSigning = System.getenv("PI_REQUIRE_RELEASE_SIGNING") == "1"
 if (requireReleaseSigning && releaseKeystore == null) error("PI_REQUIRE_RELEASE_SIGNING=1 but ANDROID_KEYSTORE_PATH is not set")
 
@@ -44,8 +46,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            isMinifyEnabled = minifyRelease
+            isShrinkResources = minifyRelease
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Without ANDROID_KEYSTORE_PATH (local builds) the release APK is signed with the debug key.
             signingConfig = signingConfigs.getByName(if (releaseKeystore != null) "release" else "debug")

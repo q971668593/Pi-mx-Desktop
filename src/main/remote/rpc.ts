@@ -159,6 +159,16 @@ export class RemoteRpc {
         if (!r) throw new RpcFail('not_found', 'folder not found in the project')
         return { entries: r.entries.slice(0, FILE_LIST_MAX), truncated: r.truncated || r.entries.length > FILE_LIST_MAX }
       },
+      'file.read': async (_c, p) => {
+        const { projectId } = await hub.authorize(p.sessionKey)
+        const file = await port.readFile(projectId, p.path)
+        if (!file) throw new RpcFail('not_found', 'file not found in the project')
+        return file
+      },
+      'git.log': async (_c, p) => {
+        const { projectId } = await hub.authorize(p.sessionKey)
+        return port.gitLog(projectId, p.limit ?? 20)
+      },
       'file.search': async (_c, p) => {
         const { projectId } = await hub.authorize(p.sessionKey)
         return { entries: (await port.searchFiles(projectId, p.query)).slice(0, 60) }

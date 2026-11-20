@@ -91,6 +91,32 @@ data class OpenResult(
 @Serializable data class ForkResult(val sessionKey: String, val editorText: String? = null)
 @Serializable data class CommandInfo(val name: String, val description: String? = null, val category: String)
 @Serializable data class CommandListResult(val commands: List<CommandInfo>)
+@Serializable data class FileReadParams(val sessionKey: String, val path: String)
+
+@Serializable
+data class FileReadResult(
+    val path: String,
+    val size: Long,
+    val truncated: Boolean,
+    val kind: String,
+    val text: String? = null,
+    val mime: String? = null,
+    val data: String? = null,
+)
+
+@Serializable
+data class GitCommit(
+    val sha: String,
+    val short: String,
+    val subject: String,
+    val author: String,
+    val at: Long,
+    val refs: List<String>? = null,
+)
+
+@Serializable data class GitLogParams(val sessionKey: String, val limit: Int? = null)
+@Serializable data class GitLogResult(val isRepo: Boolean, val commits: List<GitCommit>)
+
 @Serializable data class FileEntry(val name: String, val path: String, val dir: Boolean, val size: Long? = null, val mtime: Long? = null)
 @Serializable data class DiffLine(val k: String, val o: Int? = null, val n: Int? = null, val s: String)
 @Serializable data class DiffFile(val path: String, val add: Int, val del: Int, val status: String)
@@ -160,6 +186,8 @@ object RemoteMethods {
         "file.list" to (FileListParams.serializer() to FileListResult.serializer()),
         "review.diff" to (ReviewDiffParams.serializer() to ReviewDiffResult.serializer()),
         "file.search" to (FileSearchParams.serializer() to FileSearchResult.serializer()),
+        "file.read" to (FileReadParams.serializer() to FileReadResult.serializer()),
+        "git.log" to (GitLogParams.serializer() to GitLogResult.serializer()),
         "session.stats" to (SessionKeyParams.serializer() to SessionStatsResult.serializer()),
         "command.list" to (SessionKeyParams.serializer() to CommandListResult.serializer()),
         "turn.rewind" to (RewindParams.serializer() to RewindResult.serializer()),

@@ -220,6 +220,21 @@
     <string name="review_remove_comment">删除批注</string>
     <string name="review_insert">插入输入框</string>
     <plurals name="review_comment_count"><item quantity="other">%d 条批注</item></plurals>
+    <string name="panel_git">最近提交</string>
+    <string name="panel_project_files">项目文件</string>
+    <string name="git_title">提交记录</string>
+    <string name="git_failed">拉不到提交：%s</string>
+    <string name="git_not_repo">这个项目不是 git 仓库</string>
+    <string name="git_empty">还没有提交</string>
+    <string name="git_by">%1$s · %2$s</string>
+    <string name="projfiles_title">文件</string>
+    <string name="projfiles_search">在项目里搜文件</string>
+    <string name="projfiles_failed">读不到文件列表</string>
+    <string name="projfiles_empty">这里是空的</string>
+    <string name="projfiles_truncated">已截断</string>
+    <string name="projfiles_image_failed">这张图解不出来</string>
+    <string name="projfiles_binary">二进制文件，无法预览</string>
+    <string name="projfiles_root">项目</string>
     <string name="panel_changes">改动</string>
     <string name="panel_changes_open">查看工作区改动</string>
     <string name="panel_changes_none">没有未提交的改动</string>

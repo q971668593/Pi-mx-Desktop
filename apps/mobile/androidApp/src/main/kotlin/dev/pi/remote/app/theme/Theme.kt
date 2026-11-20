@@ -12,6 +12,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
@@ -92,6 +94,14 @@ val LocalType = staticCompositionLocalOf { typeScale() }
 object Pi {
     val c: Tokens @Composable get() = LocalTokens.current
     val t: TypeScale @Composable get() = LocalType.current
+
+    // 统一排版尺度：卡片圆角、行高、间距都取这里，新界面对着用，避免各写一套。
+    const val radius = 10
+    const val radiusLarge = 14
+    val gap: Dp get() = 8.dp
+    val gapLarge: Dp get() = 16.dp
+    /** 列表行最小高度：点得中，也不显得挤。 */
+    val row: Dp get() = 44.dp
 }
 
 @Composable
