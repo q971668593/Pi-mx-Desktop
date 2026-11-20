@@ -1,5 +1,12 @@
 {
-  "interrupted": {"badge": "Interrupted", "message": "The previous run was interrupted. Review the files before continuing.", "review": "View changes", "resume": "Continue task", "resumeFailed": "Could not continue this task.", "resumePrompt": "Continue the task from the last interrupted run. First review the current workspace and session history, then continue from the unfinished step. Avoid repeating commands or changes that already completed."},
+  "interrupted": {
+    "badge": "Interrupted",
+    "message": "The previous run was interrupted. Review the files before continuing.",
+    "review": "View changes",
+    "resume": "Continue task",
+    "resumeFailed": "Could not continue this task.",
+    "resumePrompt": "Continue the task from the last interrupted run. First review the current workspace and session history, then continue from the unfinished step. Avoid repeating commands or changes that already completed."
+  },
   "app": {
     "name": "Pi mx",
     "status": {
@@ -89,7 +96,6 @@
     "existingForks": "Existing forks",
     "forkedFrom": "Forked from: {{title}}",
     "teamSession": "Work team · {{role}}",
-
     "undoRemove": "Undo",
     "restored": "Project restored",
     "restoreFailed": "Could not restore the project",
@@ -97,7 +103,9 @@
     "forkSourceMissing": "a deleted conversation",
     "newSessionDraft": "New session",
     "openFolderHint": "Choose a folder to work in as a project",
-    "openFolderEmpty": "Open a folder to start a project"
+    "openFolderEmpty": "Open a folder to start a project",
+    "undoDelete": "Undo",
+    "deleteRestored": "Conversation restored"
   },
   "attention": {
     "needsYou": "Needs you",
@@ -566,8 +574,16 @@
     "removeRemote": "Remove remote",
     "removeRemoteConfirm": "Remove the configuration for remote {{name}}? This does not delete the remote repository.",
     "emptyRemotes": "No remotes configured. Add one to fetch, pull, and push.",
-    "remoteMode": { "add": "Add", "url": "Change URL", "rename": "Rename" },
-    "remoteAction": { "add": "Add remote", "url": "Save URL", "rename": "Save name" },
+    "remoteMode": {
+      "add": "Add",
+      "url": "Change URL",
+      "rename": "Rename"
+    },
+    "remoteAction": {
+      "add": "Add remote",
+      "url": "Save URL",
+      "rename": "Save name"
+    },
     "remoteNewName": "New remote name",
     "cloneOtherRepository": "Clone another repository",
     "cloneDestination": "Destination folder path",

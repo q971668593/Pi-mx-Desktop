@@ -182,6 +182,10 @@
     <string name="theme_system">System</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
+    <string name="menu_sound_alerts">Sound alerts</string>
+    <string name="sound_on">On</string>
+    <string name="sound_off">Off</string>
+    <string name="menu_sound_hint">Plays the system notification tone when a background run finishes or asks you something.</string>
     <string name="menu_grouping">Group sessions</string>
     <string name="group_status">By status</string>
     <string name="group_project">By project</string>

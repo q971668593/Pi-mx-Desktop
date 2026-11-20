@@ -114,8 +114,9 @@ describe('session delete trusted workspace integration', () => {
     ['foreground', foreground, foregroundSession],
     ['persisted recent background', background, backgroundSession],
   ])('deletes a %s session through real trusted authorization', async (_label, workspaceId, sessionFile) => {
+    // 删除会顺手留一份撤销副本，所以返回里多一个 trashId
     await expect(mocks.handlers.get('ipc:session.delete')!({ workspaceId, sessionFile }))
-      .resolves.toEqual({ ok: true, error: undefined })
+      .resolves.toEqual(expect.objectContaining({ ok: true }))
     expect(mocks.deleteSessionFile).toHaveBeenCalledWith(sessionFile)
     expect(mocks.invalidateListSessions).toHaveBeenCalledWith(workspaceId)
   })

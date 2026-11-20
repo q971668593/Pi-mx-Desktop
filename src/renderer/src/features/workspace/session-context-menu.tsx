@@ -7,6 +7,7 @@ import { selectSessionAttention } from '@renderer/lib/session-attention'
 import { activateWorkspace, switchSessionInPlace } from '@renderer/lib/activate-workspace'
 import { workspacePathsEqual } from '@shared/workspace-path'
 import { ipcClient } from '@renderer/lib/ipc-client'
+import { withUndo } from '@renderer/lib/undo-toast'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { toast } from 'sonner'
 import {
@@ -110,7 +111,21 @@ export function SessionContextMenuPortal({
         // Drop the deleted session's per-session state so late events cannot resurrect it.
         const deletedFile = target.sessionFile
         void import('@renderer/stores/session-scope').then((m) => m.removeSessionState(deletedFile))
-        toast.success(t('common:sidebar.deleted'))
+        const trashId = (r as { trashId?: string }).trashId
+        if (trashId) {
+          // 主进程留了副本：给一次撤销机会，而不是删掉就没了。
+          withUndo({
+            message: t('common:sidebar.deleted'),
+            undoLabel: t('common:sidebar.undoDelete'),
+            doneMessage: t('common:sidebar.deleteRestored'),
+            onUndo: async () => {
+              await ipcClient.invoke('session.restore', { trashId })
+              refreshList(target.workspacePath)
+            },
+          })
+        } else {
+          toast.success(t('common:sidebar.deleted'))
+        }
         refreshList(target.workspacePath)
       } else {
         toast.error(r?.error || t('common:sidebar.deleteFailed'))

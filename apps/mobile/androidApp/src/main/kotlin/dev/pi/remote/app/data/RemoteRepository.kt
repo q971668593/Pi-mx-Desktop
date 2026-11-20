@@ -537,13 +537,23 @@ class RemoteRepository(
     private var keptAlive = false
 
     /** Notify on running → done/failed and on a new question, unless the user is looking at it. */
+    /** 后台完成/需要回答时响一声（由 AppGraph 接到 SoundAlerts）。 */
+    var onSoundAlert: (() -> Unit)? = null
+    /** UI 上要能开关声音提醒，所以这里也留一个引用。 */
+    var soundAlerts: SoundAlerts? = null
+
     private fun noticeTransitions(before: Map<String, SessionSummary>, after: List<SessionSummary>) {
-        val n = notifier ?: return
+        val n = notifier
         for (s in after) {
             val was = before[s.sessionKey]?.status ?: continue
             val settled = was == "running" && s.status != "running"
             val asks = s.status == "needsInput" && was != "needsInput"
-            if ((settled || asks) && !(foreground && openKey == s.sessionKey)) n.notifySession(s)
+            val visible = foreground && openKey == s.sessionKey
+            if ((settled || asks) && !visible) {
+                n?.notifySession(s)
+                // 正在看的会话不响；其它会话（含后台）完成或提问都提醒一下。
+                onSoundAlert?.invoke()
+            }
         }
         updateKeepAlive()
     }

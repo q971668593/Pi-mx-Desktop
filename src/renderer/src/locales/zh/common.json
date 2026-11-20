@@ -1,5 +1,12 @@
 {
-  "interrupted": {"badge": "已中断", "message": "上次执行已中断。继续前可以先查看文件改动。", "review": "查看改动", "resume": "继续此任务", "resumeFailed": "无法继续此任务。", "resumePrompt": "继续上一次中断的任务。先检查当前工作区和会话记录，再从未完成的步骤继续。请避免重复已完成的命令或改动。"},
+  "interrupted": {
+    "badge": "已中断",
+    "message": "上次执行已中断。继续前可以先查看文件改动。",
+    "review": "查看改动",
+    "resume": "继续此任务",
+    "resumeFailed": "无法继续此任务。",
+    "resumePrompt": "继续上一次中断的任务。先检查当前工作区和会话记录，再从未完成的步骤继续。请避免重复已完成的命令或改动。"
+  },
   "app": {
     "name": "Pi mx",
     "status": {
@@ -86,7 +93,6 @@
     "existingForks": "已有分叉",
     "forkedFrom": "分叉自：{{title}}",
     "teamSession": "工作团队 · {{role}}",
-
     "undoRemove": "撤销",
     "restored": "项目已放回列表",
     "restoreFailed": "恢复失败",
@@ -94,7 +100,9 @@
     "forkSourceMissing": "已删除的会话",
     "newSessionDraft": "新会话",
     "openFolderHint": "选择一个文件夹作为项目",
-    "openFolderEmpty": "打开文件夹，开始一个项目"
+    "openFolderEmpty": "打开文件夹，开始一个项目",
+    "undoDelete": "撤销",
+    "deleteRestored": "已恢复这个对话"
   },
   "attention": {
     "needsYou": "等你",
@@ -555,8 +563,16 @@
     "removeRemote": "删除远程",
     "removeRemoteConfirm": "确定删除远程仓库 {{name}} 的配置吗？不会删除远端仓库本身。",
     "emptyRemotes": "尚未添加远程仓库。添加后即可获取、拉取和推送。",
-    "remoteMode": { "add": "添加", "url": "修改地址", "rename": "重命名" },
-    "remoteAction": { "add": "添加远程", "url": "保存地址", "rename": "保存名称" },
+    "remoteMode": {
+      "add": "添加",
+      "url": "修改地址",
+      "rename": "重命名"
+    },
+    "remoteAction": {
+      "add": "添加远程",
+      "url": "保存地址",
+      "rename": "保存名称"
+    },
     "remoteNewName": "新远程名称",
     "cloneOtherRepository": "克隆其他仓库",
     "cloneDestination": "克隆到的文件夹路径",

@@ -4,7 +4,7 @@
 > 事实源：`src/main/**/*.ts` 中的 `registerHandler` / `registerHandlerWithSchema` 调用。
 > 手写文档在 `doc/IPC-CONTRACTS.md`；本文件保证「代码里注册了什么」与「文档里写了什么」不会漂移。
 
-- invoke 通道：**310** 个（唯一）
+- invoke 通道：**311** 个（唯一）
 - main → renderer 事件通道：**12** 个（唯一）
 - 非字面量注册：**0** 处
 - 动态事件通道（通道名非常量，未收录）：**7** 处
@@ -18,7 +18,7 @@
 | --- | ---: |
 | `browser` | 35 |
 | `gitBoard` | 31 |
-| `session` | 22 |
+| `session` | 23 |
 | `workspace` | 21 |
 | `extensions` | 14 |
 | `teamBoard` | 14 |
@@ -148,7 +148,7 @@
 | `ipc:gitBoard.unstageAll` | registerHandlerWithSchema | `src/main/ipc/handlers/git-board.ts` |
 | `ipc:gitBoard.worktree` | registerHandlerWithSchema | `src/main/ipc/handlers/git-board.ts` |
 
-### session（22）
+### session（23）
 
 | 通道 | 注册方式 | 注册位置 |
 | --- | --- | --- |
@@ -168,6 +168,7 @@
 | `ipc:session.prepare` | registerHandlerWithSchema | `src/main/ipc/handlers/session.ts` |
 | `ipc:session.reloadFromDisk` | registerHandlerWithSchema | `src/main/ipc/handlers/session.ts` |
 | `ipc:session.rename` | registerHandler | `src/main/ipc/handlers/session.ts` |
+| `ipc:session.restore` | registerHandlerWithSchema | `src/main/ipc/handlers/session.ts` |
 | `ipc:session.restoreTurnFile` | registerHandlerWithSchema | `src/main/ipc/handlers/session.ts` |
 | `ipc:session.setEphemeralDraft` | registerHandlerWithSchema | `src/main/ipc/handlers/session.ts` |
 | `ipc:session.setPendingBind` | registerHandlerWithSchema | `src/main/ipc/handlers/session.ts` |

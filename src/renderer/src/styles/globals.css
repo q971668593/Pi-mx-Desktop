@@ -9,6 +9,14 @@
     --motion-normal: 200ms;
     --motion-slow: 240ms;
     --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+    /* 语义化四档：按压 / 进场 / 位移 / 回弹。新动画只挑这四个，别再就地写时长。 */
+    --motion-press: 90ms;
+    --motion-enter: 180ms;
+    --motion-move: 220ms;
+    --motion-spring: 320ms;
+    --ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-move: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 
     /* Font tokens (system stack, 参考桌面客户端 rejects Inter for thin-text issue) */
     /* *-base 为回退栈：自定义主题只把本机字体名前置，不整栈替换 */
@@ -319,6 +327,10 @@
     --motion-fast: 0ms;
     --motion-normal: 0ms;
     --motion-slow: 0ms;
+    --motion-press: 0ms;
+    --motion-enter: 0ms;
+    --motion-move: 0ms;
+    --motion-spring: 0ms;
   }
 }
 
@@ -3688,5 +3700,45 @@ html[data-bg='on'] .composer-dock-fade { right: 0; }
   .chat-image-generating-card,
   .chat-image-generating-sweep {
     animation: none;
+  }
+}
+
+/* ── 统一微交互（配合上面的语义 token 使用） ─────────────────────────────
+   可点区域：按压轻微下沉 + 回弹；进场用 enter 曲线。减少动效时全部退化为瞬时。 */
+.motion-press {
+  transition:
+    transform var(--motion-press) var(--ease-move),
+    background-color var(--motion-fast) ease,
+    color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease;
+  will-change: transform;
+}
+.motion-press:active {
+  transform: scale(0.985);
+}
+.motion-lift {
+  transition:
+    transform var(--motion-normal) var(--ease-spring),
+    box-shadow var(--motion-normal) var(--ease-enter);
+}
+.motion-lift:hover {
+  transform: translateY(-1px);
+}
+.motion-lift:active {
+  transform: translateY(0) scale(0.99);
+}
+.motion-enter {
+  animation: motion-enter var(--motion-enter) var(--ease-enter) both;
+}
+@keyframes motion-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .motion-press, .motion-press:active, .motion-lift, .motion-lift:hover, .motion-lift:active, .motion-enter {
+    transition: none !important;
+    animation: none !important;
+    transform: none !important;
   }
 }

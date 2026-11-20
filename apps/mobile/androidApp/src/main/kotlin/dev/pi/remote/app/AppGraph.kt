@@ -10,6 +10,7 @@ import dev.pi.remote.app.data.RemoteRepository
 import dev.pi.remote.app.data.TimelineCache
 import dev.pi.remote.app.data.UiPrefs
 import dev.pi.remote.app.data.RunNotifier
+import dev.pi.remote.app.data.SoundAlerts
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -30,6 +31,7 @@ class AppGraph(context: Context) {
     )
     val prefs = UiPrefs(context.applicationContext)
     val notifier = RunNotifier(context.applicationContext).also { repository.notifier = it }
+    val sounds = SoundAlerts(context.applicationContext).also { repository.onSoundAlert = it::play; repository.soundAlerts = it }
     val images = AttachmentStore(context.applicationContext, File(context.cacheDir, "attachments")) { path -> repository.downloadAttachment(path) }
         .also { repository.attachmentStore = it }
 }

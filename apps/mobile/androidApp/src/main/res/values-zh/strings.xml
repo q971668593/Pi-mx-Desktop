@@ -181,6 +181,10 @@
     <string name="theme_system">跟随系统</string>
     <string name="theme_light">浅色</string>
     <string name="theme_dark">深色</string>
+    <string name="menu_sound_alerts">声音提醒</string>
+    <string name="sound_on">开</string>
+    <string name="sound_off">关</string>
+    <string name="menu_sound_hint">后台跑完一轮、或者需要你回答时，响一声系统通知铃声。</string>
     <string name="menu_grouping">会话分组</string>
     <string name="group_status">按状态</string>
     <string name="group_project">按项目</string>

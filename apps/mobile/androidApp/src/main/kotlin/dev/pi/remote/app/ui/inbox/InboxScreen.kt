@@ -30,6 +30,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -173,13 +176,14 @@ fun InboxScreen(repo: RemoteRepository, onOpen: (String) -> Unit, onHosts: () ->
             }
         }
     }
-    if (menu && prefs != null) InboxMenu(prefs, onHosts = { menu = false; onHosts() }, onDismiss = { menu = false })
+    if (menu && prefs != null) InboxMenu(prefs, repo, onHosts = { menu = false; onHosts() }, onDismiss = { menu = false })
 }
 
 /** Theme, language and inbox grouping. */
 @Composable
-private fun InboxMenu(prefs: UiPrefs, onHosts: () -> Unit, onDismiss: () -> Unit) {
+private fun InboxMenu(prefs: UiPrefs, repo: RemoteRepository, onHosts: () -> Unit, onDismiss: () -> Unit) {
     val theme by prefs.theme.collectAsState()
+    val soundOn by (repo.soundAlerts?.enabled ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsState()
     val language by prefs.language.collectAsState()
     val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
     val grouping by prefs.grouping.collectAsState()
@@ -192,6 +196,13 @@ private fun InboxMenu(prefs: UiPrefs, onHosts: () -> Unit, onDismiss: () -> Unit
             Segmented(listOf("system" to stringResource(R.string.theme_system), "en" to "English", "zh" to "简体中文"), language, onSelect = { if (prefs.setLanguage(it)) activity?.recreate() })
             Text(stringResource(R.string.menu_grouping), style = Pi.t.meta.copy(color = Pi.c.fg3), modifier = Modifier.padding(top = 10.dp))
             Segmented(listOf("status" to stringResource(R.string.group_status), "project" to stringResource(R.string.group_project)), grouping, prefs::setGrouping)
+            Text(stringResource(R.string.menu_sound_alerts), style = Pi.t.meta.copy(color = Pi.c.fg3), modifier = Modifier.padding(top = 10.dp))
+            Segmented(
+                listOf("on" to stringResource(R.string.sound_on), "off" to stringResource(R.string.sound_off)),
+                if (soundOn) "on" else "off",
+                onSelect = { repo.soundAlerts?.setEnabled(it == "on") },
+            )
+            Text(stringResource(R.string.menu_sound_hint), style = Pi.t.small.copy(color = Pi.c.fg3))
             Hairline(Modifier.padding(top = 10.dp))
             Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).clickable(role = Role.Button, onClick = onHosts), verticalAlignment = Alignment.CenterVertically) {
                 PiIcon(PiIcons.Monitor, Pi.c.fg2, 16.dp)
@@ -415,8 +426,29 @@ private fun SessionRow(
 ) {
     val temporaryLabel = stringResource(R.string.temporary_chats)
     // animateItem() 由调用方的 LazyColumn 提供：新跑起来的会话、状态变化会平滑滑入而不是跳一下
+    // 左滑露出「删除」：一次手势就到确认，不用先长按再翻面板。
+    val swipe = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.EndToStart) {
+                onLongPress?.invoke()
+            }
+            false // 不真的抽走行：交给确认弹窗，取消就弹回来
+        },
+    )
+    SwipeToDismissBox(
+        state = swipe,
+        enableDismissFromStartToEnd = false,
+        enableDismissFromEndToStart = onLongPress != null,
+        backgroundContent = {
+            Box(
+                Modifier.fillMaxSize().background(Pi.c.bad.copy(alpha = 0.10f)).padding(end = 22.dp),
+                contentAlignment = Alignment.CenterEnd,
+            ) { PiIcon(PiIcons.Trash, Pi.c.bad, 16.dp) }
+        },
+        modifier = modifier,
+    ) {
     Row(
-        modifier.fillMaxWidth().heightIn(min = Pi.row)
+        Modifier.fillMaxWidth().heightIn(min = Pi.row).background(Pi.c.bg)
             .combinedClickable(
                 role = Role.Button,
                 onClick = { onOpen(s.sessionKey) },
@@ -457,5 +489,6 @@ private fun SessionRow(
             val counts = s.counts?.let { countsLine(it) }.orEmpty()
             Text(listOf(project, counts).filter { it.isNotEmpty() }.joinToString(" · "), style = Pi.t.meta.copy(color = Pi.c.fg3), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
+    }
     }
 }

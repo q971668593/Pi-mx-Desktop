@@ -1,3 +1,8 @@
+import { app } from 'electron'
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { deriveSessionTitle } from '@shared/session-list-title'
 import { configStore } from '../../config-store'
@@ -67,6 +72,62 @@ function timeMs(value: unknown): number {
   if (typeof value === 'number') return value
   if (typeof value === 'string') return Date.parse(value) || 0
   return 0
+}
+
+/** 撤销副本目录：测试里 electron.app 可能没有 getPath，退回临时目录。 */
+function sessionUndoDir(): string {
+  try {
+    return join(app.getPath('userData'), 'session-undo')
+  } catch {
+    return join(tmpdir(), 'pi-session-undo')
+  }
+}
+const SESSION_UNDO_TTL_MS = 10 * 60_000
+
+/** Copy a session file aside so the delete can be undone; returns the handle used by `ipc:session.restore`. */
+function stashSessionForUndo(sessionFile: string): string | null {
+  try {
+    mkdirSync(sessionUndoDir(), { recursive: true })
+    const id = randomUUID()
+    copyFileSync(sessionFile, join(sessionUndoDir(), `${id}.jsonl`))
+    writeFileSync(join(sessionUndoDir(), `${id}.json`), JSON.stringify({ sessionFile, at: Date.now() }), 'utf8')
+    // 顺手清掉过期副本，别无限长
+    for (const name of readdirSync(sessionUndoDir())) {
+      if (!name.endsWith('.json')) continue
+      const metaPath = join(sessionUndoDir(), name)
+      try {
+        const meta = JSON.parse(readFileSync(metaPath, 'utf8')) as { at?: number }
+        if (Date.now() - (meta.at ?? 0) > SESSION_UNDO_TTL_MS) {
+          rmSync(metaPath, { force: true })
+          rmSync(metaPath.replace(/\.json$/, '.jsonl'), { force: true })
+        }
+      } catch {
+        /* ignore a corrupt sidecar */
+      }
+    }
+    return id
+  } catch {
+    return null
+  }
+}
+
+function dropSessionUndo(trashId: string): void {
+  rmSync(join(sessionUndoDir(), `${trashId}.json`), { force: true })
+  rmSync(join(sessionUndoDir(), `${trashId}.jsonl`), { force: true })
+}
+
+function restoreSessionFromUndo(trashId: string): { sessionFile: string; workspaceId: string } | null {
+  try {
+    const metaPath = join(sessionUndoDir(), `${trashId}.json`)
+    const meta = JSON.parse(readFileSync(metaPath, 'utf8')) as { sessionFile?: string; at?: number }
+    if (!meta.sessionFile || Date.now() - (meta.at ?? 0) > SESSION_UNDO_TTL_MS) return null
+    mkdirSync(dirname(meta.sessionFile), { recursive: true })
+    copyFileSync(join(sessionUndoDir(), `${trashId}.jsonl`), meta.sessionFile)
+    dropSessionUndo(trashId)
+    return { sessionFile: meta.sessionFile, workspaceId: dirname(meta.sessionFile) }
+  } catch {
+    return null
+  }
 }
 
 export function registerSessionHandlers(): void {
@@ -664,12 +725,22 @@ export function registerSessionHandlers(): void {
   registerHandlerWithSchema('ipc:session.delete', sessionDeleteSchema, async (req) => {
     const authorized = await authorizeTrustedSessionFile(req.workspaceId, req.sessionFile)
     if (!authorized.ok) return { ok: false, error: authorized.error }
+    // 删除前留一份副本：撤销条（几秒内点「撤销」）能把对话原样放回去。
+    const trashId = stashSessionForUndo(authorized.sessionFile)
     const r = await workerManager.deleteSessionFile(authorized.sessionFile)
     if (r.ok) {
       clearSessionDisplayName(authorized.sessionFile)
       await sessionPreviewProcess.invalidateListSessions(authorized.cwd)
-    }
-    return { ok: !!r.ok, error: r.error }
+    } else if (trashId) dropSessionUndo(trashId)
+    return { ok: !!r.ok, error: r.error, ...(r.ok && trashId ? { trashId } : {}) }
+  })
+
+  /** 撤销删除：把先前留的副本放回原路径，并让侧栏重新读一次。 */
+  registerHandlerWithSchema('ipc:session.restore', z.object({ trashId: z.string().min(1) }).strict(), async (req) => {
+    const restored = restoreSessionFromUndo(req.trashId)
+    if (!restored) return { ok: false, error: 'undo expired' }
+    await sessionPreviewProcess.invalidateListSessions(dirname(restored.sessionFile)).catch(() => {})
+    return { ok: true, sessionFile: restored.sessionFile, workspaceId: restored.workspaceId }
   })
 
   registerHandlerWithSchema('ipc:session.reloadFromDisk', sessionFileOnlySchema, async (req) => {

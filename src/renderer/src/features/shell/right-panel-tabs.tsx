@@ -67,6 +67,7 @@ export function RightPanelTabs({
               role="tab"
               data-panel-tab={panel.key}
               aria-selected={active}
+              data-motion="press"
               tabIndex={active ? 0 : -1}
               onClick={() => setActivePanel(panel.key)}
               onKeyDown={(e) => {
@@ -78,7 +79,7 @@ export function RightPanelTabs({
                 stripRef.current?.querySelector<HTMLElement>(`[data-panel-tab="${CSS.escape(next.key)}"]`)?.focus()
               }}
               className={cn(
-                'h-8 min-w-11 shrink-0 rounded-md px-2.5 text-[12px] font-medium whitespace-nowrap transition-colors',
+                'motion-press h-8 min-w-11 shrink-0 rounded-md px-2.5 text-[12px] font-medium whitespace-nowrap transition-colors',
                 active
                   ? 'bg-[var(--bg-active)] text-foreground'
                   : 'text-foreground-secondary hover:bg-[var(--bg-hover)] hover:text-foreground',
