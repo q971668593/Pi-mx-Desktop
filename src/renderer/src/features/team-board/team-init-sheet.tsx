@@ -61,7 +61,7 @@ export function TeamInitSheet({
       </div>
 
       <div className="team-sheet-scroll team-scroll">
-        <div className="flex items-start gap-2 rounded-lg border border-border/40 bg-card/40 p-2">
+        <div className="team-sheet-role !items-start">
           <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
           <p className="min-w-0 flex-1 text-xs leading-relaxed text-foreground-secondary">
             {mode === 'new' ? t('team:init.descNew') : t('team:init.descLegacy')}
@@ -75,7 +75,7 @@ export function TeamInitSheet({
             onChange={(event) => setName(event.target.value)}
             maxLength={80}
             autoFocus
-            className="mt-1 w-full rounded border border-border/60 bg-background px-2 py-1.5 text-xs text-foreground outline-none focus:border-primary/60"
+            className="team-sheet-input mt-1"
           />
         </label>
 

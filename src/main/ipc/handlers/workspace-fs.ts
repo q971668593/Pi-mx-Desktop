@@ -4,6 +4,7 @@ import { shell } from 'electron'
 import log from 'electron-log'
 import { workspaceFsCopyFile, workspaceFsCreate, workspaceFsListDir, workspaceFsReadText, workspaceFsRename, workspaceFsWriteText } from '../../workspace-fs'
 import { resolveActionableImage } from '../../image-file-access'
+import { locateWorkspaceFile } from '../../workspace-file-locate'
 import { invalidateWorkspaceFileSearchIndex, primeWorkspaceFileSearchIndex, workspaceFsResolveFileNames, workspaceFsSearch } from '../../workspace-file-search'
 import { registerHandler, registerHandlerWithSchema } from '../registry'
 import { decideShellOpenAction } from '../../shell-open-safety'
@@ -25,6 +26,21 @@ import {
 } from '../schemas'
 
 const IMAGE_PREVIEW_MAX_BYTES = 8 * 1024 * 1024
+
+/** WebP/AVIF/BMP 这些浏览器能直接画，但必须给对 MIME：octet-stream 的 data URL 不会渲染。 */
+const IMAGE_PREVIEW_MIME: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+  '.bmp': 'image/bmp',
+  '.avif': 'image/avif',
+  '.ico': 'image/x-icon',
+  '.tiff': 'image/tiff',
+  '.tif': 'image/tiff',
+}
 
 function shellPath(input: string): string {
   if (process.platform !== 'win32' || !input.startsWith('/') || input.startsWith('//')) return input
@@ -144,30 +160,24 @@ export function registerWorkspaceFsHandlers(): void {
   })
 
   registerHandlerWithSchema('ipc:shell.readImagePreview', shellReadImagePreviewSchema, async (req) => {
-    const resolved = await resolveImagePreviewPath(req)
+    let resolved = await resolveImagePreviewPath(req)
+    if (!resolved.ok && resolved.error === 'not_found') {
+      // 会话里的图片引用常常是相对「工具 cwd」的短路径（honors/x.webp）：按路径尾巴在工作区里找回。
+      const located = await locateWorkspaceFile(req.workspaceRoot, req.path, { preferSuffix: true })
+      if (located) resolved = { ok: true, abs: located }
+    }
     if (!resolved.ok) return { ok: false, error: resolved.error }
     const p = resolved.abs
     const st = await stat(p).catch(() => null)
     if (!st) return { ok: false, error: 'not_found' }
     try {
       if (!st.isFile() || st.size > IMAGE_PREVIEW_MAX_BYTES) return { ok: false, error: 'too_large' }
-      const ext = extname(p).toLowerCase()
-      const mime =
-        ext === '.png'
-          ? 'image/png'
-          : ext === '.jpg' || ext === '.jpeg'
-            ? 'image/jpeg'
-            : ext === '.gif'
-              ? 'image/gif'
-              : ext === '.webp'
-                ? 'image/webp'
-                : ext === '.svg'
-                  ? 'image/svg+xml'
-                  : 'application/octet-stream'
+      const mime = IMAGE_PREVIEW_MIME[extname(p).toLowerCase()] || 'application/octet-stream'
       const buf = await readBoundedFile(p, IMAGE_PREVIEW_MAX_BYTES)
       if (!buf) return { ok: false, error: 'too_large' }
       const dataUrl = `data:${mime};base64,${buf.toString('base64')}`
-      return { ok: true, dataUrl, mimeType: mime }
+      // path 回传解析后的绝对路径：卡片右键「复制路径/在文件夹中显示」用它，不再拿相对路径去试。
+      return { ok: true, dataUrl, mimeType: mime, path: p }
     } catch (e) {
       return { ok: false, error: String(e) }
     }

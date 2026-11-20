@@ -119,7 +119,7 @@ export function TeamSettingsSheet({
             const accent = roleColor(role.role)
             const efforts = effortsFor(role.model)
             return (
-              <div key={role.role} className="rounded-lg border border-border/50 bg-card/40 p-2">
+              <div key={role.role} className="team-people-group !p-2" style={{ marginTop: 0 }}>
                 <div className="flex items-center gap-1.5">
                   <span className="team-avatar" style={{ '--team-role': accent } as CSSProperties}>
                     <img src={roleAvatar(role.role)} alt="" />
@@ -144,7 +144,7 @@ export function TeamSettingsSheet({
                   <select
                     value={role.model}
                     onChange={(event) => update(role.role, { model: event.target.value, effort: '' })}
-                    className="mt-0.5 w-full rounded border border-border/60 bg-background px-1.5 py-1 text-xs text-foreground outline-none focus:border-primary/60"
+                    className="team-sheet-input mt-0.5"
                   >
                     <option value="">{t('team:unbound')}</option>
                     {role.model && !models.some((item) => `${item.provider}/${item.id}` === role.model) ? (
@@ -171,7 +171,7 @@ export function TeamSettingsSheet({
                     <select
                       value={role.effort}
                       onChange={(event) => update(role.role, { effort: event.target.value })}
-                      className="mt-0.5 w-full rounded border border-border/60 bg-background px-1.5 py-1 text-xs text-foreground outline-none focus:border-primary/60"
+                      className="team-sheet-input mt-0.5"
                     >
                       <option value="">{t('team:defaultEffort')}</option>
                       {efforts.map((effort) => (

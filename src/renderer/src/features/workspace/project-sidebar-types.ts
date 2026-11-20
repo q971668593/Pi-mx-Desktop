@@ -24,6 +24,8 @@ export type SessionItem = {
   interruptedAt?: number
   messageCount?: number
   modelId: string
+  /** 工作团队开出来的会话：角色会话（role）或派发会话（run）；普通对话没有这个字段。 */
+  team?: { role: string; kind: 'role' | 'run' }
 }
 
 export function diskProjectName(path: string) {

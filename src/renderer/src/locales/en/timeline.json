@@ -15,12 +15,26 @@
   "copy": "Copy",
   "path": {
     "openInFiles": "Open in the Files panel",
-    "openFailed": "Could not open this file"
+    "openFailed": "Could not open this file",
+    "open": "Open",
+    "copyPath": "Copy path",
+    "revealInExplorer": "Show in File Explorer",
+    "menu": "File actions"
+  },
+  "askUser": {
+    "answered": "Answered — the model continues",
+    "multi": "(multiple)",
+    "customPlaceholder": "Or type your own answer…",
+    "submit": "Use this",
+    "cancel": "Cancel",
+    "hint": "Pick an option and hit “Use this”",
+    "partialHint": "Some questions are unanswered; submitting only the answered ones is fine"
   },
   "image": {
     "open": "Click to enlarge; right-click to copy, save, add to chat, or annotate",
     "openNamed": "Enlarge {{name}}",
     "generating": "Generating image…",
+    "previewUnavailable": "Preview unavailable (missing file or unsupported format)",
     "copy": "Copy image",
     "copied": "Image copied",
     "saveAs": "Save image as\u2026",
@@ -227,6 +241,14 @@
   "treeNoMatch": "No matching nodes",
   "treeEmpty": "The tree is empty",
   "treeLoadFailed": "Failed to load: {{error}}",
+  "treeErrors": {
+    "invalid_session": "The session file has no readable session header (it may not be on disk yet)",
+    "invalid_session_path": "That session path is not valid",
+    "session_file_missing": "This session has not been written to disk yet — send a message first",
+    "session_workspace_mismatch": "This session belongs to another project",
+    "cwd_not_trusted": "The project is not in the trusted list — reopen it",
+    "error": "Could not read the session"
+  },
   "treeAlreadyCurrent": "Already at this position",
   "treeOpenWorkspace": "Open a workspace first",
   "treeForkNode": "Fork into a new session",
@@ -243,6 +265,11 @@
   "toolAnalyzedImage": "Analyzed image",
   "toolPreviewUnavailable": "Can't preview inline (file too large or unsupported format)",
   "toolOpen": "Open",
+  "imagePromptTitle": "Prompt sent",
+  "imagePromptCopy": "Copy prompt",
+  "imagePromptFilled": "aspects filled",
+  "imagePromptCleaned": "placeholders removed",
+  "imagePromptTransparent": "transparent",
   "toolRevealFolder": "Folder",
   "toolSources": "Sources",
   "toolReturned": "Returned",

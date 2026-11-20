@@ -30,6 +30,7 @@ import { registerRemoteHandlers } from './ipc/handlers/remote'
 import { registerLinkHandlers } from './ipc/handlers/links'
 import { registerWorkspaceTaskHandlers } from './ipc/handlers/workspace-tasks'
 import { registerTeamBoardHandlers } from './ipc/handlers/team-board'
+import { registerImageGenHandlers } from './ipc/handlers/image-gen'
 import { registerPurgeHandlers } from './ipc/handlers/purge'
 
 export { registerHandler, sendEvent } from './ipc/registry'
@@ -40,6 +41,7 @@ export function registerAllHandlers(): void {
   registerWorkspaceHandlers()
   registerWorkspaceTaskHandlers()
   registerTeamBoardHandlers()
+  registerImageGenHandlers()
   registerSessionHandlers()
   registerPromptHandlers()
   registerSessionGoalHandlers()

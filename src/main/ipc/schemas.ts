@@ -352,6 +352,20 @@ const settingsValueSchemas: Record<string, z.ZodTypeAny> = {
   language: z.enum(['zh', 'en']),
   currentProject: z.string().nullable(),
   recentProjects: z.array(z.string()),
+  imageGen: z
+    .object({
+      provider: z.enum(['off', 'codex', 'custom']),
+      model: z.string().max(120),
+      baseUrl: z.string().max(400),
+      apiKey: z.string().max(400),
+      // size 已不在设置页暴露（每次需求画幅不同）：旧配置里可能没有这个键。
+      size: z.enum(['auto', '1024x1024', '1536x1024', '1024x1536']).optional(),
+      quality: z.enum(['auto', 'low', 'medium', 'high', 'xhigh', 'max']),
+      identity: z.enum(['web', 'codex']),
+      outputDir: z.string().max(200),
+      promptEnhance: z.enum(['auto', 'off']).optional(),
+    })
+    .strict(),
   recentProjectsFixedOrder: z.boolean(),
   autoOpenLastProject: z.boolean(),
   autoCheckRegistryUpdates: z.boolean(),

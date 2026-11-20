@@ -60,7 +60,18 @@ describe('refreshSessionTree concurrency guard', () => {
     expect(useUIStore.getState().rewindTreeNodes).toEqual([
       { id: 'n2', entryType: 'message', isLeaf: false },
     ])
-    expect(useUIStore.getState().rewindTreeError).toBeUndefined()
+    expect(useUIStore.getState().rewindTreeError).toBeFalsy()
+  })
+
+  it('clears a previous error as soon as a new request starts', async () => {
+    useUIStore.getState().setRewindMeta({ treeError: 'invalid_session' })
+    const p = refreshSessionTree('/s.jsonl')
+    // 上一棵树的错误不能挂着：否则面板看起来每次都失败。
+    expect(useUIStore.getState().rewindTreeError).toBeFalsy()
+
+    pending[0].resolve({ nodes: [] })
+    await p
+    expect(useUIStore.getState().rewindTreeError).toBeFalsy()
   })
 
   it('switching to another session invalidates an in-flight refresh', async () => {

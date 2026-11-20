@@ -15,6 +15,20 @@ import {
 import { SessionTreeMindMap } from './session-tree-mind-map'
 import { cn } from '@renderer/lib/utils'
 
+/** 主进程给的错误码；只有认识的码才翻译，其余原样展示，便于定位。 */
+const TREE_ERROR_CODES = new Set([
+  'invalid_session',
+  'invalid_session_path',
+  'session_file_missing',
+  'session_workspace_mismatch',
+  'cwd_not_trusted',
+  'error',
+])
+
+function treeErrorText(code: string, t: (key: string) => string): string {
+  return TREE_ERROR_CODES.has(code) ? t(`timeline:treeErrors.${code}`) : code
+}
+
 export function TreePanel() {
   const { t } = useTranslation()
   const workspace = useUIStore((s) => s.currentWorkspace)
@@ -92,9 +106,12 @@ export function TreePanel() {
             {t('timeline:treeLoading')}
           </div>
         ) : treeError ? (
-          <p className="px-3 py-6 text-[11px] text-amber-700/85 dark:text-amber-300/80">
-            {t('timeline:treeLoadFailed', { error: treeError })}
-          </p>
+          <div className="px-3 py-6 text-[11px] leading-relaxed text-amber-700/85 dark:text-amber-300/80">
+            <p>{t('timeline:treeLoadFailed', { error: treeErrorText(treeError, t) })}</p>
+            {sessionFile ? (
+              <p className="mt-1 break-all font-mono text-[10px] text-foreground-tertiary/80">{sessionFile}</p>
+            ) : null}
+          </div>
         ) : display.length === 0 ? (
           <p className="px-3 py-6 text-[11px] text-muted-foreground/70">
             {rawTree.length === 0 ? t('timeline:treeEmpty') : t('timeline:treeNoMatch')}

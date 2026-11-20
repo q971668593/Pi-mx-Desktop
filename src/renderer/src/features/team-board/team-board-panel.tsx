@@ -50,6 +50,7 @@ import { TeamTaskSheet } from './team-task-sheet'
 import { TeamSettingsSheet } from './team-settings-sheet'
 import { TeamInitSheet } from './team-init-sheet'
 import { TeamTaskCreateSheet } from './team-task-create-sheet'
+import { useLanePan } from './use-lane-pan'
 
 const VIEW_STORAGE_KEY = 'pi-desktop:team-view'
 const RING_LENGTH = 2 * Math.PI * 9
@@ -88,7 +89,7 @@ export function TeamBoardPanel() {
   const [roleBusy, setRoleBusy] = useState('')
 
   const requestSeq = useRef(0)
-  const lanesRef = useRef<HTMLDivElement>(null)
+  const lanes = useLanePan<HTMLDivElement>({ enabled: view === 'lanes' })
 
   const refresh = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -385,74 +386,74 @@ export function TeamBoardPanel() {
 
   return (
     <div className="team-board relative flex h-full min-h-0 flex-col">
-      <header className="shrink-0 border-b border-border/40 px-3 pb-2 pt-2.5">
-        <div className="flex items-center gap-1.5">
-          <Users className="h-4 w-4 shrink-0 text-foreground-secondary" />
-          <span className="text-sm font-medium">{t('team:title')}</span>
-          <span className="min-w-0 flex-1 truncate text-2xs text-foreground-tertiary" title={workspaceId}>
-            {projectName}
-          </span>
-          <button
-            type="button"
-            onClick={() => void refresh({ silent: false })}
-            aria-label={t('team:refresh')}
-            title={t('team:refresh')}
-            className="rounded p-1 text-foreground-secondary hover:bg-[var(--bg-hover)] hover:text-foreground"
-          >
-            <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (!snapshot?.exists) {
-                toast.message(t('team:noBoard.initFirst'))
-                return
-              }
-              setSettingsOpen(true)
-            }}
-            aria-label={t('team:settings')}
-            title={t('team:settings')}
-            className="rounded p-1 text-foreground-secondary hover:bg-[var(--bg-hover)] hover:text-foreground"
-          >
-            <Settings className="h-3.5 w-3.5" />
-          </button>
+      <header className="team-head shrink-0">
+        <div className="flex items-center gap-1.5 px-3 pb-1 pt-2">
+          <Users className="h-3.5 w-3.5 shrink-0 text-foreground-secondary" />
+          <span className="shrink-0 text-[12.5px] font-semibold leading-4">{t('team:title')}</span>
+          <span className="team-project min-w-0 truncate" title={workspaceId}>{projectName}</span>
+          <div className="team-head-actions ml-auto flex shrink-0 items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => void refresh({ silent: false })}
+              aria-label={t('team:refresh')}
+              title={t('team:refresh')}
+              className="team-icon-btn"
+            >
+              <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!snapshot?.exists) {
+                  toast.message(t('team:noBoard.initFirst'))
+                  return
+                }
+                setSettingsOpen(true)
+              }}
+              aria-label={t('team:settings')}
+              title={t('team:settings')}
+              className="team-icon-btn"
+            >
+              <Settings className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
 
         {snapshot?.exists ? (
-          <div className="mt-1.5 flex items-center gap-2">
+          <div className="team-batch">
             <ProgressRing accepted={progress.accepted} total={progress.total} label={t('team:progressHint')} />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
-                <span className="truncate text-xs font-medium" title={snapshot.batch}>
+                <span className="min-w-0 truncate text-xs font-semibold" title={snapshot.batch}>
                   {snapshot.batch || t('team:batchFallback')}
                 </span>
-                <span className="shrink-0 text-2xs tabular-nums text-foreground-tertiary">
+                <span className="team-chip shrink-0 tabular-nums" data-tone="info">
                   {t('team:progress', { accepted: progress.accepted, total: progress.total })}
                 </span>
+                {progress.blocked > 0 ? (
+                  <span className="team-chip shrink-0" data-tone="danger">
+                    <AlertTriangle className="h-2.5 w-2.5" />
+                    {t('team:blocked', { count: progress.blocked })}
+                  </span>
+                ) : null}
+                {approvalCount > 0 ? (
+                  <span className="team-chip shrink-0" data-tone="warning" title={t('team:approvalHint')}>
+                    {t('team:approvalCount', { count: approvalCount })}
+                  </span>
+                ) : null}
               </div>
-              <div className="truncate text-2xs text-foreground-tertiary" title={snapshot.goal}>
+              <div className="truncate text-2xs leading-4 text-foreground-tertiary" title={snapshot.goal}>
                 {snapshot.goal || t('team:goalFallback')}
               </div>
             </div>
-            {progress.blocked > 0 ? (
-              <span className="team-chip shrink-0" data-tone="danger">
-                <AlertTriangle className="h-2.5 w-2.5" />
-                {t('team:blocked', { count: progress.blocked })}
-              </span>
-            ) : null}
-            {approvalCount > 0 ? (
-              <span className="team-chip shrink-0" data-tone="danger" title={t('team:approvalHint')}>
-                {t('team:approvalCount', { count: approvalCount })}
-              </span>
-            ) : null}
           </div>
         ) : null}
 
         {error ? (
-          <div className="mt-1 flex items-center gap-1.5 text-2xs text-destructive">
+          <div className="mx-3 mb-1.5 flex items-center gap-1.5 rounded-md bg-[color-mix(in_srgb,var(--danger-semantic,#dc2626)_8%,transparent)] px-2 py-1 text-2xs text-destructive">
             <AlertTriangle className="h-3 w-3 shrink-0" />
             <span className="min-w-0 flex-1 truncate" title={error}>{error}</span>
-            <button type="button" onClick={() => void refresh({ silent: false })} className="underline">
+            <button type="button" onClick={() => void refresh({ silent: false })} className="shrink-0 underline">
               {t('team:refresh')}
             </button>
           </div>
@@ -502,14 +503,15 @@ export function TeamBoardPanel() {
         </div>
       ) : (
         <>
-          <div className="shrink-0 px-3 pb-1.5 pt-2">
-            <div className="flex items-center gap-1.5">
+          <div className="shrink-0 px-3 pb-1 pt-1.5">
+            <div className="flex items-center gap-1.5 pb-1">
               <span className="text-2xs font-semibold uppercase tracking-wider text-foreground-tertiary">{t('team:team')}</span>
-              <span className="text-2xs text-foreground-tertiary">
+              <span className="truncate text-2xs text-foreground-tertiary">
                 {runningRoles.length > 0 ? t('team:running', { count: runningRoles.length }) : t('team:roleSessionHint')}
               </span>
             </div>
-            <div className="team-scroll mt-1 flex gap-0.5 overflow-x-auto pb-0.5">
+            {/* 五个角色平均分一整行：不再挤成一排定宽 chip */}
+            <div className="team-roles">
               {roles.map((binding) => (
                 <RoleChip
                   key={binding.role}
@@ -523,123 +525,129 @@ export function TeamBoardPanel() {
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center gap-1 px-3 py-1.5">
-            <span className="text-xs font-medium">{t('team:tasks')}</span>
-            <span className="text-2xs tabular-nums text-foreground-tertiary">{tasks.length}</span>
-            <div className="ml-auto flex items-center gap-0.5 rounded bg-[var(--bg-hover)] p-0.5">
-              <button
-                type="button"
-                onClick={() => setView('lanes')}
-                data-active={view === 'lanes'}
-                className={cn(
-                  'rounded px-1.5 py-0.5 text-2xs',
-                  view === 'lanes' ? 'bg-background text-foreground shadow-sm' : 'text-foreground-secondary',
-                )}
-              >
-                {t('team:lanes')}
-              </button>
-              <button
-                type="button"
-                onClick={() => setView('people')}
-                data-active={view === 'people'}
-                className={cn(
-                  'rounded px-1.5 py-0.5 text-2xs',
-                  view === 'people' ? 'bg-background text-foreground shadow-sm' : 'text-foreground-secondary',
-                )}
-              >
-                {t('team:people')}
-              </button>
-            </div>
-            <button
-              type="button"
-              onClick={() => setCreateOpen(true)}
-              aria-label={t('team:taskCard')}
-              title={t('team:taskCard')}
-              className="rounded p-1 text-foreground-secondary hover:bg-[var(--bg-hover)] hover:text-foreground"
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </button>
-            {view === 'lanes' ? (
-              <div className="flex items-center">
+          <div className="flex shrink-0 items-center gap-1.5 px-3 py-1.5">
+            <span className="text-xs font-semibold">{t('team:tasks')}</span>
+            <span className="team-count">{tasks.length}</span>
+            <div className="ml-auto flex items-center gap-1">
+              {view === 'lanes' && lanes.canScroll ? (
+                <div className="team-seg">
+                  <button
+                    type="button"
+                    onClick={() => lanes.scrollByStep(-1)}
+                    aria-label={t('team:prevLane')}
+                    title={t('team:prevLane')}
+                    className="team-seg-btn px-1"
+                  >
+                    <ChevronLeft className="h-3 w-3" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => lanes.scrollByStep(1)}
+                    aria-label={t('team:nextLane')}
+                    title={t('team:nextLane')}
+                    className="team-seg-btn px-1"
+                  >
+                    <ChevronRight className="h-3 w-3" />
+                  </button>
+                </div>
+              ) : null}
+              <div className="team-seg">
                 <button
                   type="button"
-                  onClick={() => lanesRef.current?.scrollBy({ left: -172, behavior: 'smooth' })}
-                  aria-label={t('team:lanes')}
-                  className="rounded p-1 text-foreground-secondary hover:bg-[var(--bg-hover)]"
+                  onClick={() => setView('lanes')}
+                  data-active={view === 'lanes'}
+                  className="team-seg-btn"
                 >
-                  <ChevronLeft className="h-3 w-3" />
+                  {t('team:lanes')}
                 </button>
                 <button
                   type="button"
-                  onClick={() => lanesRef.current?.scrollBy({ left: 172, behavior: 'smooth' })}
-                  aria-label={t('team:lanes')}
-                  className="rounded p-1 text-foreground-secondary hover:bg-[var(--bg-hover)]"
+                  onClick={() => setView('people')}
+                  data-active={view === 'people'}
+                  className="team-seg-btn"
                 >
-                  <ChevronRight className="h-3 w-3" />
+                  {t('team:people')}
                 </button>
               </div>
-            ) : null}
+              <button
+                type="button"
+                onClick={() => setCreateOpen(true)}
+                aria-label={t('team:taskCard')}
+                title={t('team:taskCard')}
+                className="team-icon-btn"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
 
           {view === 'lanes' ? (
-            <div ref={lanesRef} className="team-scroll flex min-h-0 flex-1 gap-2 overflow-x-auto overflow-y-hidden px-3 pb-3">
-              {TEAM_STATUSES.map((status) => {
-                const items = byStatus.get(status) ?? []
-                return (
-                  <section
-                    key={status}
-                    className="team-lane"
-                    data-over={overStatus === status}
-                    style={{ '--lane-color': STATUS_COLORS[status] } as CSSProperties}
-                    onDragOver={(event) => {
-                      event.preventDefault()
-                      event.dataTransfer.dropEffect = 'move'
-                      if (overStatus !== status) setOverStatus(status)
-                    }}
-                    onDragLeave={(event) => {
-                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                        setOverStatus((current) => (current === status ? null : current))
-                      }
-                    }}
-                    onDrop={(event) => {
-                      event.preventDefault()
-                      onDropLane(status)
-                    }}
-                  >
-                    <div className="team-lane-head">
-                      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: STATUS_COLORS[status] }} />
-                      <span className="truncate">{statusLabel(status, t)}</span>
-                      <span className="team-lane-count">{items.length}</span>
-                    </div>
-                    <div className="team-lane-cards team-scroll">
-                      {items.map((task) => {
-                        const run = latestRun(task, runs)
-                        return (
-                          <TaskCard
-                            key={task.id}
-                            task={task}
-                            run={run}
-                            stage={deriveTeamStage({ task, run })}
-                            running={isSessionRunning(sessionRuntimeRunning, run?.sessionFile)}
-                            dragging={draggingId === task.id}
-                            onOpen={() => openTask(task)}
-                            onDragStart={(event) => {
-                              event.dataTransfer.effectAllowed = 'move'
-                              event.dataTransfer.setData('text/plain', task.id)
-                              setDraggingId(task.id)
-                            }}
-                            onDragEnd={() => {
-                              setDraggingId('')
-                              setOverStatus(null)
-                            }}
-                          />
-                        )
-                      })}
-                      {items.length === 0 ? <div className="team-lane-empty">{t('team:emptyLane')}</div> : null}
-                    </div>
-                  </section>
-                )
-              })}
+            <div className="team-lanes-wrap">
+              <div
+                ref={lanes.ref}
+                className="team-lanes team-scroll"
+                data-dragging={lanes.dragging}
+                data-scrollable={lanes.canScroll}
+              >
+                {TEAM_STATUSES.map((status) => {
+                  const items = byStatus.get(status) ?? []
+                  return (
+                    <section
+                      key={status}
+                      data-lane
+                      className="team-lane"
+                      data-over={overStatus === status}
+                      style={{ '--lane-color': STATUS_COLORS[status] } as CSSProperties}
+                      onDragOver={(event) => {
+                        event.preventDefault()
+                        event.dataTransfer.dropEffect = 'move'
+                        if (overStatus !== status) setOverStatus(status)
+                      }}
+                      onDragLeave={(event) => {
+                        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                          setOverStatus((current) => (current === status ? null : current))
+                        }
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault()
+                        onDropLane(status)
+                      }}
+                    >
+                      <div className="team-lane-head">
+                        <span className="team-lane-dot" style={{ background: STATUS_COLORS[status] }} />
+                        <span className="truncate">{statusLabel(status, t)}</span>
+                        <span className="team-lane-count">{items.length}</span>
+                      </div>
+                      <div className="team-lane-cards team-scroll">
+                        {items.map((task) => {
+                          const run = latestRun(task, runs)
+                          return (
+                            <TaskCard
+                              key={task.id}
+                              task={task}
+                              run={run}
+                              stage={deriveTeamStage({ task, run })}
+                              running={isSessionRunning(sessionRuntimeRunning, run?.sessionFile)}
+                              dragging={draggingId === task.id}
+                              onOpen={() => openTask(task)}
+                              onDragStart={(event) => {
+                                event.dataTransfer.effectAllowed = 'move'
+                                event.dataTransfer.setData('text/plain', task.id)
+                                setDraggingId(task.id)
+                              }}
+                              onDragEnd={() => {
+                                setDraggingId('')
+                                setOverStatus(null)
+                              }}
+                            />
+                          )
+                        })}
+                        {items.length === 0 ? <div className="team-lane-empty">{t('team:emptyLane')}</div> : null}
+                      </div>
+                    </section>
+                  )
+                })}
+              </div>
             </div>
           ) : (
             <PeopleView
@@ -775,7 +783,7 @@ function RoleChip({
       style={{ '--team-role': accent } as CSSProperties}
       title={`${roleLabel(binding.role, t)} · ${binding.model || t('team:unbound')}${binding.effort ? ` · ${binding.effort}` : ''}`}
     >
-      <span className="relative inline-flex">
+      <span className="team-role-face">
         <span className="team-avatar">
           <img src={roleAvatar(binding.role)} alt="" />
         </span>
@@ -786,19 +794,19 @@ function RoleChip({
           </span>
         ) : (
           <span
-            className="team-role-dot absolute -bottom-0.5 right-0"
+            className="team-role-dot absolute -bottom-0.5 right-0.5"
             data-live={running}
             style={{ background: running ? accent : 'color-mix(in srgb, var(--text-secondary) 35%, transparent)' }}
           />
         )}
         {count > 0 ? (
-          <span className="absolute -right-1.5 -top-1 min-w-[13px] rounded-full bg-[var(--bg-active)] px-1 text-center text-[9px] leading-[13px] text-foreground-secondary">
-            {count}
-          </span>
+          <span className="team-role-count" title={t('team:tasks')}>{count}</span>
         ) : null}
       </span>
-      <span className="w-full truncate text-center text-2xs text-foreground">{roleLabel(binding.role, t)}</span>
-      <span className="w-full truncate text-center text-[9px] leading-[11px] text-foreground-tertiary">
+      <span className="block w-full min-w-0 truncate text-center text-[11px] font-medium leading-[15px] text-foreground">
+        {roleLabel(binding.role, t)}
+      </span>
+      <span className="block w-full min-w-0 truncate text-center text-[9.5px] leading-[12px] text-foreground-tertiary">
         {binding.model ? shortModel(binding.model) : t('team:unbound')}
       </span>
     </button>
@@ -896,12 +904,12 @@ function PeopleView({
     <div className="team-scroll min-h-0 flex-1 overflow-y-auto px-3 pb-3">
       {groups.map((group) => (
         <div key={group.role} className="team-people-group">
-          <div className="flex items-center gap-1.5 px-0.5 pb-1">
+          <div className="flex items-center gap-1.5 px-1 pb-1 pt-0.5">
             <span className="team-avatar !h-5 !w-5" style={{ '--team-role': roleColor(group.role) } as CSSProperties}>
               <img src={roleAvatar(group.role)} alt="" />
             </span>
-            <span className="text-xs font-medium">{roleLabel(group.role, t)}</span>
-            <span className="text-2xs text-foreground-tertiary">{group.items.length}</span>
+            <span className="text-xs font-semibold">{roleLabel(group.role, t)}</span>
+            <span className="team-count">{group.items.length}</span>
             {group.items.some((task) => {
               const run = latestRun(task, runs)
               return (run?.status === 'starting' || run?.status === 'running') && isSessionRunning(runtimeRunning, run.sessionFile)
@@ -917,15 +925,22 @@ function PeopleView({
                 key={task.id}
                 type="button"
                 onClick={() => onOpen(task)}
-                className="mb-1 flex w-full items-start gap-1.5 rounded-md border border-border/40 bg-background/60 px-1.5 py-1 text-left hover:border-border hover:bg-[var(--bg-hover)]"
+                className="team-person-card"
+                style={{ '--card-accent': STATUS_COLORS[task.status] } as CSSProperties}
+                title={task.note || task.title}
               >
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: STATUS_COLORS[task.status], marginTop: 4 }} />
+                <span className="team-person-dot" style={{ background: STATUS_COLORS[task.status] }} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-2xs text-foreground">{task.title}</span>
-                  <span className="block truncate text-[9px] text-foreground-tertiary">
+                  <span className="block truncate text-2xs font-medium text-foreground">{task.title}</span>
+                  <span className="block truncate font-mono text-[9.5px] leading-[12px] text-foreground-tertiary">
                     {task.id} · {statusLabel(task.status, t)}
                   </span>
                 </span>
+                {task.acceptance.length ? (
+                  <span className="shrink-0 text-[9.5px] tabular-nums text-foreground-tertiary">
+                    {task.acceptance.filter((item) => item.done).length}/{task.acceptance.length}
+                  </span>
+                ) : null}
               </button>
             ))
           )}

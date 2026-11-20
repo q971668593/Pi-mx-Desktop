@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdirSync, rmSync } from 'node:fs'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
@@ -38,6 +38,7 @@ vi.mock('../wsl/runtime-config', () => ({
 
 vi.mock('../session-file-meta', () => ({
   readSessionMetaFromFile: mocks.readSessionMetaFromFile,
+  sessionFilePathForFs: (path: string) => path,
 }))
 
 import { authorizeProjectCwd, authorizeTrustedCwd, authorizeTrustedSessionFile, getTrustedWorkspaceRoot } from '../trusted-workspace'
@@ -133,6 +134,21 @@ describe('trusted workspace authorization', () => {
     expect(await authorizeTrustedSessionFile('/evil', '/sessions/evil.jsonl')).toEqual({
       ok: false,
       error: 'cwd_not_trusted',
+    })
+  })
+
+  it('separates a session that is not on disk yet from a forged header', async () => {
+    mocks.readSessionMetaFromFile.mockResolvedValue(null)
+    expect(await authorizeTrustedSessionFile('/workspace', '/sessions/never-written.jsonl')).toEqual({
+      ok: false,
+      error: 'session_file_missing',
+    })
+
+    const forged = join(sandboxRoot, 'forged.jsonl')
+    writeFileSync(forged, JSON.stringify({ type: 'session' }) + '\n', 'utf8')
+    expect(await authorizeTrustedSessionFile('/workspace', forged)).toEqual({
+      ok: false,
+      error: 'invalid_session',
     })
   })
 

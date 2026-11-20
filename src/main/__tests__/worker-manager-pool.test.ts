@@ -90,9 +90,9 @@ describe('worker-session-key', () => {
 
 describe('worker-pool-config', () => {
   it('should_clamp_invalid_max_workers_to_default', () => {
-    expect(normalizeMaxSessionWorkers(0)).toBe(4)
-    expect(normalizeMaxSessionWorkers(-1)).toBe(4)
-    expect(normalizeMaxSessionWorkers(3.5)).toBe(4)
+    expect(normalizeMaxSessionWorkers(0)).toBe(6)
+    expect(normalizeMaxSessionWorkers(-1)).toBe(6)
+    expect(normalizeMaxSessionWorkers(3.5)).toBe(6)
     expect(normalizeMaxSessionWorkers(8)).toBe(8)
   })
 
@@ -170,6 +170,16 @@ describe('canAcquireNewWorker', () => {
     pool.set('/s/a', fakeSlot('/s/a', '/w', true))
     pool.set('/s/b', fakeSlot('/s/b', '/w', false))
     expect(canAcquireNewWorker(pool, 2).ok).toBe(true)
+  })
+
+  // 渲染层按这个固定前缀把「发送失败」换成讲人话的提示（use-composer-send 的 WORKER_POOL_FULL 正则）。
+  it('should_expose_stable_pool_full_marker_and_limit', () => {
+    const pool = new Map<string, WorkerSlot>()
+    pool.set('/s/a', fakeSlot('/s/a', '/w', true))
+    pool.set('/s/b', fakeSlot('/s/b', '/w', true))
+    const result = canAcquireNewWorker(pool, 2)
+    expect(result.ok).toBe(false)
+    expect(result.ok === false && result.reason.startsWith('WORKER_POOL_FULL:2')).toBe(true)
   })
 })
 

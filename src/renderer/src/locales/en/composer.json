@@ -54,6 +54,7 @@
   "toast": {
       "compactingWait": "The context is being compacted. Your text is kept — send it again in a moment.",
     "sendFailed": "Send failed",
+    "poolFull": "Session workers are full: {{limit}} conversations are already running, so this one cannot start. Stop one, or raise “Max session workers” under Settings › General.",
     "completeExtensionFirst": "Complete the extension dialog first, or click \"Answer later\" in the top right",
     "pasteScreenshotNeedWorkspace": "Open a workspace before pasting screenshots",
     "pasteScreenshotFailed": "Failed to paste screenshot",

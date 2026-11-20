@@ -145,7 +145,13 @@ describe('R8 image preview IPC', () => {
 
   it('should_return_data_url_when_image_is_within_limit', async () => {
     await writeFile(join(root, 'a.png'), Buffer.from([1, 2, 3]))
-    await expect(readImage('a.png')).resolves.toEqual({ ok: true, dataUrl: 'data:image/png;base64,AQID', mimeType: 'image/png' })
+    await expect(readImage('a.png')).resolves.toEqual({
+      ok: true,
+      dataUrl: 'data:image/png;base64,AQID',
+      mimeType: 'image/png',
+      // 回传解析后的绝对路径：时间线卡片的「复制路径 / 在文件夹中显示」直接用它
+      path: join(root, 'a.png'),
+    })
   })
 
   it('should_reject_image_when_larger_than_8mb_or_grows_past_limit_while_reading', async () => {

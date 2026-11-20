@@ -52,10 +52,19 @@ export type DesktopUIBridge = {
 }
 
 const bridgesByContext = new WeakMap<object, DesktopUIBridge>()
+/**
+ * SDK 会用 `wrapUIPromptContext()` 把宿主给的 uiContext **再包一层**，所以
+ * `execute()` 收到的 `ctx.ui` 和创建时登记的 object 不是同一个引用，WeakMap 查不到。
+ * 一个 worker 进程同时只服务一个会话，这里再记一个「当前桥」兜底。
+ */
+let activeBridge: DesktopUIBridge | null = null
 
-export function getDesktopUIBridge(uiContext: unknown): DesktopUIBridge | null {
-  if (!uiContext || typeof uiContext !== 'object') return null
-  return bridgesByContext.get(uiContext as object) ?? null
+export function getDesktopUIBridge(uiContext?: unknown): DesktopUIBridge | null {
+  if (uiContext && typeof uiContext === 'object') {
+    const found = bridgesByContext.get(uiContext as object)
+    if (found) return found
+  }
+  return activeBridge
 }
 
 export type ExtensionUIResponse = {
@@ -330,8 +339,10 @@ export function createDesktopUIBridge(
       }
       pending.clear()
       bridgesByContext.delete(uiContext)
+      if (activeBridge === bridge) activeBridge = null
     },
   }
   bridgesByContext.set(uiContext, bridge)
+  activeBridge = bridge
   return bridge
 }

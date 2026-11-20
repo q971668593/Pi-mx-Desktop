@@ -12,6 +12,8 @@ import { registerHandler, registerHandlerWithSchema, sendEvent } from '../regist
 import { settingsSetSchema } from '../schemas'
 import { remoteTap } from '../../remote/tap'
 import { getPythonRuntimeStatus, installLatestPython, openPythonDownloads } from '../../python-runtime'
+import { capRecentProjects } from '@shared/recent-projects'
+import { uniqueWorkspacePaths } from '@shared/workspace-path'
 
 export function registerSettingsHandlers(): void {
   registerHandler('ipc:python.status', async () => getPythonRuntimeStatus(configStore.get('pythonSetupPromptHandled')))
@@ -79,6 +81,14 @@ export function registerSettingsHandlers(): void {
         }
       }
       return { key: req.key, value: next }
+    }
+    if (key === 'recentProjects') {
+      // 项目列表是用户资产：渲染进程写回来时统一去重 + 按同一上限截断，
+      // 免得某个片面的旧列表把项目悄悄冲掉。
+      const list = Array.isArray(req.value) ? (req.value as unknown[]) : []
+      const value = capRecentProjects(uniqueWorkspacePaths(list.filter((p): p is string => typeof p === 'string' && !!p.trim())))
+      configStore.set('recentProjects', value)
+      return { key: req.key, value }
     }
     configStore.set(key, req.value as StoreSchema[typeof key])
     if (key === 'sessionCapabilities') remoteTap.settingsChanged('capabilities')

@@ -15,7 +15,11 @@
   "copy": "复制",
   "path": {
     "openInFiles": "在右侧「文件」面板中打开",
-    "openFailed": "无法打开这个文件"
+    "openFailed": "无法打开这个文件",
+    "open": "打开",
+    "copyPath": "复制路径",
+    "revealInExplorer": "在文件资源管理器中打开",
+    "menu": "文件操作"
   },
   "link": {
     "menu": "链接操作",
@@ -206,6 +210,14 @@
   "treeNoMatch": "无匹配节点",
   "treeEmpty": "树为空",
   "treeLoadFailed": "加载失败：{{error}}",
+  "treeErrors": {
+    "invalid_session": "会话文件里没有可识别的会话头（可能还没写入磁盘）",
+    "invalid_session_path": "会话文件路径不合法",
+    "session_file_missing": "会话还没写入磁盘，先发一条消息",
+    "session_workspace_mismatch": "这个会话不属于当前项目",
+    "cwd_not_trusted": "当前项目不在信任列表里，重开一次项目即可",
+    "error": "读取会话失败"
+  },
   "treeAlreadyCurrent": "已是当前对话位置",
   "treeOpenWorkspace": "请先打开工作区",
   "treeForkNode": "Fork 到新会话",
@@ -222,6 +234,11 @@
   "toolAnalyzedImage": "分析图",
   "toolPreviewUnavailable": "无法内联预览（文件过大或格式不支持）",
   "toolOpen": "打开",
+  "imagePromptTitle": "生成提示词",
+  "imagePromptCopy": "复制提示词",
+  "imagePromptFilled": "补全维度",
+  "imagePromptCleaned": "摘掉占位符",
+  "imagePromptTransparent": "透明背景",
   "toolRevealFolder": "文件夹",
   "toolSources": "信源",
   "toolReturned": "返回",
@@ -284,10 +301,20 @@
     "collapseCalls": "收起较早调用",
     "modelCost": "模型调用: {{cost}}"
   },
+  "askUser": {
+    "answered": "已回答，模型继续处理",
+    "multi": "（可多选）",
+    "customPlaceholder": "也可以直接写你的答案…",
+    "submit": "就这样",
+    "cancel": "取消",
+    "hint": "选好后点「就这样」，模型按你的选择继续",
+    "partialHint": "还有问题没作答；只想答现在这个也可以提交"
+  },
   "image": {
     "open": "点击放大；右键可复制、另存为、添加到对话或标注",
     "openNamed": "放大查看 {{name}}",
     "generating": "正在生成图片…",
+    "previewUnavailable": "无法预览（文件可能不在项目内或格式不支持）",
     "copy": "复制图片",
     "copied": "图片已复制",
     "saveAs": "图片另存为…",

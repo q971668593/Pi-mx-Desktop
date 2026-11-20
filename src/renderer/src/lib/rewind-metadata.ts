@@ -13,7 +13,9 @@ export async function refreshSessionTree(sessionFile: string | null): Promise<vo
   const store = useUIStore.getState()
   const key = sessionFile || ''
   const seq = ++rewindTreeRequestSeq
-  store.setRewindMeta({ rewindKey: key, loadingTree: !!sessionFile })
+  // 每次请求起手先清掉上一次的错误：否则上一棵树（比如还没落盘的新会话）的
+  // invalid_session 会一直挂在面板上，看起来像每次都失败。
+  store.setRewindMeta({ rewindKey: key, loadingTree: !!sessionFile, treeError: '' })
 
   if (!sessionFile) {
     if (seq === rewindTreeRequestSeq) {
@@ -45,7 +47,7 @@ export async function refreshSessionTree(sessionFile: string | null): Promise<vo
       treeNodes: withLeaf,
       workerBound: !!treeRes?.workerBound,
       loadingTree: false,
-      treeError: treeRes?.error,
+      treeError: String(treeRes?.error || ''),
     })
   } catch (e) {
     console.error('[refreshSessionTree]', e)

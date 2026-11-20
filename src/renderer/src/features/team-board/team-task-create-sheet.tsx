@@ -74,7 +74,7 @@ export function TeamTaskCreateSheet({
             onChange={(event) => setTitle(event.target.value)}
             maxLength={200}
             autoFocus
-            className="mt-1 w-full rounded border border-border/60 bg-background px-2 py-1.5 text-xs text-foreground outline-none focus:border-primary/60"
+            className="team-sheet-input mt-1"
           />
         </label>
 
@@ -83,7 +83,7 @@ export function TeamTaskCreateSheet({
           <select
             value={role}
             onChange={(event) => setRole(event.target.value)}
-            className="mt-1 w-full rounded border border-border/60 bg-background px-1.5 py-1.5 text-xs text-foreground outline-none focus:border-primary/60"
+            className="team-sheet-input mt-1"
           >
             {TEAM_ROLES.map((item) => (
               <option key={item} value={item}>
@@ -100,7 +100,7 @@ export function TeamTaskCreateSheet({
             onChange={(event) => setAcceptance(event.target.value)}
             rows={4}
             placeholder={t('team:acceptancePlaceholder')}
-            className="mt-1 w-full resize-y rounded border border-border/60 bg-background px-2 py-1.5 text-xs text-foreground outline-none focus:border-primary/60"
+            className="team-sheet-input mt-1 resize-y"
           />
         </label>
 
@@ -110,7 +110,7 @@ export function TeamTaskCreateSheet({
             value={output}
             onChange={(event) => setOutput(event.target.value)}
             placeholder="src/…"
-            className="mt-1 w-full rounded border border-border/60 bg-background px-2 py-1.5 font-mono text-xs text-foreground outline-none focus:border-primary/60"
+            className="team-sheet-input mt-1 font-mono"
           />
         </label>
 
@@ -119,7 +119,7 @@ export function TeamTaskCreateSheet({
           <input
             value={note}
             onChange={(event) => setNote(event.target.value)}
-            className="mt-1 w-full rounded border border-border/60 bg-background px-2 py-1.5 text-xs text-foreground outline-none focus:border-primary/60"
+            className="team-sheet-input mt-1"
           />
         </label>
 

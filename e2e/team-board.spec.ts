@@ -73,7 +73,8 @@ test('team board renders the project board and settles a background dispatch', a
 
     await win.getByText('登录页').click()
     await expect(win.getByRole('dialog', { name: 'T-001 登录页' })).toBeVisible()
-    await expect(win.getByText('账号密码可登录')).toBeVisible()
+    // 验收标准与「看板原文」里都会出现这行字：只看抽屉里的验收项，避免 strict 冲突。
+    await expect(win.getByRole('dialog', { name: 'T-001 登录页' }).getByText('账号密码可登录').first()).toBeVisible()
     await win.screenshot({ path: 'test-results/team-board-card.png' })
 
     await win.getByRole('button', { name: '派发开工' }).click()

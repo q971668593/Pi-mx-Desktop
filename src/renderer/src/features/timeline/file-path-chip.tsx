@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Check, Copy, FileText } from '@renderer/components/icons'
@@ -8,6 +9,11 @@ import { useUIStore } from '@renderer/stores/ui-store'
 import { workspacePathKey } from '@shared/workspace-path'
 import { cn } from '@renderer/lib/utils'
 import { singleFilePath } from '@renderer/lib/file-path-text'
+import {
+  contextMenuItemClass,
+  contextMenuPanelClass,
+  useDismissContextMenu,
+} from '@renderer/features/workspace/context-menu-shared'
 
 /**
  * Bare file names (`清单.xlsx`) only exist relative to some directory the assistant had in mind.
@@ -82,6 +88,65 @@ export async function openMentionedFile(path: string): Promise<void> {
 
 type Variant = 'inline' | 'block'
 
+/** 绝对路径：相对路径按当前项目拼，`./` 前缀去掉，复制与「在资源管理器显示」都要它。 */
+export function absoluteMentionedPath(path: string, workspace: string | null | undefined): string {
+  const value = path.trim()
+  if (!value) return value
+  if (/^(?:[a-zA-Z]:[\\/]|\\\\|\/)/.test(value)) return value
+  if (!workspace) return value
+  return `${workspace.replace(/[\\/]+$/, '')}/${value.replace(/^\.\//, '')}`
+}
+
+/** 右键菜单：复制路径 / 在资源管理器中打开（左键继续是「直接打开」）。 */
+function FilePathMenu({
+  at,
+  path,
+  onClose,
+}: {
+  at: { x: number; y: number } | null
+  path: string
+  onClose: () => void
+}) {
+  const { t } = useTranslation('timeline')
+  const ref = useRef<HTMLDivElement>(null)
+  useDismissContextMenu(!!at, ref, onClose)
+  if (!at) return null
+  const run = (action: () => Promise<unknown>) => {
+    onClose()
+    void Promise.resolve(action()).catch(() => toast.error(t('path.openFailed')))
+  }
+  return createPortal(
+    <div
+      ref={ref}
+      role="menu"
+      aria-label={t('path.menu')}
+      className={contextMenuPanelClass}
+      style={{ left: at.x, top: at.y }}
+    >
+      <button type="button" role="menuitem" className={contextMenuItemClass} onClick={() => run(() => openMentionedFile(path))}>
+        {t('path.open')}
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        className={contextMenuItemClass}
+        onClick={() => run(() => navigator.clipboard.writeText(absoluteMentionedPath(path, useUIStore.getState().currentWorkspace)))}
+      >
+        {t('path.copyPath')}
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        className={contextMenuItemClass}
+        onClick={() => run(() => ipcClient.invoke('shell.showItemInFolder', { path: absoluteMentionedPath(path, useUIStore.getState().currentWorkspace) }))}
+      >
+        {t('path.revealInExplorer')}
+      </button>
+    </div>,
+    document.body,
+  )
+}
+
 /**
  * A clickable file reference inside assistant output (inline code, code block, table cell).
  * Blue link styling matches markdown links; the whole text stays selectable/copyable.
@@ -92,12 +157,18 @@ export function FilePathChip({ text, variant = 'inline', className }: { text: st
   const needsResolution = !!path && !/[\\/]/.test(path)
   const resolved = useResolvedWorkspacePath(needsResolution ? path : null)
   const [copied, setCopied] = useState(false)
+  const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null)
   if (!path) return <>{text}</>
   // A bare name that resolves to nothing (ambiguous or absent) stays plain text.
   if (needsResolution && !resolved) return <>{text}</>
 
   const open = () => {
     void openMentionedFile(resolved ?? path).catch(() => toast.error(t('path.openFailed')))
+  }
+  const openMenu = (event: React.MouseEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setMenuAt({ x: event.clientX, y: event.clientY })
   }
   const copy = (event: React.MouseEvent) => {
     event.stopPropagation()
@@ -120,6 +191,7 @@ export function FilePathChip({ text, variant = 'inline', className }: { text: st
         <button
           type="button"
           onClick={open}
+          onContextMenu={openMenu}
           title={t('path.openInFiles')}
           className="min-w-0 flex-1 truncate text-left font-mono text-[11.5px] text-primary hover:underline"
         >
@@ -134,22 +206,27 @@ export function FilePathChip({ text, variant = 'inline', className }: { text: st
         >
           {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
         </button>
+        <FilePathMenu at={menuAt} path={resolved ?? path} onClose={() => setMenuAt(null)} />
       </div>
     )
   }
 
   return (
-    <button
-      type="button"
-      onClick={open}
-      title={t('path.openInFiles')}
-      className={cn(
-        'mx-0.5 inline rounded px-1 py-px font-mono text-[0.9em] text-primary hover:underline',
-        className,
-      )}
-      style={{ background: 'color-mix(in srgb, var(--brand) 10%, transparent)' }}
-    >
-      {resolved ? path : text}
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={open}
+        onContextMenu={openMenu}
+        title={t('path.openInFiles')}
+        className={cn(
+          'mx-0.5 inline rounded px-1 py-px font-mono text-[0.9em] text-primary hover:underline',
+          className,
+        )}
+        style={{ background: 'color-mix(in srgb, var(--brand) 10%, transparent)' }}
+      >
+        {resolved ? path : text}
+      </button>
+      <FilePathMenu at={menuAt} path={resolved ?? path} onClose={() => setMenuAt(null)} />
+    </>
   )
 }

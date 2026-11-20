@@ -1,7 +1,7 @@
 import { requestOpenInPane, startSessionDrag } from '@renderer/features/split/split-dnd'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronRight, GitFork, Plus } from '@renderer/components/icons'
+import { ChevronRight, GitFork, Plus, Users } from '@renderer/components/icons'
 import { cn } from '@renderer/lib/utils'
 import { activateWorkspace, switchSessionInPlace } from '@renderer/lib/activate-workspace'
 import { guardSessionSwitch } from '@renderer/lib/session-switch-guard'
@@ -241,6 +241,14 @@ export function ProjectSessionTree({
                     className="h-3 w-3 shrink-0 text-foreground-secondary"
                     strokeWidth={2}
                     aria-label={t('common:sidebar.forkedSession')}
+                  />
+                ) : null}
+                {s.team ? (
+                  // 工作团队开出来的会话（角色会话/派发会话）带一个角色标记，一眼能认出来源。
+                  <Users
+                    className="h-3 w-3 shrink-0 text-primary/75"
+                    strokeWidth={2}
+                    aria-label={t('common:sidebar.teamSession', { role: s.team.role })}
                   />
                 ) : null}
                 <span className="min-w-0 flex-1 truncate" title={s.title || s.sessionId.slice(0, 8)}>{s.title || s.sessionId.slice(0, 8)}</span>

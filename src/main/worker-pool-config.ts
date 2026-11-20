@@ -3,7 +3,7 @@ import { configStore } from './config-store'
 /** setTimeout-safe max delay (ms). */
 export const MAX_TIMER_DELAY_MS = 2_147_483_647
 
-export const DEFAULT_MAX_SESSION_WORKERS = 4
+export const DEFAULT_MAX_SESSION_WORKERS = 6
 export const DEFAULT_SESSION_WORKER_IDLE_TIMEOUT_MINUTES = 15
 
 export function normalizeMaxSessionWorkers(raw: unknown): number {

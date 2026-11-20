@@ -3,7 +3,7 @@ import { existsSync } from 'fs'
 import { isWslWindowsPath, wslPathToWindows, wslWindowsPathDistro } from '@shared/wsl-path'
 import { configStore } from './config-store'
 import { isSandboxWorkspacePath } from './sandbox-workspaces'
-import { readSessionMetaFromFile } from './session-file-meta'
+import { readSessionMetaFromFile, sessionFilePathForFs } from './session-file-meta'
 import { workerManager } from './worker-manager'
 import { getAgentRuntimeConfig } from './wsl/runtime-config'
 import { normalizeWorkspaceCwd } from './wsl/workspace-path'
@@ -74,8 +74,14 @@ export async function authorizeTrustedSessionFile(
     return { ok: false, error: 'invalid_session_path' }
   }
 
+  // 新会话在第一条会话落盘前没有 JSONL（SDK 只在有对话时才建文件）。
+  // 读不到会话头时先分清"文件还不在"与"头部不对"：前者属于还没内容，
+  // 上层当空树处理；后者才是伪造/损坏。
   const meta = await readSessionMetaFromFile(sessionFile)
-  if (!meta?.cwd) return { ok: false, error: 'invalid_session' }
+  if (!meta?.cwd) {
+    const missing = !existsSync(sessionFilePathForFs(sessionFile))
+    return { ok: false, error: missing ? 'session_file_missing' : 'invalid_session' }
+  }
   const fileDistro = wslWindowsPathDistro(sessionFile)
   const sessionCwd = fileDistro
     ? wslPathToWindows(fileDistro, meta.cwd)

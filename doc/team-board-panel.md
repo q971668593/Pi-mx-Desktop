@@ -74,6 +74,22 @@
 - 五角色坞：Leader / 设计师 / 前端 / 后端 / 质量测试，头像、模型、运行状态、未验收任务数。
 - 六泳道：待办 → 进行中 → 待审查 → 阻塞 → 实现完成 → 已验收，支持拖拽改状态；
   拖入「已验收」「阻塞」会先弹确认/分型表单。
+- 泳道横向浏览：鼠标滚轮（含触控板横滑）直接左右滑，按住泳道背景可以拖动平移；
+
+### agent 侧 `team_board` 工具
+
+- worker 里的内置扩展 `src/worker/worker-team-tools.ts` 注册 `team_board`（hidden），
+  动作：`snapshot` / `create_task` / `move_task` / `dispatch` / `comment`；
+  请求经 `team-tool-request` 回到主进程，由 `src/main/team-board-tool-bridge.ts` 执行。
+- 落盘与派发复用 `src/main/team-board-ops.ts`（与面板 IPC 同一套：依赖校验、模型路由、
+  后台会话、运行记录、卡片进「进行中」），不存在两套派发逻辑。
+- 闸门：`已验收` 只能人工确认；`阻塞` 必须带 `blockType`；一次最多建 12 张卡。
+- Leader 的开场白因此改成「用 team_board 拆卡 + 派发，不要自己写业务代码」；
+  派发会话的硬规则也改成用 `team_board` 写状态/回执，不再手改 md。
+- 侧栏给团队开出来的会话加 `Users` 小标记（`session.list` 返回 `team.role`，
+  来源是 `协作/团队.json` 的角色会话与派发记录）。
+
+  列宽按面板宽度平均撑开、最小 152px，超出才横向滚动（`use-lane-pan` 负责，单测覆盖）。
 - 卡片详情：角色、产出、依赖、波次、备注、人工处理/自动推进、验收清单、最近派发。
 - 派发：按角色绑定模型与思考深度，在后台 worker 开工；提示词 = 角色核心规则 + 项目路径 +
   任务卡原文 + 硬性工作约定（不内联整套规范）。

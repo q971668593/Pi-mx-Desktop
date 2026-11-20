@@ -34,6 +34,8 @@ export type ToolTimelineItem = {
   toolArgs?: unknown
   toolStatusLine?: string
   extensionUiSuspended?: boolean
+  /** 这条工具行当前挂着的扩展 UI 请求（ask_user_question 的行内小卡按它匹配） */
+  extensionUiRequestId?: string
   runId?: string
   turnId?: string
   isError?: boolean

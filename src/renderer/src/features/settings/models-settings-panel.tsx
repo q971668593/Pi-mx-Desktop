@@ -23,6 +23,7 @@ import { ModelsSdkProviderSection } from './models-sdk-provider-section'
 import { saveModelsConfigDraft } from './save-models-config'
 import { ModelDefaultsSection } from './model-defaults-section'
 import { PluginModelSettings } from './plugin-model-settings'
+import { ImageGenSettings } from './image-gen-settings'
 import { invalidateAvailableModels, prefetchAvailableModels } from '@renderer/lib/available-models-cache'
 import { ProviderTemplateDialog } from './provider-template-dialog'
 
@@ -280,6 +281,7 @@ export function ModelsSettingsPanel() {
 
       <ModelDefaultsSection />
       <PluginModelSettings />
+      <ImageGenSettings />
 
       {(parseError || schemaError || saveError) && (
         <div className="rounded-md border border-amber-500/35 bg-amber-500/10 whitespace-pre-wrap px-3 py-2 text-sm text-amber-900 dark:text-amber-200">

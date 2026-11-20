@@ -1,5 +1,6 @@
 import Store from 'electron-store'
 import { DEFAULT_ALERT_SOUND_PRESET, type AlertSoundPreset } from '@shared/alert-sound'
+import { DEFAULT_IMAGE_GEN_CONFIG } from '@shared/image-gen'
 import type { AsrConfig } from '@shared/asr-types'
 import type { BackgroundSettings } from '@shared/background'
 import type { CustomCssOverride, CustomTheme } from '@shared/custom-theme'
@@ -111,6 +112,8 @@ export interface StoreSchema {
   browserDownloadConnections: number
   /** Composer Tools menu: capabilities switched on per session file (absent = the default, built-in browser on). */
   sessionCapabilities: Record<string, import('@shared/capabilities').CapabilityId[]>
+  /** 内置生图：订阅（~/.codex/auth.json）或自定义中转；off = 继续走 MCP。 */
+  imageGen: import('@shared/image-gen').ImageGenConfig
   /** Model used by desktop helpers (Git messages, task detection). Null until chosen in Settings. */
   pluginModel: { provider: string; modelId: string; thinkingLevel?: import('@shared/model-thinking-levels').ModelThinkingLevel } | null
   /** Mobile remote gateway (off unless the user enables it in Settings → 手机连接). */
@@ -172,7 +175,8 @@ const store = new Store<StoreSchema>({
     completionNotificationOnlyWhenUnfocused: true,
     completionNotificationDndUntil: null,
     completionNotificationDelivery: 'auto',
-    maxSessionWorkers: 4,
+    // Default matches DEFAULT_MAX_SESSION_WORKERS (6); 4 个会话同时跑太容易撞上池子满。
+    maxSessionWorkers: 6,
     sessionWorkerIdleTimeoutMinutes: 15,
     timelineMaxAutoExpandedTools: DEFAULT_TIMELINE_MAX_AUTO_EXPANDED_TOOLS,
     timelineVisibleTurns: DEFAULT_TIMELINE_VISIBLE_TURNS,
@@ -194,6 +198,7 @@ const store = new Store<StoreSchema>({
     browserDownloadConnections: 16,
     sessionCapabilities: {},
     pluginModel: null,
+    imageGen: DEFAULT_IMAGE_GEN_CONFIG,
   },
 })
 

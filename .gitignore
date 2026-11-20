@@ -98,3 +98,10 @@ opencode.json
 # 破甲人设正文：只在打包机本地生成后打进安装包，不进公开仓库
 resources/purge/persona.md
 
+
+# 一次性出图/排版工作区（源素材 + HTML 模板）
+.poster-work/
+
+# 生成的图片与运行产物不进仓库
+generated-images/
+runs/

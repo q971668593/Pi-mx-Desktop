@@ -49,6 +49,8 @@
   "tasks": "任务",
   "lanes": "泳道",
   "people": "按人",
+  "prevLane": "上一列",
+  "nextLane": "下一列",
   "emptyLane": "拖到这里",
   "noTasks": "暂无任务卡",
   "noTasksHint": "让 Leader 先把 PRD 拆成任务卡，再派发开工。",

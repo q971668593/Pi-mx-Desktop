@@ -92,6 +92,8 @@ function ChatImageCard({ image }: { image: ChatImageRef }) {
   const { t } = useTranslation("timeline")
   const workspace = useUIStore((state) => state.currentWorkspace)
   const [src, setSrc] = useState<string | null>(null)
+  const [status, setStatus] = useState<"loading" | "ready" | "failed">("loading")
+  const [resolvedPath, setResolvedPath] = useState<string>("")
   const [preview, setPreview] = useState(false)
   const [menu, setMenu] = useState<ImageTarget | null>(null)
   const [studio, setStudio] = useState(false)
@@ -100,20 +102,34 @@ function ChatImageCard({ image }: { image: ChatImageRef }) {
 
   useEffect(() => {
     let active = true
-    if (!workspace) return
-    void ipcClient.invoke("shell.readImagePreview", { workspaceRoot: workspace, path }).then((result) => {
-      if (active && result?.ok && result.dataUrl) setSrc(result.dataUrl)
-    }).catch(() => undefined)
+    setStatus("loading")
+    if (!workspace) { setStatus("failed"); return }
+    void (async () => {
+      try {
+        // 主进程负责把「相对工具 cwd 的短路径」按尾巴找回真实文件，这里只读一次。
+        const result = await ipcClient.invoke("shell.readImagePreview", { workspaceRoot: workspace, path })
+        if (!active) return
+        if (result?.ok && result.dataUrl) {
+          setSrc(String(result.dataUrl))
+          if (typeof result.path === "string" && result.path) setResolvedPath(result.path)
+          setStatus("ready")
+        } else {
+          setStatus("failed")
+        }
+      } catch {
+        if (active) setStatus("failed")
+      }
+    })()
     return () => { active = false }
   }, [path, workspace])
 
   const copy = async () => {
-    const result = await ipcClient.invoke("clipboard.copyImageFile", { path, workspaceRoot: workspace || undefined })
+    const result = await ipcClient.invoke("clipboard.copyImageFile", { path: resolvedPath || path, workspaceRoot: workspace || undefined })
     if (!result?.ok) throw new Error(result?.error || "copy_failed")
     toast.success(t("image.copied"))
   }
   const save = async () => {
-    const result = await ipcClient.invoke("dialog:saveImage", { path, workspaceRoot: workspace || undefined, suggestedName: name })
+    const result = await ipcClient.invoke("dialog:saveImage", { path: resolvedPath || path, workspaceRoot: workspace || undefined, suggestedName: name })
     if (!result?.ok) throw new Error(result?.error || "save_failed")
     if (!result.canceled) toast.success(t("image.saved"))
   }
@@ -133,7 +149,19 @@ function ChatImageCard({ image }: { image: ChatImageRef }) {
   return (
     <>
       <button type="button" className="group relative block overflow-hidden rounded-lg border border-border/50 bg-muted/30" title={t("image.open")} aria-label={t("image.openNamed", { name })} onClick={() => src && setPreview(true)} onContextMenu={(event) => { event.preventDefault(); setMenu({ path, name, x: event.clientX, y: event.clientY }) }}>
-        {src ? <img src={src} alt={name} className="block max-h-64 max-w-full object-contain" draggable={false} /> : <span className="block max-w-72 px-3 py-6 text-left text-xs text-muted-foreground">{name}</span>}
+        {src ? (
+          <img src={src} alt={name} className="block max-h-64 max-w-full object-contain" draggable={false} />
+        ) : status === "loading" ? (
+          <span className="flex min-h-[72px] w-40 animate-pulse items-center gap-2 px-3 py-3 text-left text-[11px] text-muted-foreground">
+            <ImageIcon className="h-3.5 w-3.5 shrink-0 opacity-60" />
+            <span className="truncate">{name}</span>
+          </span>
+        ) : (
+          <span className="block max-w-72 px-3 py-3 text-left">
+            <span className="block truncate font-mono text-[11px] text-muted-foreground">{name}</span>
+            <span className="mt-0.5 block text-[10px] text-amber-700/85 dark:text-amber-300/80">{t("image.previewUnavailable")}</span>
+          </span>
+        )}
       </button>
       {preview && src ? (
         <ImageLightbox
@@ -151,13 +179,22 @@ function ChatImageCard({ image }: { image: ChatImageRef }) {
           }}
         />
       ) : null}
-      <ImageActionMenu menu={menu} onClose={() => setMenu(null)} onCopy={() => run(copy)} onSave={() => run(save)} onAddToChat={() => run(addToChat)} onAnnotate={() => { setMenu(null); setStudio(true) }} />
+      <ImageActionMenu
+        menu={menu}
+        onClose={() => setMenu(null)}
+        onCopy={() => run(copy)}
+        onSave={() => run(save)}
+        onAddToChat={() => run(addToChat)}
+        onAnnotate={() => { setMenu(null); setStudio(true) }}
+        onCopyPath={() => run(async () => { await navigator.clipboard.writeText(resolvedPath || path) })}
+        onReveal={() => run(async () => { await ipcClient.invoke("shell.showItemInFolder", { path: resolvedPath || path }) })}
+      />
       {studio ? <ImageAnnotationStudio path={path} name={name} src={src} onClose={() => setStudio(false)} /> : null}
     </>
   )
 }
 
-function ImageActionMenu({ menu, onClose, onCopy, onSave, onAddToChat, onAnnotate }: { menu: ImageTarget | null; onClose: () => void; onCopy: () => void; onSave: () => void; onAddToChat: () => void; onAnnotate: () => void }) {
+function ImageActionMenu({ menu, onClose, onCopy, onSave, onAddToChat, onAnnotate, onCopyPath, onReveal }: { menu: ImageTarget | null; onClose: () => void; onCopy: () => void; onSave: () => void; onAddToChat: () => void; onAnnotate: () => void; onCopyPath: () => void; onReveal: () => void }) {
   const { t } = useTranslation("timeline")
   const ref = useRef<HTMLDivElement>(null)
   useDismissContextMenu(!!menu, ref, onClose)
@@ -168,6 +205,8 @@ function ImageActionMenu({ menu, onClose, onCopy, onSave, onAddToChat, onAnnotat
       <button type="button" className={contextMenuItemClass} onClick={onSave}>{t("image.saveAs")}</button>
       <button type="button" className={contextMenuItemClass} onClick={onAddToChat}>{t("image.addToChat")}</button>
       <button type="button" className={contextMenuItemClass} onClick={onAnnotate}>{t("image.annotate")}</button>
+      <button type="button" className={contextMenuItemClass} onClick={onCopyPath}>{t("path.copyPath")}</button>
+      <button type="button" className={contextMenuItemClass} onClick={onReveal}>{t("path.revealInExplorer")}</button>
     </div>,
     document.body,
   )

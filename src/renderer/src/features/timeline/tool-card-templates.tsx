@@ -79,7 +79,7 @@ function collectAssets(details: Record<string, unknown> | null | undefined, out:
   return assets
 }
 
-function InlineImage({ path, workspaceRoot, enabled }: { path: string; workspaceRoot: string | null; enabled: boolean }) {
+function InlineImage({ path, workspaceRoot, enabled, onOpen }: { path: string; workspaceRoot: string | null; enabled: boolean; onOpen?: () => void }) {
   const { t } = useTranslation()
   const [src, setSrc] = useState<string | null>(null)
   const [err, setErr] = useState(false)
@@ -94,34 +94,109 @@ function InlineImage({ path, workspaceRoot, enabled }: { path: string; workspace
     return () => { cancelled = true }
   }, [path, workspaceRoot, enabled])
   if (!enabled) return null
-  if (err) return <div className="text-[10px] text-muted-foreground/50">{t('timeline:toolPreviewUnavailable')}</div>
+  if (err) {
+    return (
+      <div className="flex items-center gap-2 text-[10px] text-muted-foreground/50">
+        {t('timeline:toolPreviewUnavailable')}
+        {onOpen ? (
+          <button type="button" onClick={onOpen} className="text-primary hover:underline">
+            {t('timeline:toolOpen')}
+          </button>
+        ) : null}
+      </div>
+    )
+  }
   if (!src) return <div className="h-24 animate-pulse rounded-md bg-muted/40" />
-  return <img src={src} alt="" className="max-h-48 max-w-full rounded-md border border-border/50 object-contain" />
+  return (
+    <button type="button" onClick={onOpen} className="block cursor-zoom-in" title={path}>
+      <img src={src} alt="" className="max-h-48 max-w-full rounded-md border border-border/50 object-contain" />
+    </button>
+  )
 }
 
 // ── media template (image_gen / image_review / analyze_image / multimodal) ──
+
+type ImagePromptMeta = {
+  prompt?: {
+    original?: string
+    used?: string
+    score?: number
+    scoreAfter?: number
+    added?: string[]
+    optimized?: boolean
+    cleaned?: string[]
+    background?: string
+  }
+  model?: string
+}
+
+/** tool-bridge 的返回是「一行摘要 + JSON」：把 JSON 抽出来看实际发给模型的提示词。 */
+function parseImageGenMeta(output: string): ImagePromptMeta | null {
+  const start = output.indexOf('{')
+  if (start < 0) return null
+  try {
+    return JSON.parse(output.slice(start)) as ImagePromptMeta
+  } catch {
+    return null
+  }
+}
+
 const MediaTemplate: ToolCardComponent = ({ item }) => {
   const { t } = useTranslation()
   const workspace = useUIStore((s) => s.currentWorkspace)
-  const [showInline, setShowInline] = useState(true)
   const details = item.toolDetails as Record<string, unknown> | null | undefined
   const assets = collectAssets(details, item.toolOutput || '')
 
-  // local showInlinePreview is adapter-local; default true if unreadable
-  useEffect(() => {
-    // adapterId inferred from tool catalog via shell-open config; but local flag is workspace-scoped per adapter.
-    // Read via adapter.config.get using the tool's adapter id resolved server-side.
-    ipcClient.invoke('adapter.config.get', { adapterId: item.toolName || '' }).then(() => setShowInline(true)).catch(() => setShowInline(true))
-  }, [item.toolName])
+  // 内联预览默认开。
+  // 旧实现每次渲染都拿 toolName（如 image_gen）当 adapterId 去请求 adapter.config.get，
+  // 主进程只认 adapter.id（如 pi-image-gen），于是每张卡片刷一条 "unknown adapter" 错误，
+  // 而 then/catch 两边都是 setShowInline(true)——请求发了个寂寞。朝向 adapter 的本地开关
+  // 留到能按工具名反查 adapter.id 时再接，先把日志刷屏和无效 IPC 去掉。
+  const showInline = true
 
   const open = (p: string) => ipcClient.invoke('shell.openPath', { path: p }).catch(() => {})
   const reveal = (p: string) => ipcClient.invoke('shell.showItemInFolder', { path: p }).catch(() => {})
   const textSummary = extractText(item.toolOutput || '')
   const previewPath = assets.find((a) => a.path)?.path
+  const codexMeta = parseImageGenMeta(item.toolOutput || '')
+  const promptInfo = codexMeta?.prompt
+  const promptChips = [
+    promptInfo?.optimized ? `${t('timeline:imagePromptFilled')} ${promptInfo.added?.length ?? 0}` : '',
+    promptInfo?.cleaned?.length ? `${t('timeline:imagePromptCleaned')} ${promptInfo.cleaned.length}` : '',
+    promptInfo?.background === 'transparent' ? t('timeline:imagePromptTransparent') : '',
+    codexMeta?.model ? codexMeta.model : '',
+  ].filter(Boolean)
 
   return (
     <div className="mt-1 space-y-2 rounded-md border border-border/35 p-2">
-      {previewPath && <InlineImage path={previewPath} workspaceRoot={workspace} enabled={showInline} />}
+      {previewPath && (
+        <InlineImage
+          path={previewPath}
+          workspaceRoot={workspace}
+          enabled={showInline}
+          onOpen={() => open(previewPath)}
+        />
+      )}
+      {promptInfo?.used ? (
+        <details className="rounded-md border border-border/30 p-2" style={{ background: 'color-mix(in srgb, var(--bg-2) 40%, transparent)' }}>
+          <summary className="cursor-pointer select-none text-[11px] text-muted-foreground">
+            {t('timeline:imagePromptTitle')}
+            {promptChips.length ? ` · ${promptChips.join(' · ')}` : ''}
+          </summary>
+          <div className="mt-2 flex justify-end">
+            <button
+              type="button"
+              className="text-[10px] text-primary hover:underline"
+              onClick={() => void navigator.clipboard?.writeText(promptInfo.used || '')}
+            >
+              {t('timeline:imagePromptCopy')}
+            </button>
+          </div>
+          <pre className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap break-words text-[10px] leading-relaxed text-foreground-secondary">
+            {promptInfo.used}
+          </pre>
+        </details>
+      ) : null}
       {assets.length === 0 && !textSummary && (
         <div className="text-[11px] text-muted-foreground/50">—</div>
       )}

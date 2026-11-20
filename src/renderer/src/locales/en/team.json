@@ -49,6 +49,8 @@
   "tasks": "Tasks",
   "lanes": "Lanes",
   "people": "By person",
+  "prevLane": "Previous lane",
+  "nextLane": "Next lane",
   "emptyLane": "Drop here",
   "noTasks": "No task cards",
   "noTasksHint": "Ask the Leader to split the PRD into task cards first.",

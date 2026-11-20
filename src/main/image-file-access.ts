@@ -4,7 +4,7 @@ import { extname, isAbsolute } from 'node:path'
 import { readRemoteAttachment } from './clipboard-temp-images'
 import { resolvePathUnderWorkspace } from './workspace-fs'
 
-const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'])
+const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.svg', '.avif', '.ico', '.tiff', '.tif'])
 const IMAGE_ACTION_MAX_BYTES = 20 * 1024 * 1024
 
 export async function resolveActionableImage(

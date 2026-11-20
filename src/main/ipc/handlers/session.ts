@@ -40,6 +40,7 @@ import {
   sessionTreeSchema,
 } from '../schemas'
 import { authorizeTrustedSessionFile } from '../../trusted-workspace'
+import { readTeamState, teamSpecPath } from '../../team-board'
 import { errorMessage } from '@shared/error-message'
 import { workspacePathsEqual } from '@shared/workspace-path'
 import { wslPathToWindows } from '@shared/wsl-path'
@@ -67,6 +68,23 @@ export function registerSessionHandlers(): void {
         && workspacePathsEqual(wslPathToWindows(runtime.distro, s.cwd), workspaceId)
     })
     const interrupted = new Map(workerManager.listInterruptedRuns().map((row) => [row.sessionFile, row.orphanedAt]))
+    // 侧栏要知道哪些会话是工作团队开出来的（角色会话 / 派发会话），好加个小标记。
+    const teamRoles = new Map<string, { role: string; kind: 'role' | 'run' }>()
+    if (workspaceId) {
+      try {
+        const state = readTeamState(teamSpecPath(workspaceId))
+        const remember = (file: string, role: string, kind: 'role' | 'run') => {
+          const key = normalizeSessionKey(file)
+          if (key && !teamRoles.has(key)) teamRoles.set(key, { role, kind })
+        }
+        for (const [role, session] of Object.entries(state.sessions)) {
+          if (session?.sessionFile) remember(session.sessionFile, role, 'role')
+        }
+        for (const run of state.runs) remember(run.sessionFile, run.role, 'run')
+      } catch {
+        /* 看板还没建立或读不了：不加标记即可 */
+      }
+    }
     const formatted = ownedSessions.map((s: SessionOnDiskRow) => {
       const preview = sessionPreviewText(s.firstMessage || '')
       return {
@@ -90,6 +108,9 @@ export function registerSessionHandlers(): void {
         modelId: '',
         status: 'idle' as const,
         interruptedAt: interrupted.get(normalizeSessionKey(s.path)),
+        ...(teamRoles.get(normalizeSessionKey(s.path))
+          ? { team: teamRoles.get(normalizeSessionKey(s.path)) }
+          : {}),
       }
     })
     return { sessions: formatted }
@@ -210,6 +231,8 @@ export function registerSessionHandlers(): void {
       ? await authorizeTrustedSessionFile(req.workspaceId, requestedSessionFile)
       : null
     if (authorized && !authorized.ok) {
+      // 还没落盘的会话（新建但未发第一条消息）就是一棵空树，不当作错误。
+      if (authorized.error === 'session_file_missing') return { nodes: [], leafId: null, pending: true }
       return { nodes: [], leafId: null, error: authorized.error }
     }
     const cwd = authorized?.cwd || workerManager.cwd || configStore.get('currentProject') || process.cwd()
@@ -310,7 +333,11 @@ export function registerSessionHandlers(): void {
 
   registerHandlerWithSchema('ipc:session.getMessages', sessionGetMessagesSchema, async (req) => {
     const authorized = await authorizeTrustedSessionFile(req.workspaceId, req.sessionFile)
-    if (!authorized.ok) return { items: [], totalCount: 0, error: authorized.error }
+    if (!authorized.ok) {
+      // 同上：新会话文件尚未创建时返回空历史，不把 invalid_session 丢给时间线。
+      if (authorized.error === 'session_file_missing') return { items: [], totalCount: 0, pending: true }
+      return { items: [], totalCount: 0, error: authorized.error }
+    }
     const offset = req.offset ?? 0
     const limit = req.limit ?? 0
     // Disk-first timeline preview. NEVER spawn/ensure a worker just to read history —
@@ -682,6 +709,14 @@ export function registerSessionHandlers(): void {
       currentProject: configStore.get('currentProject'),
       recentProjects: configStore.get('recentProjects') || [],
     }
+  })
+
+  registerHandler('ipc:project.restoreRecent', async (req) => {
+    // 「移除项目」误点后的撤销：放回 MRU，并解掉 hiddenWorktrees 的隐藏。
+    const path = (req.path as string | undefined)?.trim()
+    if (!path) return { ok: false, error: 'missing path' }
+    configStore.addRecentProject(path)
+    return { ok: true, currentProject: configStore.get('currentProject'), recentProjects: configStore.get('recentProjects') || [] }
   })
 
   registerHandler('ipc:project.rename', async (req) => {

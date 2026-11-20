@@ -32,6 +32,9 @@ import { runtimeBudgetExtension } from './worker-budget.js'
 import { modelRoutersExtension } from './worker-model-routers.js'
 import { browserToolsExtension } from './worker-browser-tools.js'
 import { terminalToolsExtension } from './worker-terminal-tools.js'
+import { teamToolsExtension } from './worker-team-tools.js'
+import { imageToolsExtension } from './worker-image-tools.js'
+import { askToolsExtension } from './worker-ask-tools.js'
 
 
 
@@ -232,7 +235,7 @@ function buildRuntimeFactory(): CreateAgentSessionRuntimeFactory {
       agentDir,
       resourceLoaderOptions: {
         eventBus: st.sharedEventBus!,
-        extensionFactories: [...piBuiltinExtensions(sdk), capabilitiesExtension, goalExtension, runtimeBudgetExtension, browserToolsExtension, terminalToolsExtension, modelRoutersExtension(agentDir)],
+        extensionFactories: [...piBuiltinExtensions(sdk), capabilitiesExtension, goalExtension, runtimeBudgetExtension, browserToolsExtension, terminalToolsExtension, teamToolsExtension, imageToolsExtension, askToolsExtension, modelRoutersExtension(agentDir)],
         extensionsOverride: (result) => guardExtensionCapabilityTools(decorateQuestionnaireTools(result, cwd)),
         skillsOverride: applySkillsOverride as never,
       },

@@ -28,6 +28,7 @@ import { ProjectDiskRow, ProjectSessionTree, SandboxDialogRow } from './project-
 import { groupSidebarProjects } from './project-worktree-groups'
 import { useProjectWorktrees } from './use-project-worktrees'
 import { resolveProjectDisplayName, uniqueWorkspacePaths, workspacePathKey, workspacePathsEqual } from '@shared/workspace-path'
+import { capRecentProjects } from '@shared/recent-projects'
 import type { GitWorktree } from '@shared/git-worktree'
 import { toast } from 'sonner'
 
@@ -167,7 +168,7 @@ export function ProjectSidebar({
   }
   const restoreProject = async (path: string) => {
     if (!recentProjects.some((item) => workspacePathsEqual(item, path))) {
-      const recent = uniqueWorkspacePaths([path, ...recentProjects]).slice(0, 16)
+      const recent = capRecentProjects(uniqueWorkspacePaths([path, ...recentProjects]))
       try {
         await ipcClient.invoke('settings.set', { key: 'recentProjects', value: recent })
         useUIStore.setState({ recentProjects: recent })
@@ -338,7 +339,7 @@ export function ProjectSidebar({
             if (fixedOrderRef.current) merged.push(currentWorkspace)
             else merged.unshift(currentWorkspace)
           }
-          const next = uniqueWorkspacePaths(merged).slice(0, 16)
+          const next = capRecentProjects(uniqueWorkspacePaths(merged))
           useUIStore.setState((state) => {
             // 顺序/内容无变化时保持引用稳定，避免固定顺序下每次切换工作区都触发整个侧栏重渲染
             const prev = state.recentProjects

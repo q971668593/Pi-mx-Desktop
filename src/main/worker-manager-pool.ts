@@ -246,6 +246,22 @@ export function attachWorkerHandlers(
         .catch((error) => safeWrite(`[WorkerManager] browser tool failed: ${String(error)}`))
     }
 
+    if (data.type === 'image-tool-request') {
+      void import('./image-gen/tool-bridge')
+        .then(({ handleImageToolRequest }) => handleImageToolRequest(data, slot, (message) => {
+          if (slot.worker === transport) transport.postMessage(message)
+        }))
+        .catch((error) => safeWrite(`[WorkerManager] image tool failed: ${String(error)}`))
+    }
+
+    if (data.type === 'team-tool-request') {
+      void import('./team-board-tool-bridge')
+        .then(({ handleTeamToolRequest }) => handleTeamToolRequest(data, slot, (message) => {
+          if (slot.worker === transport) transport.postMessage(message)
+        }))
+        .catch((error) => safeWrite(`[WorkerManager] team tool failed: ${String(error)}`))
+    }
+
     if (data.type === 'terminal-tool-request') {
       void import('./terminal/terminal-tool-bridge')
         .then(({ handleTerminalToolRequest }) => handleTerminalToolRequest(data, slot, (message) => {
@@ -518,6 +534,7 @@ export function canAcquireNewWorker(
   }
   return {
     ok: false,
-    reason: `Worker pool full (${max} running sessions). Stop a turn or raise maxSessionWorkers.`,
+    // 固定英文前缀给界面抓取（不受语言/包装层影响），后半句是给人看的解释。
+    reason: `WORKER_POOL_FULL:${max} 会话进程池已满：同时最多 ${max} 个会话在跑，第 ${max + 1} 个新建不出来。先停掉一个会话，或到「设置 › 通用 › 同时保留的会话进程数」把上限调大。`,
   }
 }

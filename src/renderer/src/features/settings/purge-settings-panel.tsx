@@ -134,6 +134,33 @@ export function PurgeSettings() {
             ))}
           </select>
         </SettingRow>
+
+        {/* 三种模式的差别只有一句话，直接摆出来，别让人靠下拉框一个个试。 */}
+        <div className="mt-1 mb-3 rounded-lg border border-foreground/10 bg-foreground/[0.03] px-3 py-2.5">
+          <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-foreground-secondary">
+            {t('settings:purge.modeCompareTitle')}
+          </div>
+          <ul className="space-y-1.5">
+            {MODES.map((mode) => {
+              const active = (state?.mode ?? 'strict') === mode
+              return (
+                <li
+                  key={mode}
+                  className={`text-[12.5px] leading-relaxed ${active ? 'text-foreground' : 'text-foreground-secondary'}`}
+                >
+                  <span className="font-medium">{t(`settings:purge.mode.${mode}`)}</span>
+                  {mode === 'replace' && (
+                    <span className="ml-1.5 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10.5px] font-medium text-emerald-600">
+                      {t('settings:purge.modeRecommended')}
+                    </span>
+                  )}
+                  <span className="mx-1">—</span>
+                  <span>{t(`settings:purge.modeCompare.${mode}`)}</span>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
       </SettingsSection>
 
       <SettingsSection

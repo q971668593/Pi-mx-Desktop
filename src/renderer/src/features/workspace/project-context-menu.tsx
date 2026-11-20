@@ -138,7 +138,24 @@ export function ProjectContextMenuPortal({
           await ipcClient.invoke('settings.set', { key: 'currentProject', value: null }).catch(() => {})
         }
       }
-      toast.success(t('common:sidebar.removed'))
+      // 误点「从列表移除」不该变成永久消失：给一个当场撤销，撤销会把项目放回 MRU 并解除隐藏。
+      toast.success(t('common:sidebar.removed'), {
+        action: {
+          label: t('common:sidebar.undoRemove'),
+          onClick: () => {
+            void (async () => {
+              try {
+                const restored = await ipcClient.invoke('project.restoreRecent', { path: target.path })
+                if (Array.isArray(restored?.recentProjects)) useUIStore.setState({ recentProjects: restored.recentProjects })
+                onListChange()
+                toast.success(t('common:sidebar.restored'))
+              } catch {
+                toast.error(t('common:sidebar.restoreFailed'))
+              }
+            })()
+          },
+        },
+      })
       onListChange()
     } catch {
       toast.error(t('common:sidebar.removeFailed'))

@@ -1,6 +1,6 @@
 {
   "name": "pi-desktop",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Pi mx Desktop — a desktop workbench for the pi coding agent",
   "main": "./out/main/index.js",
   "author": "pi-desktop",
@@ -16,6 +16,7 @@
   },
   "scripts": {
     "dev": "node scripts/dev.mjs",
+    "dev:separate": "node scripts/dev-separate.mjs",
     "dev:raw": "electron-vite dev",
     "dev:alert-trace": "set PI_ALERT_TRACE=1&& set PI_AUDIO_TRACE=1&& node scripts/dev.mjs",
     "build": "electron-vite build",

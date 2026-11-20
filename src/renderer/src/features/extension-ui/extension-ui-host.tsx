@@ -16,17 +16,10 @@ import {
   clearExtensionToolRowFlags,
   reconcileStaleInteractiveToolRows,
 } from '@renderer/lib/extension-ui-tool-sync'
+import { respondToExtensionUI } from '@renderer/lib/extension-ui-respond'
 
 
-function respond(payload: {
-  id: string
-  value?: string
-  confirmed?: boolean
-  cancelled?: boolean
-  result?: unknown
-}) {
-  ipcClient.invoke('extension.respondUI', payload).catch(() => {})
-}
+const respond = respondToExtensionUI
 
 function findToolContextForUi(): { toolCallId?: string; toolName?: string; timelineItemId?: string } {
   const items = useUIStore.getState().timelineItems
@@ -209,6 +202,10 @@ function InputDialog({ title, placeholder, onSubmit, onSuspend, onCancel }: {
 export function ExtensionUIHost() {
   const pending = useExtensionUIStore((s) => s.activePending)
   const clearAfterRespond = useExtensionUIStore((s) => s.clearAfterRespond)
+  // 工具行里的行内小卡已经接管了这个问答：别再叠一个全屏弹窗。
+  const claimedInline = useUIStore((s) =>
+    !!pending && s.timelineItems.some((item) => item.extensionUiRequestId === pending.id),
+  )
 
   const cancelWorker = (id: string) => {
     const tid = findToolContextForUi().timelineItemId
@@ -219,6 +216,7 @@ export function ExtensionUIHost() {
   }
 
   if (!pending) return null
+  if (pending.method === 'ask_user_question' && claimedInline) return null
 
   const answer = (payload: { value?: string; confirmed?: boolean }) => {
     respond({ id: pending.id, ...payload })

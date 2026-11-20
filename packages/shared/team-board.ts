@@ -814,8 +814,8 @@ export function buildTeamPrompt(input: TeamPromptInput): string {
     '## 工作约定（硬规则）',
     '',
     '- 只做这张卡/这段对话的范围；需要扩大范围、改需求、动权限或数据规则时，先停下说明，等确认。',
-    '- 看板只改自己这张卡的 `- 状态`、`- 阻塞分型`、`- 待批准` 与末尾回执；不要动索引行、其它卡或 `角色配置.json`，派发与落账由宿主写入。',
-    '- 需要主人拍板才能做的动作（外发消息、删数据、改权限、花钱、发布）：把卡片改成 `- 状态：阻塞` 加 `- 阻塞分型：待用户确认`，再写一行 `- 待批准：<一句话动作> · <为什么需要批准>`，然后停下等批准；不要自己代主人决定。',
+    '- 看板用 `team_board` 工具写（`action=move_task` 改状态、`action=comment` 留回执）：只动自己这张卡；不要手改 `看板/当前批次.md`，不要动其它卡或 `角色配置.json`，派发与落账由宿主写入。',
+    '- 需要主人拍板才能做的动作（外发消息、删数据、改权限、花钱、发布）：`team_board action=move_task status=阻塞 blockType=待用户确认`，再 `action=comment` 写明「<一句话动作> · <为什么需要批准>」，然后停下等批准；不要自己代主人决定。',
     '- 结束时在回复末尾写两行：`交付摘要：…` 与 `验证：…（实际命令/截图路径；没做就写 unverified）`。',
     '- 缺环境、缺工具、需要用户决定时直接说清阻塞点和下一步，不要用「应该可以」代替实际验证。',
   )
@@ -921,11 +921,23 @@ export function appendTeamTask(
 export function buildTeamRoleIntro(input: { role: string; batch: string; goal: string; specRelativeDir?: string }): string {
   const role = canonicalTeamRole(input.role)
   const spec = input.specRelativeDir || TEAM_SPEC_RELATIVE_DIR
-  return [
+  const head = [
     `你是本项目团队的${role}。`,
     `项目规范目录：${spec}（相对项目根目录）。当前批次：${input.batch || '当前批次'}${input.goal ? `；本轮目标：${input.goal}` : ''}。`,
-    '先读 `00-总入口.md` 与 `PRD.md` 里与你职责相关的章节（存在才读），然后等待用户的具体任务；不要主动改代码。',
-    '用户给任务时，先确认范围与验收标准；需要扩范围、改需求或用户决定时停下说明。',
-    '不要修改看板或角色配置：派发与结果由面板记录。',
-  ].join(LF)
+    '先读 `00-总入口.md` 与 `PRD.md` 里与你职责相关的章节（存在才读），然后等待主人的具体指示。',
+  ]
+  // Leader 是唯一负责「拆卡 + 派发」的角色：它有用 team_board 写看板的能力。
+  const leader = [
+    '需求/PRD 确认后，用 `team_board` 工具把工作拆成任务卡（action=create_task，一次 1-12 张，每张写清 role 与可验证的 acceptance），再用 action=dispatch 逐张派发；面板会立刻显示这些卡和运行状态。',
+    '拆卡与派发是你的主要交付：卡一旦派发，执行由对应角色的会话完成，你不要自己写业务代码、也不要自己改页面。',
+    '动手前先 action=snapshot 看清现有卡与依赖；有依赖的卡先确认前置已验收再派。',
+    '`已验收` 只能由主人人工确认：你最多把卡推进到 `待审查`，不要替主人验收。',
+    '看板只通过 `team_board` 写，不要手改 `看板/当前批次.md` 或 `角色配置.json`。',
+  ]
+  const others = [
+    '收到具体任务后先确认范围与验收标准；需要扩范围、改需求或用户决定时停下说明。',
+    '`team_board` 可以用来读自己的卡（action=snapshot）和写一句备注（action=comment）；改状态、派发与验收由主人和宿主完成，不要自己动。',
+    '看板只通过 `team_board` 写，不要手改 `看板/当前批次.md` 或 `角色配置.json`。',
+  ]
+  return [...head, ...(role === 'Leader' ? leader : others)].join(LF)
 }

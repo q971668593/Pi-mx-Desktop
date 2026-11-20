@@ -13,6 +13,7 @@ import { spawn } from 'node:child_process'
 
 delete process.env.ELECTRON_RUN_AS_NODE
 
+const startedAt = Date.now()
 const child = spawn('electron-vite', ['dev', ...process.argv.slice(2)], {
   stdio: 'inherit',
   shell: process.platform === 'win32',
@@ -23,6 +24,14 @@ child.on('exit', (code, signal) => {
   if (signal) {
     process.kill(process.pid, signal)
     return
+  }
+  // 构建日志全绿、electron 一句话不说就退了，几乎都是单实例锁：主应用已经在跑，
+  // 新实例拿到 gotLock=false 后 app.quit()，而这条路径不留任何日志。
+  if ((code ?? 0) === 0 && Date.now() - startedAt < 15_000) {
+    console.error(
+      '[dev] electron 启动后立刻退出（无报错）：多半是主应用已打开并持有单实例锁。' +
+        ' 改用 `npm run dev:separate`（独立 userData，两边互不打扰）。',
+    )
   }
   process.exit(code ?? 0)
 })

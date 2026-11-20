@@ -9,6 +9,8 @@ import { handleSetGoal } from './worker-goal.js'
 import { handleReloadModelRouters } from './worker-model-routers.js'
 import { handleBrowserToolResponse } from './worker-browser-tools.js'
 import { handleTerminalToolResponse } from './worker-terminal-tools.js'
+import { handleTeamToolResponse } from './worker-team-tools.js'
+import { handleImageToolResponse } from './worker-image-tools.js'
 
 const dispatch: Record<string, (msg: WorkerIncomingMessage, reply: WorkerReply) => Promise<void>> = {
   'init': Turn.handleInit,
@@ -28,6 +30,8 @@ const dispatch: Record<string, (msg: WorkerIncomingMessage, reply: WorkerReply) 
   'reloadModelRouters': handleReloadModelRouters,
   'browser-tool-response': handleBrowserToolResponse,
   'terminal-tool-response': handleTerminalToolResponse,
+  'team-tool-response': handleTeamToolResponse,
+  'image-tool-response': handleImageToolResponse,
   'newSession': Session.handleNewsession,
   'listSessions': Session.handleListsessions,
   'loadSession': Session.handleLoadsession,

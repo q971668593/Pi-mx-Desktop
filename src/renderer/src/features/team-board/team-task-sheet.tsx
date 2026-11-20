@@ -139,7 +139,7 @@ export function TeamTaskSheet({
 
   return (
     <div className="team-overlay" role="dialog" aria-modal="true" aria-label={`${task.id} ${task.title}`}>
-      <div className="flex shrink-0 items-center gap-2 border-b border-border/40 px-2.5 py-2">
+      <div className="team-sheet-head flex shrink-0 items-center gap-2">
         <button
           type="button"
           onClick={onClose}
@@ -164,7 +164,7 @@ export function TeamTaskSheet({
       </div>
 
       <div className="team-sheet-scroll team-scroll">
-        <div className="flex items-center gap-2 rounded-lg border border-border/40 bg-card/40 p-2">
+        <div className="team-sheet-role">
           <span className="team-avatar" style={{ '--team-role': accent } as CSSProperties}>
             <img src={roleFullAvatar(role)} alt="" />
           </span>
@@ -198,7 +198,7 @@ export function TeamTaskSheet({
               onChange={(event) => setApprovalNote(event.target.value)}
               maxLength={300}
               placeholder={t('team:approvalNotePlaceholder')}
-              className="mt-1.5 w-full rounded border border-border/60 bg-background px-1.5 py-1 text-xs text-foreground outline-none focus:border-primary/60"
+              className="team-sheet-input mt-1.5"
             />
             <div className="mt-2 flex justify-end gap-1.5">
               <button
@@ -264,7 +264,7 @@ export function TeamTaskSheet({
                 rows={2}
                 maxLength={1500}
                 placeholder={t('team:reasonPlaceholder')}
-                className="mt-1 w-full resize-y rounded border border-border/60 bg-background px-1.5 py-1 text-xs text-foreground outline-none focus:border-primary/60"
+                className="team-sheet-input mt-1 resize-y"
               />
             </label>
             <div className="mt-2 flex justify-end gap-1.5">
@@ -307,7 +307,7 @@ export function TeamTaskSheet({
                 value={blockReason}
                 onChange={(event) => setBlockReason(event.target.value)}
                 maxLength={1500}
-                className="mt-1 w-full rounded border border-border/60 bg-background px-1.5 py-1 text-xs text-foreground outline-none focus:border-primary/60"
+                className="team-sheet-input mt-1"
               />
             </label>
             <div className="mt-2 flex justify-end gap-1.5">
@@ -373,7 +373,7 @@ export function TeamTaskSheet({
           )}
         </section>
 
-        <section className="mt-3 rounded-lg border border-border/40 bg-card/30 p-2">
+        <section className="team-sheet-card mt-3">
           <div className="flex items-center gap-1.5">
             <span className="team-field-label">{t('team:run')}</span>
             {run ? (
@@ -451,7 +451,7 @@ export function TeamTaskSheet({
                     onChange={(event) => setGuidance(event.target.value)}
                     maxLength={1500}
                     placeholder={t('team:intervenePlaceholder')}
-                    className="min-w-0 flex-1 rounded border border-border/60 bg-background px-1.5 py-1 text-2xs text-foreground outline-none focus:border-primary/60"
+                    className="team-sheet-input min-w-0 flex-1 text-2xs"
                   />
                   <button
                     type="button"

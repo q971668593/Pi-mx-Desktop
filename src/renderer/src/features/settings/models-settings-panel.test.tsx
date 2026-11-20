@@ -30,6 +30,7 @@ vi.mock('sonner', () => ({
 // The plugin-model row reads the shared settings draft and has its own ipc cadence; this
 // panel test covers provider rows, so keep its call order untouched.
 vi.mock('./plugin-model-settings', () => ({ PluginModelSettings: () => null }))
+vi.mock('./image-gen-settings', () => ({ ImageGenSettings: () => null }))
 
 // Defaults & thinking bindings have their own slice and test (model-defaults-section.test).
 vi.mock('./model-defaults-section', () => ({ ModelDefaultsSection: () => null }))

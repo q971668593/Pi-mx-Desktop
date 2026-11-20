@@ -228,7 +228,7 @@ function normalizeThemeChoice(raw: unknown): ThemeChoice {
 
 export function normalizeMaxSessionWorkersUi(raw: unknown): number {
   const n = typeof raw === 'number' ? raw : Number(raw)
-  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) return 4
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) return 6
   if (n > Number.MAX_SAFE_INTEGER) return Number.MAX_SAFE_INTEGER
   return n
 }

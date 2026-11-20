@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { RECENT_PROJECTS_CAP, nextRecentProjects } from './recent-projects'
+import { RECENT_PROJECTS_CAP, capRecentProjects, nextRecentProjects } from './recent-projects'
 
 describe('nextRecentProjects', () => {
   describe('MRU mode (default, fixedOrder=false)', () => {
@@ -11,12 +11,22 @@ describe('nextRecentProjects', () => {
       expect(nextRecentProjects(['a', 'b'], 'c', false)).toEqual(['c', 'a', 'b'])
     })
 
-    it('caps at the most recent 10', () => {
+    it('caps at the most recent entries', () => {
       const full = Array.from({ length: RECENT_PROJECTS_CAP }, (_, i) => `p${i}`)
       const next = nextRecentProjects(full, 'new', false)
       expect(next).toHaveLength(RECENT_PROJECTS_CAP)
       expect(next[0]).toBe('new')
-      expect(next).not.toContain('p9')
+      expect(next).not.toContain(`p${RECENT_PROJECTS_CAP - 1}`)
+    })
+
+    it('never drops a project just because it was opened again', () => {
+      const list = Array.from({ length: 12 }, (_, i) => `p${i}`)
+      expect(nextRecentProjects(list, 'p11', false)).toHaveLength(12)
+      expect(nextRecentProjects(list, 'p0', true)).toHaveLength(12)
+    })
+
+    it('keeps room for far more than a handful of projects', () => {
+      expect(RECENT_PROJECTS_CAP).toBeGreaterThanOrEqual(30)
     })
   })
 
@@ -48,5 +58,17 @@ describe('nextRecentProjects', () => {
         'D:\\other',
       ])
     })
+  })
+})
+
+describe('capRecentProjects', () => {
+  it('keeps short lists untouched (same reference)', () => {
+    const list = ['a', 'b']
+    expect(capRecentProjects(list)).toBe(list)
+  })
+
+  it('trims only when the list is longer than the cap', () => {
+    const list = Array.from({ length: RECENT_PROJECTS_CAP + 3 }, (_, i) => `p${i}`)
+    expect(capRecentProjects(list)).toHaveLength(RECENT_PROJECTS_CAP)
   })
 })

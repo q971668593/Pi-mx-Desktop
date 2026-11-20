@@ -4,7 +4,7 @@
 > 事实源：`src/main/**/*.ts` 中的 `registerHandler` / `registerHandlerWithSchema` 调用。
 > 手写文档在 `doc/IPC-CONTRACTS.md`；本文件保证「代码里注册了什么」与「文档里写了什么」不会漂移。
 
-- invoke 通道：**300** 个（唯一）
+- invoke 通道：**305** 个（唯一）
 - main → renderer 事件通道：**12** 个（唯一）
 - 非字面量注册：**0** 处
 - 动态事件通道（通道名非常量，未收录）：**7** 处
@@ -39,6 +39,7 @@
 | `terminal` | 5 |
 | `extension` | 4 |
 | `git` | 4 |
+| `imageGen` | 4 |
 | `promptInject` | 4 |
 | `python` | 4 |
 | `shell` | 4 |
@@ -46,6 +47,7 @@
 | `dialog` | 3 |
 | `model` | 3 |
 | `notifications` | 3 |
+| `project` | 3 |
 | `review` | 3 |
 | `routers` | 3 |
 | `adapters` | 2 |
@@ -53,7 +55,6 @@
 | `background` | 2 |
 | `capabilities` | 2 |
 | `commands` | 2 |
-| `project` | 2 |
 | `rewind` | 2 |
 | `rightPanels` | 2 |
 | `settings` | 2 |
@@ -425,6 +426,15 @@
 | `ipc:git.restoreStash` | registerHandlerWithSchema | `src/main/ipc/handlers/git-branches.ts` |
 | `ipc:git.switchBranch` | registerHandlerWithSchema | `src/main/ipc/handlers/git-branches.ts` |
 
+### imageGen（4）
+
+| 通道 | 注册方式 | 注册位置 |
+| --- | --- | --- |
+| `ipc:imageGen.config.set` | registerHandlerWithSchema | `src/main/ipc/handlers/image-gen.ts` |
+| `ipc:imageGen.generate` | registerHandlerWithSchema | `src/main/ipc/handlers/image-gen.ts` |
+| `ipc:imageGen.models` | registerHandler | `src/main/ipc/handlers/image-gen.ts` |
+| `ipc:imageGen.status` | registerHandler | `src/main/ipc/handlers/image-gen.ts` |
+
 ### promptInject（4）
 
 | 通道 | 注册方式 | 注册位置 |
@@ -484,6 +494,14 @@
 | `ipc:notifications.markRead` | registerHandler | `src/main/ipc/handlers/desktop-chrome.ts` |
 | `ipc:notifications.markUnread` | registerHandler | `src/main/ipc/handlers/desktop-chrome.ts` |
 
+### project（3）
+
+| 通道 | 注册方式 | 注册位置 |
+| --- | --- | --- |
+| `ipc:project.removeRecent` | registerHandler | `src/main/ipc/handlers/session.ts` |
+| `ipc:project.rename` | registerHandler | `src/main/ipc/handlers/session.ts` |
+| `ipc:project.restoreRecent` | registerHandler | `src/main/ipc/handlers/session.ts` |
+
 ### review（3）
 
 | 通道 | 注册方式 | 注册位置 |
@@ -534,13 +552,6 @@
 | --- | --- | --- |
 | `ipc:commands.completions` | registerHandler | `src/main/ipc/handlers/commands-slash.ts` |
 | `ipc:commands.list` | registerHandler | `src/main/ipc/handlers/commands-slash.ts` |
-
-### project（2）
-
-| 通道 | 注册方式 | 注册位置 |
-| --- | --- | --- |
-| `ipc:project.removeRecent` | registerHandler | `src/main/ipc/handlers/session.ts` |
-| `ipc:project.rename` | registerHandler | `src/main/ipc/handlers/session.ts` |
 
 ### rewind（2）
 

@@ -277,7 +277,15 @@ export function useComposerSend(opts: {
               updateFromEditor()
             }
           }
-          toast.error(t('composer:toast.sendFailed'))
+          const poolFull = /WORKER_POOL_FULL:(\d+)/.exec(
+            e instanceof Error ? e.message : String(e),
+          )
+          if (poolFull) {
+            // 会话进程池满了：直接说清楚卡在哪、去哪儿改，别只吐一句“发送失败”。
+            toast.error(t('composer:toast.poolFull', { limit: poolFull[1] }))
+          } else {
+            toast.error(t('composer:toast.sendFailed'))
+          }
         }
       } finally {
         sendingRef.current = false
