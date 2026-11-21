@@ -4,6 +4,8 @@ export type WorkerIncomingMessage = {
   requestId?: string
   cwd?: string
   sdkPath?: string | null
+  /** 随安装包携带的额外扩展文件（绝对路径），由 pi 的 additionalExtensionPaths 加载。 */
+  builtinExtensions?: string[]
   text?: string
   options?: unknown
   sessionFile?: string

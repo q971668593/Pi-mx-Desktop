@@ -110,15 +110,27 @@ export function registerModelRuntimeHandlers(): void {
       return { models }
     }
 
+    // 某个 worker 正跑着 turn 时，它的模型注册表还没重载（改完 providers / models.json 后点开
+    // 模型列表会一直看到旧的，直到那个 turn 结束）。这种情况直接读磁盘上的 SDK 快照，
+    // 同时把重载再踢一次，让 worker 尽快跟上。
+    const workerStale = workerManager.isRunning && workerManager.hasPendingModelReload
+    if (workerStale) {
+      try {
+        await workerManager.reloadModels()
+      } catch (error) {
+        console.warn('[IPC] model.list: deferred worker reload failed:', error)
+      }
+    }
     const models = await resolveAvailableModels({
-      worker: workerManager.isRunning
-        ? async () =>
-            mapRegistry(
-              (await workerManager.getModels()).filter(
-                (model): model is typeof model & { id: string } => typeof model.id === 'string',
-              ),
-            )
-        : undefined,
+      worker:
+        workerManager.isRunning && !workerStale
+          ? async () =>
+              mapRegistry(
+                (await workerManager.getModels()).filter(
+                  (model): model is typeof model & { id: string } => typeof model.id === 'string',
+                ),
+              )
+          : undefined,
       sdk: async () => mapRegistry(await listModelsOffThread('available')),
       onWorkerError: (error) => console.error('[IPC] model.list worker failed:', error),
       onSdkError: (error) => console.error('[IPC] model.list failed:', error),

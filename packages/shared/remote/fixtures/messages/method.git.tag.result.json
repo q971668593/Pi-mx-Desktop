@@ -1,0 +1,8 @@
+{
+  "schema": "git.tag/result",
+  "value": {
+    "tags": [
+      "v1.1.8"
+    ]
+  }
+}

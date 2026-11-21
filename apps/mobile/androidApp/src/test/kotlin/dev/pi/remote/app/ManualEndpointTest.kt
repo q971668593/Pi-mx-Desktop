@@ -34,7 +34,9 @@ class ManualEndpointTest {
         assertNull(manualEndpoint("pi.example.com:70000", allowPublic = true))
         assertNull(manualEndpoint("pi example.com:7000", allowPublic = true))
         assertNull(manualEndpoint("http://pi.example.com:7000", allowPublic = true))
-        assertNull(manualEndpoint("pi.example.com:7000/ws", allowPublic = true))
+        // 带路径的地址是合法的（自建中转就是 wss://host:port/c/<房间>）
+        assertEquals("wss://pi.example.com:7000/c/r_abc123", manualEndpoint("pi.example.com:7000/c/r_abc123", allowPublic = true))
+        assertEquals("wss://pi.example.com:7000/c/r_abc123/ws", manualEndpoint("wss://pi.example.com:7000/c/r_abc123/ws", allowPublic = true))
     }
 
     @Test fun manualAddressesAreProbedAfterKnownOnes() {

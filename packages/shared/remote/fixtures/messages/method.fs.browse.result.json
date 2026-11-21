@@ -1,0 +1,30 @@
+{
+  "schema": "fs.browse/result",
+  "value": {
+    "path": "D:\\work",
+    "parent": "D:\\",
+    "roots": [
+      {
+        "name": "C:",
+        "path": "C:\\"
+      },
+      {
+        "name": "me",
+        "path": "C:\\Users\\me"
+      }
+    ],
+    "dirs": [
+      {
+        "name": "pi-app",
+        "path": "D:\\work\\pi-app",
+        "repo": true
+      },
+      {
+        "name": "new-project",
+        "path": "D:\\work\\new-project",
+        "repo": false
+      }
+    ],
+    "truncated": false
+  }
+}

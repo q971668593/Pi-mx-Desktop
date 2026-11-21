@@ -380,6 +380,7 @@ const settingsValueSchemas: Record<string, z.ZodTypeAny> = {
     .strict(),
   recentProjectsFixedOrder: z.boolean(),
   autoOpenLastProject: z.boolean(),
+  builtinBillionContext: z.boolean(),
   autoCheckRegistryUpdates: z.boolean(),
   includePrereleaseUpdates: z.boolean(),
   ignoredUpdateVersion: z.string(),

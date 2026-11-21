@@ -1,0 +1,12 @@
+{
+  "schema": "git.worktree/result",
+  "value": {
+    "worktrees": [
+      {
+        "path": "/work/pi-app",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "branch": "main"
+      }
+    ]
+  }
+}

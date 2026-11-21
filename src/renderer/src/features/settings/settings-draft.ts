@@ -45,6 +45,8 @@ export type SettingsDraft = {
   background: BackgroundSettings
   language: LanguageChoice
   autoOpenLastProject: boolean
+  /** 内置上下文压缩扩展（billion-context，随包携带）开关 */
+  builtinBillionContext: boolean
   autoCheckRegistryUpdates: boolean
   includePrereleaseUpdates: boolean
   alertSoundEnabled: boolean
@@ -134,6 +136,7 @@ export function draftSignature(d: SettingsDraft): string {
     background: d.background,
     language: d.language,
     autoOpenLastProject: d.autoOpenLastProject,
+    builtinBillionContext: d.builtinBillionContext,
     autoCheckRegistryUpdates: d.autoCheckRegistryUpdates,
     includePrereleaseUpdates: d.includePrereleaseUpdates,
     alertSoundEnabled: d.alertSoundEnabled,
@@ -180,6 +183,7 @@ export async function loadSettingsDraftFromDisk(i18nLanguage: string): Promise<S
     background: normalizeBackground(s.background),
     language: normalizeLanguage(s.language, normalizeLanguage(i18nLanguage, 'zh')),
     autoOpenLastProject: s.autoOpenLastProject !== false,
+    builtinBillionContext: s.builtinBillionContext !== false,
     autoCheckRegistryUpdates: s.autoCheckRegistryUpdates !== false,
     includePrereleaseUpdates: s.includePrereleaseUpdates === true,
     alertSoundEnabled: s.alertSoundEnabled !== false,
@@ -302,6 +306,7 @@ export async function commitSettingsDraft(draft: SettingsDraft, i18n: I18n): Pro
   await ipcClient.invoke('settings.set', { key: 'background', value: draft.background })
   await ipcClient.invoke('settings.set', { key: 'language', value: draft.language })
   await ipcClient.invoke('settings.set', { key: 'autoOpenLastProject', value: draft.autoOpenLastProject })
+  await ipcClient.invoke('settings.set', { key: 'builtinBillionContext', value: draft.builtinBillionContext })
   await ipcClient.invoke('settings.set', { key: 'autoCheckRegistryUpdates', value: draft.autoCheckRegistryUpdates })
   await ipcClient.invoke('settings.set', { key: 'includePrereleaseUpdates', value: draft.includePrereleaseUpdates })
   await ipcClient.invoke('settings.set', { key: 'alertSoundEnabled', value: draft.alertSoundEnabled })

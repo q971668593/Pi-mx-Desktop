@@ -213,7 +213,9 @@
     "copied": "Copied",
     "fsHint": "Tip: projects on a Windows drive are reached through /mnt inside WSL and are slow to read; projects on the distro filesystem (\\\\wsl.localhost\\…) are much faster.",
     "switchBusy": "A conversation is running — switch the runtime once it finishes.",
-    "switchEnvUnavailable": "Could not read this distro's environment. Make sure it starts (run wsl -d <distro> in a terminal)."
+    "switchEnvUnavailable": "Could not read this distro's environment. Make sure it starts (run wsl -d <distro> in a terminal).",
+    "contextTitle": "Context compression (built in)",
+    "contextDesc": "Ships with the app and folds long conversations into summaries so long tasks do not hit the window. Applies to desktop sessions only — the pi in your terminal is untouched. Turning it off takes effect on the next new session."
   },
   "appearance": {
     "timeline": "Timeline",
@@ -590,13 +592,26 @@
   "extensions": {
     "title": "Extensions",
     "description": "Browse and install Pi packages, then manage installed packages and extension status. Shared with Pi in the terminal.",
-    "tab": { "market": "Marketplace", "installed": "Installed" },
+    "tab": {
+      "market": "Marketplace",
+      "installed": "Installed"
+    },
     "openOfficialMarket": "Pi catalog",
     "searchPlaceholder": "Search packages by name, feature, or author…",
     "filterType": "Filter by type",
     "sortBy": "Sort by",
-    "type": { "all": "All types", "extension": "Extension", "skill": "Skill", "prompt": "Prompt", "theme": "Theme" },
-    "sort": { "downloads": "Most popular", "recent": "Recently updated", "name": "Name A–Z" },
+    "type": {
+      "all": "All types",
+      "extension": "Extension",
+      "skill": "Skill",
+      "prompt": "Prompt",
+      "theme": "Theme"
+    },
+    "sort": {
+      "downloads": "Most popular",
+      "recent": "Recently updated",
+      "name": "Name A–Z"
+    },
     "marketHint": "Catalog data comes from pi.dev. Installing runs third-party plugin code; review its source and description first.",
     "translationHint": "Turn on the language switch to translate visible items on demand. Uses Settings → Plugin model and may incur model usage.",
     "translateTo": "Translate to {{language}}",
@@ -615,7 +630,13 @@
     "openCatalogDetails": "Pi catalog page",
     "viewSource": "View source repository",
     "overview": "About this package",
-    "detailField": { "version": "Version", "published": "Published", "downloads": "Downloads", "license": "License", "dependencies": "Dependencies" },
+    "detailField": {
+      "version": "Version",
+      "published": "Published",
+      "downloads": "Downloads",
+      "license": "License",
+      "dependencies": "Dependencies"
+    },
     "byAuthor": "By {{author}}",
     "installed": "Installed",
     "installPackage": "Install",
@@ -644,17 +665,37 @@
     "openSettingsFailed": "Could not open Pi settings file",
     "loadDetails": "Loading details",
     "manageInstalled": "Manage {{name}}",
-    "capabilityStatus": {"ready": "Available in chat", "configured": "Installed · unverified", "missing": "Not installed", "unsupported": "Unsupported system", "unknown": "Status unknown"},
-    "capabilityHelp": {"web-search": "Search the web through a search extension. Enable Web search from the Tools menu in chat.", "computer": "Inspect windows, click, and type on Windows 10 (19041+) / 11 x64. Enable Computer control from the Tools menu after installation."},
+    "capabilityStatus": {
+      "ready": "Available in chat",
+      "configured": "Installed · unverified",
+      "missing": "Not installed",
+      "unsupported": "Unsupported system",
+      "unknown": "Status unknown"
+    },
+    "capabilityHelp": {
+      "web-search": "Search the web through a search extension. Enable Web search from the Tools menu in chat.",
+      "computer": "Inspect windows, click, and type on Windows 10 (19041+) / 11 x64. Enable Computer control from the Tools menu after installation."
+    },
     "capabilitiesTitle": "Optional capabilities",
     "capabilitiesDesc": "After installation, enable a capability per chat from the composer Tools menu. Packages come from third-party Pi extensions and are loaded by Pi Worker.",
-    "capabilityName": { "web-search": "Web search (Pi Search)", "computer": "Computer control (experimental)" },
-    "capabilityDesc": { "web-search": "Configure a search API and key under Settings → Adapters → Pi Search.", "computer": "Inspect windows through accessibility data and screenshots, then click and type; Windows x64 only." },
+    "capabilityName": {
+      "web-search": "Web search (Pi Search)",
+      "computer": "Computer control (experimental)"
+    },
+    "capabilityDesc": {
+      "web-search": "Configure a search API and key under Settings → Adapters → Pi Search.",
+      "computer": "Inspect windows through accessibility data and screenshots, then click and type; Windows x64 only."
+    },
     "computerWarning": "This extension can operate the real desktop. Install only if you trust it, enable it only for trusted chats, and keep an eye on the screen.",
     "installCapability": "Install or update and load",
     "installingCapability": "Loading extension…",
-    "capabilityInstallSuccess": { "web-search": "Web search extension added. Configure Pi Search under Settings → Adapters.", "computer": "Computer control extension added. It is used only after enabling it for a chat." },
-    "capabilityUpdateSuccess": { "computer": "Computer control extension updated and reloaded." },
+    "capabilityInstallSuccess": {
+      "web-search": "Web search extension added. Configure Pi Search under Settings → Adapters.",
+      "computer": "Computer control extension added. It is used only after enabling it for a chat."
+    },
+    "capabilityUpdateSuccess": {
+      "computer": "Computer control extension updated and reloaded."
+    },
     "searchAdapterHint": "Pi Search manages its own API keys; they are not duplicated here.",
     "missingRuntime": "Extensions not loaded by Worker",
     "missingRuntimeDesc": "Cloned locally via git but not listed in settings.packages (terminal may load them another way; desktop will not).",
@@ -1320,7 +1361,8 @@
       "lan": "LAN",
       "tailscale": "Tailscale",
       "overlay": "VPN",
-      "public": "Wide area"
+      "public": "Wide area",
+      "relay": "Relay"
     },
     "pairing": "Pairing",
     "pairingDesc": "Scan the code with the phone app to pair. On Windows, allow pi Desktop on private networks in the firewall.",
@@ -1346,7 +1388,6 @@
     "addHost": "Add",
     "removeHost": "Remove {{host}}",
     "tunnelHint": "Tunnel example: cloudflared tunnel --url https://127.0.0.1:{{port}} --no-tls-verify, then add the hostname it prints.",
-
     "devices": "Devices",
     "noDevices": "No phones paired yet.",
     "online": "Online",
@@ -1362,7 +1403,38 @@
     "projects": "Projects",
     "projectsDesc": "Phones see the same project list as this desktop — no per-project approval.",
     "projectsShared": "Projects you open later appear on the phone automatically; to limit what the phone sees, change the project list on this desktop.",
-    "noProjects": "No projects opened yet."
+    "noProjects": "No projects opened yet.",
+    "relay": "Self-hosted relay",
+    "relayDesc": "Your own relay server: the desktop dials out, the phone comes in from any network. No cloudflared / frp, and the phone never needs a VPN. The relay only moves bytes — content stays end-to-end encrypted.",
+    "relayUrl": "Relay address",
+    "relayUrlDesc": "host:port of your server (pick a region near you for the lowest latency).",
+    "relayToken": "Token",
+    "relayTokenDesc": "Must match the server's --token; without it nobody can attach a desktop.",
+    "relaySave": "Save &amp; connect",
+    "relayRemove": "Turn relay off",
+    "relayConnected": "Connected",
+    "relayDisconnected": "Not connected",
+    "relayLatency": "{{ms}} ms",
+    "relayClients": "{{count}} phone(s) on this relay",
+    "relayRoom": "Room {{room}}",
+    "relayHint": "Deploy with: node scripts/relay/server.mjs --port 8443 --token &lt;token&gt;, behind caddy / nginx for the certificate. If the desktop runs a VPN, add the relay host to its bypass list — otherwise this machine reaches the relay the long way around and latency gets worse.",
+    "relayInvalid": "That address does not parse: use host or host:port.",
+    "relayProbe": "Check certificate",
+    "relayProbeFailed": "Could not read a certificate: check the address/port and that the relay is running.",
+    "relayTrust": "Trust &amp; save",
+    "relayPinned": "Certificate trusted {{pin}}…",
+    "relayWizard": "Setup guide (for other people's installs)",
+    "relayWizardDesc": "When someone else wants their phone to reach their own desktop, they run one command on their own server.",
+    "relayWizardShow": "Show guide",
+    "relayWizardHide": "Hide guide",
+    "relayStep1": "Get a small server with a public IP (any 1 vCPU / 1 GB box is enough) and log in as root.",
+    "relayStep2": "Generate a token, copy the command below onto that server; it installs the service, enables it on boot, mints a certificate and prints the address / token / fingerprint.",
+    "relayStep3": "Open the same port in the cloud firewall (security group); then fill the address and token here, click Check certificate → Trust & save, and re-scan the pairing QR on the phone.",
+    "relayTokenGenerate": "Generate token",
+    "relayTokenRegenerate": "New token",
+    "relayCopyCommand": "Copy command",
+    "relayCommandHint": "Click Generate token first — the paste-ready command shows up here.",
+    "relayWizardNote": "The token is shown only here; keep it somewhere safe. It is the same value as the Token field above."
   },
   "purge": {
     "description": "Takes over pi's system prompt: once enabled, the next message in this session runs on your local persona instead of pi's built-in identity and refusal wording. Prompt-only — the app itself is not patched.",
@@ -1441,7 +1513,7 @@
     "restored": "Restored from that backup",
     "failed": "Failed — check the logs"
   },
-  "imageGen":   {
+  "imageGen": {
     "title": "Image generation",
     "description": "Generate images through the app itself: your local ChatGPT/Codex subscription auth, or any OpenAI-compatible endpoint. With this on, the agent uses the built-in image_gen tool instead of an MCP image server.",
     "provider": "Channel",

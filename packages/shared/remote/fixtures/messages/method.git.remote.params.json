@@ -1,0 +1,9 @@
+{
+  "schema": "git.remote/params",
+  "value": {
+    "sessionKey": "/home/u/.pi/agent/sessions/--work-pi-app--/2026-10-05T14-02-11_a1b2.jsonl",
+    "action": "add",
+    "name": "origin",
+    "url": "git@github.com:q971668593/Pi-mx-Desktop.git"
+  }
+}

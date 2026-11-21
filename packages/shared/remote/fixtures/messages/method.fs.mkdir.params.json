@@ -1,0 +1,7 @@
+{
+  "schema": "fs.mkdir/params",
+  "value": {
+    "parent": "D:\\work",
+    "name": "new-project"
+  }
+}

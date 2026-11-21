@@ -50,7 +50,6 @@ import dev.pi.remote.app.ui.Spinner
 import dev.pi.remote.app.ui.formatAgo
 import dev.pi.remote.protocol.FileEntry
 import dev.pi.remote.protocol.FileReadResult
-import dev.pi.remote.protocol.GitCommit
 import kotlinx.coroutines.launch
 
 /** 与桌面端侧栏一致的 tab 顺序：文件 / Git / 工作团队 / 终端 / 浏览器。 */
@@ -85,15 +84,17 @@ fun SessionPanelTabs(
         Spacer(Modifier.height(6.dp))
         Hairline()
         when (tab) {
+            "run" -> if (runContent != null) runContent() else TeamTab(repo, sessionKey)
             "files" -> FilesTab(repo, sessionKey, canWrite)
-            "git" -> GitTab(repo, sessionKey)
-            "team" -> TeamTab(repo, sessionKey)
+            // Git 面板：电脑端「更改 / 图谱 / 分支 / 命令记录 / 更多」整套都在 GitPanel 里。
+            "git" -> GitPanel(repo, sessionKey)
             else -> TeamTab(repo, sessionKey)
         }
     }
 }
 
 private fun tabLabel(key: String) = when (key) {
+    "run" -> R.string.panel_tab_run
     "files" -> R.string.panel_tab_files
     "git" -> R.string.panel_tab_git
     else -> R.string.panel_tab_team
@@ -233,43 +234,6 @@ private fun FilesTab(repo: RemoteRepository, sessionKey: String, canWrite: Boole
                         Spacer(Modifier.width(10.dp))
                         Text(entry.name, style = Pi.t.secondary.copy(color = Pi.c.fg), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                         PiIcon(PiIcons.ChevronRight, Pi.c.fg3, 12.dp)
-                    }
-                    Hairline()
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun GitTab(repo: RemoteRepository, sessionKey: String) {
-    var commits by remember { mutableStateOf<List<GitCommit>?>(null) }
-    var isRepo by remember { mutableStateOf(true) }
-    LaunchedEffect(sessionKey) {
-        repo.gitLog(sessionKey).onSuccess {
-            isRepo = it.isRepo
-            commits = it.commits
-        }
-    }
-    Column(Modifier.fillMaxWidth()) {
-        SectionLabel(stringResource(R.string.git_title))
-        val list = commits
-        when {
-            list == null -> Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.Center) { Spinner(Pi.c.fg3, 16.dp) }
-            !isRepo -> Text(stringResource(R.string.git_not_repo), style = Pi.t.meta.copy(color = Pi.c.fg3), modifier = Modifier.padding(16.dp))
-            list.isEmpty() -> Text(stringResource(R.string.git_empty), style = Pi.t.meta.copy(color = Pi.c.fg3), modifier = Modifier.padding(16.dp))
-            else -> LazyColumn(Modifier.fillMaxWidth().heightIn(max = 380.dp)) {
-                items(list, key = { it.sha }) { commit ->
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(commit.short, style = Pi.t.meta.copy(fontFamily = FontFamily.Monospace, color = Pi.c.blue), modifier = Modifier.width(64.dp))
-                            Text(commit.subject, style = Pi.t.secondary.copy(color = Pi.c.fg), maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                        }
-                        Text(
-                            stringResource(R.string.git_by, commit.author, formatAgo(commit.at)),
-                            style = Pi.t.meta.copy(color = Pi.c.fg3),
-                            modifier = Modifier.padding(start = 64.dp, top = 2.dp),
-                        )
                     }
                     Hairline()
                 }

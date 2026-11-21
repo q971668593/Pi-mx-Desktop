@@ -33,6 +33,8 @@ export type RemoteStoredConfig = {
   tlsSpki?: string
   /** Public `host:port` entries (tunnel / port-forward) offered in the pair link. */
   publicHosts?: string[]
+  /** Self-hosted relay: the desktop dials out to it, the phone comes in through it. */
+  relay?: { url: string; room: string; token: string; pin?: string }
 }
 
 export const DEFAULT_REMOTE_PORT = 47900
@@ -41,6 +43,15 @@ const STORAGE_KEY = 'remote'
 export type PairResult = 'ok' | 'pair_expired' | 'pair_used' | 'unpaired'
 
 const randomId = (prefix: string, bytes = 9) => `${prefix}_${base64UrlEncode(randomBytes(bytes))}`
+
+/** Stored relay config, sanity-checked (a half-written record must not break the gateway). */
+function parseRelay(raw: unknown): { url: string; room: string; token: string; pin?: string } | null {
+  if (!raw || typeof raw !== 'object') return null
+  const { url, room, token, pin } = raw as { url?: unknown; room?: unknown; token?: unknown; pin?: unknown }
+  if (typeof url !== 'string' || typeof room !== 'string' || typeof token !== 'string') return null
+  if (!url.trim() || !room.trim()) return null
+  return { url: url.trim(), room: room.trim(), token: token.trim(), ...(typeof pin === 'string' && pin ? { pin } : {}) }
+}
 
 function sameSecret(a: string, b: string): boolean {
   const x = Buffer.from(a)
@@ -73,6 +84,7 @@ export class AuthStore {
       ...(typeof raw?.tlsCertPem === 'string' ? { tlsCertPem: raw.tlsCertPem } : {}),
       ...(typeof raw?.tlsSpki === 'string' ? { tlsSpki: raw.tlsSpki } : {}),
       publicHosts: Array.isArray(raw?.publicHosts) ? raw.publicHosts.filter((h): h is string => typeof h === 'string') : [],
+      ...(parseRelay(raw?.relay) ? { relay: parseRelay(raw?.relay)! } : {}),
     }
     if (!raw?.hostId) this.save()
   }
@@ -164,6 +176,23 @@ export class AuthStore {
     this.cfg.devices = []
     this.save()
     this.tlsMaterial(altNames)
+  }
+
+  /** 自建中转配置；房间号第一次生成后就不再变（配对链接里带着它）。 */
+  setRelay(config: { url: string; token: string; pin?: string } | null): void {
+    if (!config || !config.url.trim()) {
+      delete this.cfg.relay
+      this.save()
+      return
+    }
+    const room = this.cfg.relay?.room || `r_${base64UrlEncode(randomBytes(16))}`
+    const pin = config.pin?.trim() || this.cfg.relay?.pin
+    this.cfg.relay = { url: config.url.trim(), room, token: config.token.trim(), ...(pin ? { pin } : {}) }
+    this.save()
+  }
+
+  get relay(): { url: string; room: string; token: string; pin?: string } | null {
+    return this.cfg.relay ? { ...this.cfg.relay } : null
   }
 
   setPublicHosts(hosts: string[]): void {

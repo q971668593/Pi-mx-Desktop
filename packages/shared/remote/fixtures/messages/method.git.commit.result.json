@@ -1,0 +1,7 @@
+{
+  "schema": "git.commit/result",
+  "value": {
+    "committed": true,
+    "pushed": true
+  }
+}

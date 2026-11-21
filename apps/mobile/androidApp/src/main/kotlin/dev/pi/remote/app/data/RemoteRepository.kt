@@ -23,6 +23,9 @@ import dev.pi.remote.protocol.PairOffer
 import dev.pi.remote.protocol.FileReadResult
 import dev.pi.remote.protocol.FileWriteResult
 import dev.pi.remote.protocol.GitLogResult
+import dev.pi.remote.protocol.FsBrowseResult
+import dev.pi.remote.protocol.GitOverview
+import dev.pi.remote.protocol.GitParams
 import dev.pi.remote.protocol.ProjectInfo
 import dev.pi.remote.protocol.RemoteJson
 import dev.pi.remote.protocol.SessionSummary
@@ -134,6 +137,7 @@ class RemoteRepository(
         val c = HostConnection(
             scope, offer.endpoints, Base64Url.decode(offer.hostPub), keyVault.identity(), deviceName, platform, helloParams, offer.pairToken,
             tlsPin = offer.tls,
+            relayPin = offer.relayTls,
             onPaired = { p: Hs2Payload ->
                 // Re-pairing the same computer keeps the addresses the user typed in.
                 val manual = hostStore.hosts.firstOrNull { it.hostId == p.hostId }?.manualEndpoints.orEmpty()
@@ -245,6 +249,7 @@ class RemoteRepository(
         val c = HostConnection(
             scope, host.allEndpoints, Base64Url.decode(host.hostPub), keyVault.identity(), deviceName, platform, helloParams,
             tlsPin = host.tlsPin,
+            relayPin = host.relayTlsPin,
         )
         conn = c
         api = RemoteApi(c)
@@ -478,6 +483,21 @@ class RemoteRepository(
     suspend fun writeFile(key: String, path: String, content: String, expectedRevision: String? = null): Result<FileWriteResult> =
         runCatching { api?.writeFile(key, path, content, expectedRevision) ?: error("offline") }
 
+    /** 手机「新建项目」：翻电脑目录（[path] 为空时给盘符 / 用户目录）。 */
+    suspend fun browseDirs(path: String? = null, dotfiles: Boolean = false): Result<FsBrowseResult> =
+        runCatching { api?.browseDirs(path, dotfiles) ?: error("offline") }
+
+    /** 在电脑上新建一个文件夹（当新项目用）。 */
+    suspend fun makeDir(parent: String, name: String): Result<String> =
+        runCatching { api?.makeDir(parent, name) ?: error("offline") }
+
+    /** 把一个电脑目录登记成项目，返回项目（电脑侧栏里也会出现）。 */
+    suspend fun addProject(path: String): Result<dev.pi.remote.protocol.ProjectInfo> = runCatching {
+        val project = api?.addProject(path) ?: error("offline")
+        runCatching { refreshInbox() }
+        project
+    }
+
     /** 和电脑侧栏同一份隐藏列表：隐藏/恢复后立刻重拉项目列表。 */
     suspend fun setProjectHidden(projectId: String, hidden: Boolean): Boolean {
         val a = api ?: return false
@@ -491,6 +511,21 @@ class RemoteRepository(
 
     suspend fun gitLog(key: String, limit: Int = 20): Result<GitLogResult> =
         runCatching { api?.gitLog(key, limit) ?: error("offline") }
+
+    /** 手机端 Git 面板：读一眼全貌（分支、改动、图谱、分支表、stash/tag/remote/worktree）。 */
+    suspend fun gitOverview(key: String, skip: Int? = null, query: String? = null, author: String? = null): Result<GitOverview> =
+        runCatching { api?.gitOverview(key, skip, query, author) ?: error("offline") }
+
+    /** 任意 git 方法与结果解码：动作类方法用 `Empty`，列表类用对应 result。 */
+    suspend fun <T> gitCall(
+        method: String,
+        params: GitParams,
+        ser: kotlinx.serialization.KSerializer<T>,
+        timeoutMs: Long = 60_000,
+    ): Result<T> = runCatching {
+        val a = api ?: error("offline")
+        RemoteJson.decodeFromJsonElement(ser, a.gitRaw(method, params, timeoutMs))
+    }
 
     /** One file for the phone reader: text (capped) or an image as base64. */
     suspend fun readFile(key: String, path: String): Result<FileReadResult> =
@@ -622,20 +657,57 @@ class RemoteRepository(
 
     val canWrite: Boolean get() = (hello?.role ?: _active.value?.role) == "operator"
 
-    /** mermaid.min.js served by the desktop, verified against the hash from the encrypted hello. */
+    /**
+     * mermaid.min.js 从电脑取：优先走加密会话（`asset.get` 分块），经自建中转也能拿到；
+     * 老电脑端没有这个方法时才退回原来的 HTTP 取法。落地后按 hello 里的 sha256 校验，坏的不落盘。
+     */
     suspend fun mermaidScript(): File? = withContext(Dispatchers.IO) {
-        val info = hello?.assets?.firstOrNull { it.name == "mermaid.min.js" } ?: return@withContext null
+        val info = hello?.assets?.firstOrNull { it.name == MERMAID_ASSET } ?: return@withContext null
         val file = File(assetDir, "${info.sha256}.js")
         if (file.exists()) return@withContext file
-        val endpoint = (conn?.state?.value as? HostConnection.State.Ready)?.endpoint ?: return@withContext null
-        val u = URI(endpoint)
-        runCatching {
-            val bytes = URI("http", null, u.host, u.port, "/assets/mermaid.min.js", null, null).toURL().openStream().use { it.readBytes() }
-            val sha = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-            if (sha != info.sha256) return@runCatching null
-            assetDir.mkdirs()
-            file.writeBytes(bytes)
-            file
+        val bytes = fetchAssetOverSession(MERMAID_ASSET, info.size) ?: fetchAssetOverHttp(info)
+        if (bytes == null) return@withContext null
+        val sha = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+        if (!sha.equals(info.sha256, ignoreCase = true)) return@withContext null
+        assetDir.mkdirs()
+        // 先写临时文件再改名：中途断线不会留下半个脚本
+        val tmp = File(assetDir, "${info.sha256}.part")
+        tmp.writeBytes(bytes)
+        if (!tmp.renameTo(file)) {
+            tmp.delete()
+            return@withContext null
+        }
+        file
+    }
+
+    /** 分块取回整个资源；任一块失败就返回 null（交给旧的 HTTP 兜底）。 */
+    private suspend fun fetchAssetOverSession(name: String, expectedSize: Long): ByteArray? {
+        val a = api ?: return null
+        val out = java.io.ByteArrayOutputStream(expectedSize.toInt().coerceAtLeast(64 * 1024))
+        var offset = 0
+        while (true) {
+            val chunk = runCatching { a.assetChunk(name, offset, ASSET_CHUNK) }.getOrNull() ?: return null
+            val raw = runCatching { android.util.Base64.decode(chunk.data, android.util.Base64.DEFAULT) }.getOrNull() ?: return null
+            out.write(raw)
+            offset = chunk.offset + raw.size
+            if (offset >= chunk.total || raw.isEmpty()) break
+        }
+        return out.toByteArray()
+    }
+
+    /** 老电脑端（没有 `asset.get`）的兜底：明文 HTTP 直取，拿到后同样按 sha256 校验。 */
+    private fun fetchAssetOverHttp(info: dev.pi.remote.protocol.AssetInfo): ByteArray? {
+        val endpoint = (conn?.state?.value as? HostConnection.State.Ready)?.endpoint ?: return null
+        return runCatching {
+            val u = URI(endpoint)
+            URI("http", null, u.host, u.port, "/assets/${info.name}", null, null).toURL().openStream().use { it.readBytes() }
         }.getOrNull()
     }
+
 }
+
+/** 手机端唯一需要的静态资源（图表渲染）。 */
+private const val MERMAID_ASSET = "mermaid.min.js"
+
+/** 分块大小：和电脑端 `ASSET_CHUNK_MAX` 对齐。 */
+private const val ASSET_CHUNK = 1024 * 1024

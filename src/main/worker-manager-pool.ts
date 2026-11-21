@@ -18,6 +18,7 @@ import { resolveWslActiveSdk } from './wsl/sdk-resolve'
 import { syncWorkerBundleToWsl } from './wsl/worker-host'
 import { resolveUtilityEntry } from './utility-entry-path'
 import { recordTurnFileSnapshot } from './turn-file-snapshot-store'
+import { builtinExtensionPathsForWorker } from './builtin-extensions'
 
 export const extensionUiDialogSource = new Map<string, WorkerSlot>()
 
@@ -450,7 +451,9 @@ export async function forkWorkerForCwd(
     }
   })
   slot.initPromise = initPromise
-  transport.postMessage({ type: 'init', cwd: workerCwd, sdkPath })
+  // 随包内置的扩展（billion-context）：只交给桌面端的 worker，不写用户的 settings.packages。
+  const builtinExtensions = runtime.mode === 'wsl' ? [] : builtinExtensionPathsForWorker()
+  transport.postMessage({ type: 'init', cwd: workerCwd, sdkPath, builtinExtensions })
   return { slot, init: initPromise }
 }
 

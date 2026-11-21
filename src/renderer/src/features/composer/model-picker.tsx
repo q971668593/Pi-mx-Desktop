@@ -62,6 +62,7 @@ export function ModelPicker() {
   const [recents, setRecents] = useState<string[]>(() => readRecentModels())
   const [activeIndex, setActiveIndex] = useState(0)
   const listRef = useRef<HTMLDivElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
 
   const [loading, setLoading] = useState(() => isAvailableModelsPending())
 
@@ -193,6 +194,20 @@ export function ModelPicker() {
     [recentRows, groups, expanded, searching],
   )
 
+  // 搜索框必须稳地拿到焦点：弹层是 portal，autoFocus 偶尔会被输入框自己的 focus 逻辑抢回去，
+  // 表现就是「打字没反应，字都进了消息框」。这里落位后再显式聚焦一次。
+  useEffect(() => {
+    if (!open) return
+    // 两次：一次落位后，一次稍晚（有些聚焦逻辑在 rAF 之后才把光标抢回消息框）
+    const focusSearch = () => searchRef.current?.focus()
+    const frame = requestAnimationFrame(focusSearch)
+    const timer = window.setTimeout(focusSearch, 60)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.clearTimeout(timer)
+    }
+  }, [open])
+
   useEffect(() => setActiveIndex(0), [query])
   useEffect(() => {
     listRef.current?.querySelector('[data-nav-active]')?.scrollIntoView({ block: 'nearest' })
@@ -264,12 +279,26 @@ export function ModelPicker() {
       onClose={() => setOpen(false)}
     >
       <div className="border-b border-border/50 px-3 py-2">
-        <div className="flex items-center gap-2">
+        <div
+          className="flex items-center gap-2"
+          // 点这一行任何位置都算点搜索框
+          onPointerDown={(event) => {
+            if (event.target !== searchRef.current) {
+              event.preventDefault()
+              searchRef.current?.focus()
+            }
+          }}
+        >
           <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
           <input
+            ref={searchRef}
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            // 可打印字符不再往上冒泡：外层的全局快捷键/编辑器聚焦逻辑抢不到这些键
+            onKeyDownCapture={(e) => {
+              if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) e.stopPropagation()
+            }}
             onKeyDown={onSearchKeyDown}
             placeholder={t('composer:searchModelPlaceholder')}
             aria-label={t('composer:searchModelPlaceholder')}

@@ -1,9 +1,12 @@
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { TreeRow } from '../branches'
 import type { AppEvent } from '@shared/app-events'
 import type { CapabilityInfo } from '@shared/capabilities'
 import type { CacheWarming, CommandInfo, ContextStats, FileEntry, UiResponse } from '@shared/remote'
 import type { ToolCardDef } from '../../../extension-compat/adapter-schema'
-import type { HostSessionRow, HostTimelineItem, RemoteHostPort, RemoteTapSink, SendMode } from '../host-port'
+import type { GitBoardMethod, HostSessionRow, HostTimelineItem, RemoteHostPort, RemoteTapSink, SendMode } from '../host-port'
 
 /**
  * In-memory desktop for gateway tests and `scripts/remote-dev-host.mjs`. Sessions keep
@@ -216,6 +219,29 @@ export class FakeHost implements RemoteHostPort {
   projectInfo(path: string) {
     return path.includes('/sandbox-workspaces/') ? { temporary: true, label: '临时：问个问题' } : {}
   }
+  /** 手机「新建项目」：假主机上把路径当项目，顺便让 session.create 认得它。 */
+  async addProject(path: string): Promise<{ id: string; name: string }> {
+    if (!this.projects.includes(path)) this.projects.push(path)
+    return { id: path, name: path.replace(/[\/]+$/, '').split(/[\/]/).pop() || path }
+  }
+
+  async browseDirs(path: string, _dotfiles: boolean) {
+    if (!path.trim()) {
+      return { path: '', parent: null, roots: [{ name: '/work', path: '/work' }], dirs: [], truncated: false }
+    }
+    return {
+      path,
+      parent: '/',
+      roots: [{ name: '/work', path: '/work' }],
+      dirs: [{ name: 'pi-app', path: '/work/pi-app', repo: true }, { name: 'new-project', path: `${path}/new-project`, repo: false }],
+      truncated: false,
+    }
+  }
+
+  async makeDir(parent: string, name: string): Promise<string> {
+    return `${parent.replace(/[\/]+$/, '')}/${name}`
+  }
+
   async listSessions(projectId: string): Promise<HostSessionRow[]> {
     return [...this.sessions.values()].filter((s) => s.row.projectId === projectId && !this.unwritten.has(s.row.sessionFile)).map((s) => ({ ...s.row }))
   }
@@ -457,6 +483,52 @@ export class FakeHost implements RemoteHostPort {
       .filter((f) => f.toLowerCase().includes(q))
       .map((f) => ({ name: f.replace(/\/$/, '').split('/').pop()!, path: f.replace(/\/$/, ''), dir: f.endsWith('/') }))
   }
+
+  /** Git board fake: one changed file, one commit, no remotes — enough for the phone contract tests. */
+  async gitBoard(_projectId: string, method: GitBoardMethod, params: Record<string, unknown>) {
+    if (method === 'overview') {
+      return {
+        isRepo: true,
+        branch: 'main',
+        upstream: 'origin/main',
+        ahead: 1,
+        behind: 0,
+        files: [{ staged: '.', unstaged: 'M', path: 'src/app.ts', group: 'unstaged' }],
+        branches: [{ name: 'main', kind: 'local', current: true, short: 'abc1234', upstream: 'origin/main', ahead: 1, behind: 0, subject: 'feat: 首条提交' }],
+        commits: [
+          {
+            hash: '1'.repeat(40),
+            short: '1111111',
+            parents: [],
+            author: 'dev',
+            email: 'dev@example.com',
+            time: 1_700_000_000,
+            subject: 'feat: 首条提交',
+            decorations: 'HEAD -> main',
+          },
+        ],
+        hasMore: false,
+        stashes: [],
+        tags: ['v1.0.0'],
+        remotes: [{ name: 'origin', fetch: 'git@example.com:a.git', push: 'git@example.com:a.git' }],
+        worktrees: [],
+        operation: null,
+      }
+    }
+    if (method === 'diff') return { path: String(params.path || ''), lines: [{ k: 'add', n: 1, s: 'hello' }], truncated: false }
+    if (method === 'commitDetail') {
+      return { hash: String(params.ref || ''), subject: 'feat: 首条提交', body: '', author: 'dev', email: 'dev@example.com', time: 1_700_000_000, parents: [], files: [] }
+    }
+    if (method === 'log') return { entries: [] }
+    if (method === 'stash') return { stashes: [] }
+    if (method === 'tag') return { tags: [] }
+    if (method === 'worktree') return { worktrees: [] }
+    if (method === 'commit') return { committed: true, pushed: false }
+    if (method === 'suggestCommit') return { text: 'chore: 更新' }
+    if (method === 'sync') return { incoming: [], incomingCount: 0, tracking: true }
+    if (method === 'clone') return { path: String(params.path || '') }
+    return {}
+  }
   capabilityCatalog(): CapabilityInfo[] {
     return [
       { id: 'pi-ui', available: true, promptTokens: 2410, tools: 0 },
@@ -494,8 +566,19 @@ export class FakeHost implements RemoteHostPort {
     seal: (plain: string) => `sealed:${plain}`,
     open: (sealed: string) => (sealed.startsWith('sealed:') ? sealed.slice(7) : null),
   }
-  assetPath(): string | null {
-    return null
+  /** 测试用：把假资产写到临时目录，`asset.get` 就能读到真文件。 */
+  private fakeAssets = new Map<string, string>()
+
+  addAsset(name: string, content: string): void {
+    const dir = join(tmpdir(), 'pi-remote-fake-assets')
+    mkdirSync(dir, { recursive: true })
+    const file = join(dir, name)
+    writeFileSync(file, content)
+    this.fakeAssets.set(name, file)
+  }
+
+  assetPath(name: string): string | null {
+    return this.fakeAssets.get(name) ?? null
   }
   log(): void {}
 }

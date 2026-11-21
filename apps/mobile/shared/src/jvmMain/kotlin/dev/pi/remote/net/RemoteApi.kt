@@ -16,11 +16,31 @@ import dev.pi.remote.protocol.CommandListResult
 import dev.pi.remote.protocol.FileListParams
 import dev.pi.remote.protocol.FileWriteParams
 import dev.pi.remote.protocol.FileWriteResult
+import dev.pi.remote.protocol.AssetGetParams
+import dev.pi.remote.protocol.AssetGetResult
+import dev.pi.remote.protocol.FsBrowseParams
+import dev.pi.remote.protocol.FsBrowseResult
+import dev.pi.remote.protocol.FsMkdirParams
+import dev.pi.remote.protocol.FsMkdirResult
+import dev.pi.remote.protocol.ProjectAddParams
+import dev.pi.remote.protocol.ProjectAddResult
 import dev.pi.remote.protocol.ProjectSetHiddenParams
 import dev.pi.remote.protocol.FileReadParams
 import dev.pi.remote.protocol.FileReadResult
 import dev.pi.remote.protocol.GitLogParams
 import dev.pi.remote.protocol.GitLogResult
+import dev.pi.remote.protocol.GitCloneResult
+import dev.pi.remote.protocol.GitCommandLog
+import dev.pi.remote.protocol.GitCommitDetail
+import dev.pi.remote.protocol.GitCommitResult
+import dev.pi.remote.protocol.GitFileDiff
+import dev.pi.remote.protocol.GitOverview
+import dev.pi.remote.protocol.GitParams
+import dev.pi.remote.protocol.GitStashList
+import dev.pi.remote.protocol.GitSuggestResult
+import dev.pi.remote.protocol.GitSyncResult
+import dev.pi.remote.protocol.GitTagList
+import dev.pi.remote.protocol.GitWorktreeList
 import dev.pi.remote.protocol.FileListResult
 import dev.pi.remote.protocol.FileSearchParams
 import dev.pi.remote.protocol.FileSearchResult
@@ -53,6 +73,7 @@ import dev.pi.remote.protocol.ThinkingSetResult
 import dev.pi.remote.protocol.ToolDetailParams
 import dev.pi.remote.protocol.ToolDetailResult
 import dev.pi.remote.protocol.UiCancelParams
+import dev.pi.remote.protocol.RemoteJson
 import dev.pi.remote.protocol.UiResponse
 import dev.pi.remote.protocol.WatchListParams
 
@@ -78,10 +99,79 @@ class RemoteApi(private val c: HostConnection) {
         c.typedCall("file.read", FileReadParams.serializer(), FileReadParams(sessionKey, path), FileReadResult.serializer(), timeoutMs = 60_000)
     suspend fun writeFile(sessionKey: String, path: String, content: String, expectedRevision: String? = null) =
         c.typedCall("file.write", FileWriteParams.serializer(), FileWriteParams(sessionKey, path, content, expectedRevision), FileWriteResult.serializer())
+    /** 手机「新建项目」：翻电脑目录、建目录、把目录登记成项目。 */
+    suspend fun browseDirs(path: String? = null, dotfiles: Boolean = false) =
+        c.typedCall("fs.browse", FsBrowseParams.serializer(), FsBrowseParams(path, dotfiles.takeIf { it }), FsBrowseResult.serializer())
+    suspend fun makeDir(parent: String, name: String) =
+        c.typedCall("fs.mkdir", FsMkdirParams.serializer(), FsMkdirParams(parent, name), FsMkdirResult.serializer()).path
+    suspend fun addProject(path: String) =
+        c.typedCall("project.add", ProjectAddParams.serializer(), ProjectAddParams(path), ProjectAddResult.serializer()).project
+
+    /** 静态资源（mermaid.min.js）走会话通道：经中转也能拿到，而且是端到端加密的。 */
+    suspend fun assetChunk(name: String, offset: Int, limit: Int) =
+        c.typedCall("asset.get", AssetGetParams.serializer(), AssetGetParams(name, offset, limit), AssetGetResult.serializer(), 60_000)
+
     suspend fun setProjectHidden(projectId: String, hidden: Boolean) =
         c.typedCall("project.setHidden", ProjectSetHiddenParams.serializer(), ProjectSetHiddenParams(projectId, hidden), Empty.serializer())
     suspend fun gitLog(sessionKey: String, limit: Int = 20) =
         c.typedCall("git.log", GitLogParams.serializer(), GitLogParams(sessionKey, limit), GitLogResult.serializer())
+
+    // —— Git 面板：电脑端的功能在手机上逐个对应 ——
+    /** Raw call for the Git panel: one `GitParams` bag, result decoded by the caller. */
+    suspend fun gitRaw(method: String, params: GitParams, timeoutMs: Long = 60_000): kotlinx.serialization.json.JsonElement =
+        c.call(method, RemoteJson.encodeToJsonElement(GitParams.serializer(), params), timeoutMs)
+
+    private suspend fun <R> gitCall(method: String, params: GitParams, rs: kotlinx.serialization.KSerializer<R>, timeoutMs: Long = 60_000): R =
+        c.typedCall(method, GitParams.serializer(), params, rs, timeoutMs)
+
+    suspend fun gitOverview(sessionKey: String, skip: Int? = null, query: String? = null, author: String? = null) =
+        gitCall("git.overview", GitParams(sessionKey, skip = skip, query = query, author = author), GitOverview.serializer())
+
+    suspend fun gitStage(sessionKey: String, paths: List<String>) = gitCall("git.stage", GitParams(sessionKey, paths = paths), Empty.serializer())
+    suspend fun gitUnstage(sessionKey: String, paths: List<String>) = gitCall("git.unstage", GitParams(sessionKey, paths = paths), Empty.serializer())
+    suspend fun gitStageAll(sessionKey: String) = gitCall("git.stageAll", GitParams(sessionKey), Empty.serializer())
+    suspend fun gitUnstageAll(sessionKey: String) = gitCall("git.unstageAll", GitParams(sessionKey), Empty.serializer())
+    suspend fun gitDiscard(sessionKey: String, tracked: List<String> = emptyList(), untracked: List<String> = emptyList()) =
+        gitCall("git.discard", GitParams(sessionKey, tracked = tracked.ifEmpty { null }, untracked = untracked.ifEmpty { null }), Empty.serializer())
+    suspend fun gitExclude(sessionKey: String, paths: List<String>) = gitCall("git.exclude", GitParams(sessionKey, paths = paths), Empty.serializer())
+    suspend fun gitResolve(sessionKey: String, paths: List<String>, side: String) =
+        gitCall("git.resolve", GitParams(sessionKey, paths = paths, side = side), Empty.serializer())
+    suspend fun gitCommit(sessionKey: String, message: String, paths: List<String>? = null, action: String = "commit", remote: String? = null) =
+        gitCall("git.commit", GitParams(sessionKey, paths = paths, message = message, action = action, remote = remote), GitCommitResult.serializer())
+    suspend fun gitSuggestCommit(sessionKey: String, prompt: String? = null) =
+        gitCall("git.suggestCommit", GitParams(sessionKey, prompt = prompt), GitSuggestResult.serializer(), timeoutMs = 120_000)
+    suspend fun gitSync(sessionKey: String, action: String) =
+        gitCall("git.sync", GitParams(sessionKey, action = action), GitSyncResult.serializer(), timeoutMs = 180_000)
+    suspend fun gitBranch(sessionKey: String, action: String, name: String, from: String? = null, force: Boolean? = null) =
+        gitCall("git.branch", GitParams(sessionKey, name = name, action = action, from = from, force = force), Empty.serializer())
+    suspend fun gitMerge(sessionKey: String, ref: String, noFf: Boolean = false) =
+        gitCall("git.merge", GitParams(sessionKey, ref = ref, noFf = noFf.takeIf { it }), Empty.serializer())
+    suspend fun gitRebase(sessionKey: String, ref: String) = gitCall("git.rebase", GitParams(sessionKey, ref = ref), Empty.serializer())
+    suspend fun gitCherryPick(sessionKey: String, ref: String) = gitCall("git.cherryPick", GitParams(sessionKey, ref = ref), Empty.serializer())
+    suspend fun gitOperation(sessionKey: String, operation: String, action: String) =
+        gitCall("git.operation", GitParams(sessionKey, operation = operation, action = action), Empty.serializer())
+    suspend fun gitStash(sessionKey: String, action: String, message: String? = null, ref: String? = null, includeUntracked: Boolean = false) =
+        gitCall("git.stash", GitParams(sessionKey, action = action, message = message, ref = ref, includeUntracked = includeUntracked.takeIf { it }), GitStashList.serializer())
+    suspend fun gitTag(sessionKey: String, action: String, name: String? = null, target: String? = null, message: String? = null, remote: String? = null) =
+        gitCall("git.tag", GitParams(sessionKey, action = action, name = name, target = target, message = message, remote = remote), GitTagList.serializer())
+    suspend fun gitRemote(sessionKey: String, action: String, name: String, url: String? = null, to: String? = null, branch: String? = null) =
+        gitCall("git.remote", GitParams(sessionKey, action = action, name = name, url = url, to = to, branch = branch), Empty.serializer(), timeoutMs = 180_000)
+    suspend fun gitWorktree(sessionKey: String, action: String, path: String? = null, branch: String? = null, create: Boolean = false) =
+        gitCall("git.worktree", GitParams(sessionKey, action = action, path = path, branch = branch, create = create.takeIf { it }), GitWorktreeList.serializer(), timeoutMs = 180_000)
+    suspend fun gitDiff(sessionKey: String, path: String, staged: Boolean = false, commit: String? = null) =
+        gitCall("git.diff", GitParams(sessionKey, path = path, staged = staged.takeIf { it }, commit = commit), GitFileDiff.serializer())
+    suspend fun gitCommitDetail(sessionKey: String, ref: String) =
+        gitCall("git.commitDetail", GitParams(sessionKey, ref = ref), GitCommitDetail.serializer())
+    suspend fun gitReset(sessionKey: String, hash: String, mode: String) =
+        gitCall("git.reset", GitParams(sessionKey, hash = hash, mode = mode), Empty.serializer())
+    suspend fun gitCheckout(sessionKey: String, ref: String) = gitCall("git.checkout", GitParams(sessionKey, ref = ref), Empty.serializer())
+    suspend fun gitCheckoutCommit(sessionKey: String, ref: String) = gitCall("git.checkoutCommit", GitParams(sessionKey, ref = ref), Empty.serializer())
+    suspend fun gitInit(sessionKey: String) = gitCall("git.init", GitParams(sessionKey), Empty.serializer())
+    suspend fun gitClone(sessionKey: String, url: String, path: String) =
+        gitCall("git.clone", GitParams(sessionKey, url = url, path = path), GitCloneResult.serializer(), timeoutMs = 300_000)
+    suspend fun gitCommandLog(sessionKey: String, limit: Int? = null) =
+        gitCall("git.commandLog", GitParams(sessionKey, limit = limit), GitCommandLog.serializer())
+    suspend fun gitClearCommandLog(sessionKey: String) = gitCall("git.clearCommandLog", GitParams(sessionKey), Empty.serializer())
     suspend fun branches(sessionKey: String) = c.typedCall("session.branches", SessionKeyParams.serializer(), SessionKeyParams(sessionKey), BranchesResult.serializer()).branches
     suspend fun switchBranch(sessionKey: String, leafId: String) = c.typedCall("session.switchBranch", SwitchBranchParams.serializer(), SwitchBranchParams(sessionKey, leafId), Empty.serializer())
     suspend fun fork(sessionKey: String, anchor: String) = c.typedCall("session.fork", RewindParams.serializer(), RewindParams(sessionKey, anchor), ForkResult.serializer())

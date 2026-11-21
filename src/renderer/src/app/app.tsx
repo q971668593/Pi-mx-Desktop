@@ -281,6 +281,11 @@ export default function App() {
           const workspaceIds = [event.workspaceId]
           void import('@renderer/lib/refresh-workspace-session-lists').then((m) => m.refreshWorkspaceSessionLists({ workspaceIds }))
         }
+        if (event.key === 'projects') {
+          // 手机那边加了项目 / 改了隐藏：侧栏跟电脑端自己改完一样重拉一次。
+          window.dispatchEvent(new CustomEvent('pi-desktop:settings-changed', { detail: { key: 'recentProjects' } }))
+          window.dispatchEvent(new CustomEvent('pi-desktop:settings-changed', { detail: { key: 'hiddenWorktrees' } }))
+        }
         return
       }
       useUIStore.getState().processEvent(event)

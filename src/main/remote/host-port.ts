@@ -26,6 +26,44 @@ export type HostFileRead = {
 
 export type HostGitCommit = { sha: string; short: string; subject: string; author: string; at: number; refs?: string[] }
 
+/** One folder row of the phone's project picker. */
+export type HostDirEntry = { name: string; path: string; repo: boolean }
+export type HostDirListing = { path: string; parent: string | null; roots: Array<{ name: string; path: string }>; dirs: HostDirEntry[]; truncated: boolean }
+
+/** Git board operations the phone can drive; each maps to the desktop's own `gitBoard.*` handler. */
+export const GIT_BOARD_METHODS = [
+  'overview',
+  'stage',
+  'unstage',
+  'stageAll',
+  'unstageAll',
+  'discard',
+  'exclude',
+  'resolve',
+  'commit',
+  'suggestCommit',
+  'sync',
+  'branch',
+  'merge',
+  'rebase',
+  'cherryPick',
+  'operation',
+  'stash',
+  'tag',
+  'remote',
+  'worktree',
+  'diff',
+  'commitDetail',
+  'reset',
+  'checkout',
+  'checkoutCommit',
+  'init',
+  'clone',
+  'log',
+  'clearLog',
+] as const
+export type GitBoardMethod = (typeof GIT_BOARD_METHODS)[number]
+
 export type HostSessionRow = {
   sessionFile: string
   projectId: string
@@ -86,6 +124,15 @@ export interface RemoteHostPort {
   setProjectHidden(projectId: string, hidden: boolean): void
   /** Display info for a project folder: temporary chats live in sandbox dirs named by a random id. */
   projectInfo?(path: string): { label?: string; temporary?: boolean }
+  /**
+   * Add a folder of this machine as a project the way the desktop does (recent projects + sidebar);
+   * the phone can then create a session in it. `path` must be an existing folder.
+   */
+  addProject(path: string): Promise<{ id: string; name: string }>
+  /** One level of the desktop filesystem, for the phone's 「新建项目」folder picker. */
+  browseDirs(path: string, dotfiles: boolean): Promise<HostDirListing>
+  /** Create a folder on the desktop (a brand-new project folder). */
+  makeDir(parent: string, name: string): Promise<string>
   listSessions(projectId: string): Promise<HostSessionRow[]>
   /** Workspace the session belongs to (header cwd), or null when unknown / unreadable. */
   sessionProject(sessionFile: string): Promise<string | null>
@@ -140,6 +187,11 @@ export interface RemoteHostPort {
   writeFile(projectId: string, path: string, content: string, expectedRevision?: string): Promise<{ size: number; revision: string } | null>
   /** `git log` of the project (the phone's Git view); `isRepo:false` outside a repository. */
   gitLog(projectId: string, limit: number): Promise<{ isRepo: boolean; commits: HostGitCommit[] }>
+  /**
+   * The desktop git board behind the phone's Git tab: `params` are the `gitBoard.*` handler params
+   * (without `cwd`). Implementations reuse the desktop handler so behaviour cannot drift.
+   */
+  gitBoard(projectId: string, method: GitBoardMethod, params: Record<string, unknown>): Promise<Record<string, unknown>>
   /** Delete a session file (same operation as the desktop's 删除对话). */
   deleteSession(sessionFile: string, projectId: string): Promise<boolean>
   searchFiles(projectId: string, query: string): Promise<FileEntry[]>

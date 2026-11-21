@@ -14,6 +14,12 @@ export type PtyProcess = {
 }
 export type SpawnPty = (file: string, args: string[], opts: { name: string; cols: number; rows: number; cwd: string; env: NodeJS.ProcessEnv }) => PtyProcess
 
+/** 比较路径用：Windows 不分大小写、分隔符统一成 `/`、去掉结尾斜杠。 */
+function normalizePath(value: string): string {
+  const text = String(value || '').trim().replace(/\\/g, '/').replace(/\/+$/, '')
+  return process.platform === 'win32' ? text.toLowerCase() : text
+}
+
 function interactiveShellArgs(profile: ShellProfile): string[] {
   if (process.platform !== 'win32' || profile.kind !== 'bash' || profile.name !== 'Git Bash') return profile.args
   const rcfile = join(tmpdir(), 'pi-desktop-git-bash-prompt.rc')
@@ -154,6 +160,24 @@ export class PtyManager {
 
   killAll(): void {
     for (const id of [...this.ptys.keys()]) this.kill(id)
+  }
+
+  /**
+   * 项目被隐藏 / 从列表移除时，把它底下起的终端全部停掉。
+   * 只认 workspace 落在该目录内（含子目录）的，别人的终端不受影响。
+   */
+  killWorkspace(root: string): string[] {
+    const wanted = normalizePath(root)
+    if (!wanted) return []
+    const killed: string[] = []
+    for (const [id, entry] of [...this.ptys]) {
+      const workspace = normalizePath(entry.workspace)
+      if (workspace === wanted || workspace.startsWith(`${wanted}/`)) {
+        this.kill(id)
+        killed.push(id)
+      }
+    }
+    return killed
   }
 
   private push(id: string, data: string): void {

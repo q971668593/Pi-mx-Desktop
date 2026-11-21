@@ -1,6 +1,6 @@
 {
   "name": "pi-desktop",
-  "version": "1.1.8",
+  "version": "1.1.9",
   "description": "Pi mx Desktop — a desktop workbench for the pi coding agent",
   "main": "./out/main/index.js",
   "author": "pi-desktop",
@@ -23,6 +23,7 @@
     "preview": "electron-vite preview",
     "start": "electron-vite preview",
     "test:scripts": "node scripts/run-contract-tests.mjs",
+    "relay": "node scripts/relay/server.mjs",
     "gen:ipc": "node scripts/generate-ipc-channels.mjs",
     "check:i18n": "node scripts/check-i18n-parity.mjs",
     "test:unit": "vitest run",

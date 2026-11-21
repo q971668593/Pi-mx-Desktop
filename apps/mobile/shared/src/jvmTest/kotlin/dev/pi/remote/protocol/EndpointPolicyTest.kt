@@ -38,6 +38,18 @@ class EndpointPolicyTest {
         assertTrue(error is PairLinkException)
     }
 
+    @Test fun relayEndpointsCarryARoomPath() {
+        // 自建中转：wss://relay.example.com:443/c/<房间>，路径不能把地址判成非法
+        assertTrue(Pairing.isPublicEndpoint("wss://relay.example.com:443/c/r_abc123"))
+        val offer = PairOffer(
+            v = 1, hostId = "h", hostName = "pc", hostPub = "k",
+            endpoints = listOf("wss://relay.example.com:443/c/r_abc123", "wss://192.168.1.5:47900"),
+            pairToken = "t".repeat(16), exp = 0,
+        )
+        val decoded = Pairing.decodeLink(Pairing.encodeLink(offer))!!
+        assertEquals(listOf("wss://relay.example.com:443/c/r_abc123", "wss://192.168.1.5:47900"), decoded.endpoints)
+    }
+
     @Test fun pairLinkKeepsTheTlsPin() {
         val offer = PairOffer(v = 1, hostId = "h", hostName = "pc", hostPub = "k", endpoints = listOf("wss://192.168.1.5:47900"), pairToken = "t".repeat(16), exp = 0, tls = "pin-value")
         val decoded = Pairing.decodeLink(Pairing.encodeLink(offer))!!

@@ -15,6 +15,8 @@ data class PairOffer(
     val endpoints: List<String>,
     /** base64url(sha256(SPKI)) of the host's TLS certificate; the phone pins it. */
     val tls: String? = null,
+    /** 自建中转用自签证书时的指纹：手机只对中转那一段认这把证书。 */
+    val relayTls: String? = null,
     val pairToken: String,
     val exp: Long,
 )
@@ -122,8 +124,9 @@ object Pairing {
 
     private val dnsName = Regex("^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*\\.?$")
 
+    /** `wss://host:port`，也允许带路径（自建中转是 `wss://host:port/c/<房间>`）。 */
     private fun endpointHost(endpoint: String): String? {
-        val m = Regex("^wss?://(\\[[^\\]]+]|[^:/]+):(\\d{1,5})/?$").matchEntire(endpoint) ?: return null
+        val m = Regex("^wss?://(\\[[^\\]]+]|[^:/]+):(\\d{1,5})(/[^\\s?#]*)?$", RegexOption.IGNORE_CASE).matchEntire(endpoint) ?: return null
         return m.groupValues[1].takeIf { m.groupValues[2].toInt() in 1..65535 }
     }
 }

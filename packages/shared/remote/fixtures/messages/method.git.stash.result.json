@@ -1,0 +1,11 @@
+{
+  "schema": "git.stash/result",
+  "value": {
+    "stashes": [
+      {
+        "ref": "stash@{0}",
+        "message": "WIP on main: 12ab34 草稿"
+      }
+    ]
+  }
+}

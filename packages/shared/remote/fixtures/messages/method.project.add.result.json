@@ -1,0 +1,9 @@
+{
+  "schema": "project.add/result",
+  "value": {
+    "project": {
+      "id": "D:\\work\\new-project",
+      "name": "new-project"
+    }
+  }
+}

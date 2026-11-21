@@ -15,6 +15,7 @@ import {
   contextMenuItemClass,
   contextMenuPanelClass,
   useDismissContextMenu,
+  useContextMenuPlacement,
 } from './context-menu-shared'
 import { RenamePromptDialog } from './rename-prompt-dialog'
 import { ConfirmDialog } from '@renderer/features/settings/confirm-dialog'
@@ -41,6 +42,9 @@ export function SessionContextMenuPortal({
   onSessionRemoved?: (payload: { sessionFile: string; workspacePath: string }) => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
+  // 菜单靠下时向上弹，否则底部几项会被窗口底边切掉。
+  const panelRef = useRef<HTMLDivElement>(null)
+  const placement = useContextMenuPlacement(!!menu, menu, panelRef)
   const { t } = useTranslation()
   const [renameTarget, setRenameTarget] = useState<SessionMenuTarget | null>(null)
   // In-app confirm: a native window.confirm leaves Windows Electron pages untypable (#94).
@@ -149,8 +153,9 @@ export function SessionContextMenuPortal({
             // One wrapper so outside-click dismissal treats the fork submenu as part of the menu.
             <div ref={ref}>
             <div
+              ref={panelRef}
               className={contextMenuPanelClass}
-              style={{ left: menu.x, top: menu.y }}
+              style={{ left: placement?.left ?? menu.x, top: placement?.top ?? menu.y, ...(placement ? {} : { visibility: 'hidden' as const }) }}
               role="menu"
               onPointerDown={(e) => e.stopPropagation()}
               onPointerOver={(e) => {

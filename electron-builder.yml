@@ -49,6 +49,11 @@ extraResources:
     to: purge
     filter:
       - "**/*"
+  # 内置上下文压缩扩展（billion-context，MIT）：随包携带，worker 按文件加载，不装 npm
+  - from: resources/billion-context
+    to: billion-context
+    filter:
+      - "**/*"
 
 win:
   target:

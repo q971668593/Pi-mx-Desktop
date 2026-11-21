@@ -9,6 +9,7 @@ import {
   contextMenuDangerItemClass,
   contextMenuItemClass,
   contextMenuPanelClass,
+  useContextMenuPlacement,
   useDismissContextMenu,
 } from './context-menu-shared'
 import { RenamePromptDialog } from './rename-prompt-dialog'
@@ -26,13 +27,15 @@ export function SandboxContextMenuPortal({
   onClose: () => void
   onListChange: () => void
 }) {
-  const ref = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   const { t } = useTranslation()
   const [renameState, setRenameState] = useState<RenameState>(null)
   // In-app confirm: a native window.confirm leaves Windows Electron pages untypable (#94).
   const [deleteState, setDeleteState] = useState<RenameState>(null)
 
-  useDismissContextMenu(!!menu, ref, onClose)
+  useDismissContextMenu(!!menu, panelRef, onClose)
+  // 靠下就向上弹：菜单底部几项不会被窗口底边切掉。
+  const placement = useContextMenuPlacement(!!menu, menu, panelRef)
 
   const submitRename = async (label: string) => {
     const state = renameState
@@ -79,9 +82,9 @@ export function SandboxContextMenuPortal({
       {menu
         ? createPortal(
             <div
-              ref={ref}
+              ref={panelRef}
               className={contextMenuPanelClass}
-              style={{ left: menu.x, top: menu.y }}
+              style={{ left: placement?.left ?? menu.x, top: placement?.top ?? menu.y, ...(placement ? {} : { visibility: 'hidden' as const }) }}
               role="menu"
               onPointerDown={(e) => e.stopPropagation()}
             >

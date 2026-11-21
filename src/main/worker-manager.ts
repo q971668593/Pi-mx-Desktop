@@ -1130,6 +1130,17 @@ export class WorkerManager {
     const slots = [...this.pool.values()].filter((slot) => !slot.stopping)
     await Promise.allSettled(slots.map((slot) => this.requestOnSlot(slot, type, data)))
   }
+  /**
+   * 有槽位因为正在跑 turn 而把模型重载推后了：它手里的注册表还是旧的。
+   * 这时 `model.list available` 不能信 worker，要回落到磁盘上的 SDK 快照。
+   */
+  get hasPendingModelReload(): boolean {
+    for (const key of [...this.pendingModelReload]) {
+      if (!this.pool.has(key)) this.pendingModelReload.delete(key)
+    }
+    return this.pendingModelReload.size > 0
+  }
+
   async reloadModels(): Promise<void> {
     if (!this.isRunning) return
     // 每个活着的 worker 各持一份模型注册表：新加/改过的 provider 必须落到所有 slot，

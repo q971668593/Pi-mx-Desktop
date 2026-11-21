@@ -5,10 +5,12 @@ import type { Duplex } from 'node:stream'
 import { WebSocketServer } from 'ws'
 import { normalizeSessionFileKey } from '@shared/session-file-key'
 import { base64UrlEncode, encodePairLink, isPrivateHost, type Role } from '@shared/remote'
+import { normalizeRelayBase, relayClientUrl } from '@shared/relay'
 import { AssetStore } from './assets'
 import { AuthStore, type DeviceRecord } from './auth-store'
 import { describeCert } from './cert'
 import { RemoteConnection } from './connection'
+import { RelayAgent, type RelayAgentStatus } from './relay-agent'
 import type { RemoteHostPort, RemoteTapSink } from './host-port'
 import { RemoteRpc } from './rpc'
 import { SessionHub } from './session-hub'
@@ -53,6 +55,10 @@ export type GatewayStatus = {
   tls: GatewayTlsInfo | null
   /** `host:port` entries used for wide-area access (tunnel or port forwarding). */
   publicHosts: string[]
+  /** Self-hosted relay: configured URL + whether the desktop's outbound link is alive right now. */
+  relay:
+    | (RelayAgentStatus & { configured: boolean; configuredUrl: string; configuredToken: boolean; pin?: string })
+    | null
 }
 
 export type GatewayTlsInfo = {
@@ -63,7 +69,7 @@ export type GatewayTlsInfo = {
   ephemeral: boolean
 }
 
-export type EndpointKind = 'lan' | 'tailscale' | 'overlay' | 'public'
+export type EndpointKind = 'lan' | 'tailscale' | 'overlay' | 'relay' | 'public'
 export type EndpointInfo = { url: string; kind: EndpointKind }
 
 /** Container bridges, proxy TUNs (Clash/mihomo, sing-box) and VM host-only nets: never reachable from the phone. */
@@ -118,6 +124,8 @@ export class RemoteGateway {
   private wss: WebSocketServer | null = null
   private listenError: string | undefined
   private readonly failures = new Map<string, { count: number; since: number }>()
+  private relayAgent: RelayAgent | null = null
+  private relayState: RelayAgentStatus | null = null
 
   constructor(
     private readonly port: RemoteHostPort,
@@ -197,11 +205,15 @@ export class RemoteGateway {
     this.listenError = undefined
     this.server = server
     this.wss = wss
+    this.startRelayAgent()
     setRemoteTapSink(this.sink)
     this.port.log('info', `[remote] gateway listening on :${this.boundPort}`)
   }
 
   async stop(): Promise<void> {
+    this.relayAgent?.stop()
+    this.relayAgent = null
+    this.relayState = null
     setRemoteTapSink(null)
     for (const c of [...this.conns]) c.close(1001, 'gateway stopped')
     this.conns.clear()
@@ -297,6 +309,8 @@ export class RemoteGateway {
         hostPub: base64UrlEncode(this.auth.hostKey().pub),
         endpoints,
         ...(this.tlsInfo ? { tls: this.tlsInfo.spki } : {}),
+        // 自建中转用自签证书时，把它的指纹一起给手机（否则手机只认公网证书链）
+        ...(this.auth.relay?.pin ? { relayTls: this.auth.relay.pin } : {}),
         pairToken: p.token,
         exp: p.exp,
       }),
@@ -321,11 +335,72 @@ export class RemoteGateway {
     const hosts = this.endpointHosts()
     const all: { host: string; kind: EndpointKind }[] = this.tailnetName ? [...hosts, { host: this.tailnetName, kind: 'tailscale' }] : [...hosts]
     // Wide-area entries come last: the phone tries LAN first and falls back here.
-    for (const entry of this.auth.publicHosts) all.push({ host: entry, kind: 'public' })
-    return all.map(({ host, kind }) => {
+    const out = all.map(({ host, kind }) => {
       const [name, port] = splitHostPort(host, this.boundPort)
       return { url: `wss://${name.includes(':') ? `[${name}]` : name}:${port}`, kind }
     })
+    // 自建中转：任何网络都能用，排在手工公网入口前面（那个最容易受 VPN 绕路影响）。
+    const relay = this.auth.relay
+    const relayBase = relay ? normalizeRelayBase(relay.url) : null
+    if (relay && relayBase) out.push({ url: relayClientUrl(relayBase, relay.room), kind: 'relay' })
+    for (const entry of this.auth.publicHosts) {
+      const [name, port] = splitHostPort(entry, this.boundPort)
+      out.push({ url: `wss://${name.includes(':') ? `[${name}]` : name}:${port}`, kind: 'public' })
+    }
+    return out
+  }
+
+  /** 自建中转：改配置后立刻换一条出站连接（不需要重启网关）。 */
+  setRelay(config: { url: string; token: string; pin?: string } | null): void {
+    this.auth.setRelay(config)
+    if (this.server) this.startRelayAgent(true)
+  }
+
+  private startRelayAgent(force = false): void {
+    const relay = this.auth.relay
+    const base = relay ? normalizeRelayBase(relay.url) : null
+    if (!relay || !base || !relay.token) {
+      this.relayAgent?.stop()
+      this.relayAgent = null
+      this.relayState = null
+      return
+    }
+    if (this.relayAgent && !force) return
+    this.relayAgent?.stop()
+    this.relayAgent = new RelayAgent({
+      url: base,
+      room: relay.room,
+      token: relay.token,
+      ...(relay.pin ? { pin: relay.pin } : {}),
+      localPort: () => this.boundPort,
+      onStatus: (status) => {
+        this.relayState = status
+      },
+      log: (level, message) => this.port.log(level, message),
+    })
+    this.relayState = this.relayAgent.status()
+    this.relayAgent.start()
+  }
+
+  private relayStatus(): GatewayStatus['relay'] {
+    const relay = this.auth.relay
+    if (!relay?.url) return null
+    const base = normalizeRelayBase(relay.url)
+    const live = this.relayState
+    const error = live?.error ?? (base ? undefined : 'invalid_url')
+    return {
+      configured: true,
+      configuredUrl: base ?? relay.url,
+      configuredToken: !!relay.token,
+      url: live?.url ?? base ?? relay.url,
+      room: relay.room,
+      connected: live?.connected ?? false,
+      latencyMs: live?.latencyMs ?? null,
+      connections: live?.connections ?? 0,
+      ...(relay.pin ? { pin: relay.pin } : {}),
+      ...(error ? { error } : {}),
+      since: live?.since ?? 0,
+    }
   }
 
   endpoints(): string[] {
@@ -396,6 +471,7 @@ export class RemoteGateway {
       trustedProjects: this.port.trustedProjects(),
       tls: this.listening ? this.tlsStatus() : null,
       publicHosts: this.auth.publicHosts,
+      relay: this.relayStatus(),
       projectInfo: Object.fromEntries(
         this.port.trustedProjects().flatMap((p) => {
           const info = this.port.projectInfo?.(p)

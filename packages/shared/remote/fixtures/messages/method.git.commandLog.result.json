@@ -1,0 +1,14 @@
+{
+  "schema": "git.commandLog/result",
+  "value": {
+    "entries": [
+      {
+        "time": 1760000000,
+        "command": "git status --porcelain=v2 -b",
+        "repo": "/work/pi-app",
+        "success": true,
+        "output": ""
+      }
+    ]
+  }
+}

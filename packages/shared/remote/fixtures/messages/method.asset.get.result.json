@@ -1,0 +1,10 @@
+{
+  "schema": "asset.get/result",
+  "value": {
+    "name": "mermaid.min.js",
+    "total": 2900000,
+    "offset": 0,
+    "sha256": "abababababababababababababababababababababababababababababababab",
+    "data": "KGZ1bmN0aW9uKCl7"
+  }
+}

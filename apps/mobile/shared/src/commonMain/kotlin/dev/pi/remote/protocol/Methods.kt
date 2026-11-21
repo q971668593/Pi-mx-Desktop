@@ -51,6 +51,32 @@ data class HelloResult(
 )
 
 @Serializable data class ProjectList(val projects: List<ProjectInfo>)
+@Serializable data class ProjectAddParams(val path: String)
+@Serializable data class ProjectAddResult(val project: ProjectInfo)
+
+// —— 手机选项目文件夹：一层一层翻电脑目录 ——
+@Serializable data class FsRoot(val name: String, val path: String)
+@Serializable data class FsDir(val name: String, val path: String, val repo: Boolean)
+@Serializable data class FsBrowseParams(val path: String? = null, val dotfiles: Boolean? = null)
+@Serializable data class FsBrowseResult(
+    val path: String,
+    val parent: String? = null,
+    val roots: List<FsRoot>,
+    val dirs: List<FsDir>,
+    val truncated: Boolean,
+)
+@Serializable data class AssetGetParams(val name: String, val offset: Int? = null, val limit: Int? = null)
+@Serializable data class AssetGetResult(
+    val name: String,
+    val total: Int,
+    val offset: Int,
+    val sha256: String,
+    val data: String,
+)
+
+@Serializable data class FsMkdirParams(val parent: String, val name: String)
+@Serializable data class FsMkdirResult(val path: String)
+
 @Serializable data class WatchListParams(val projectId: String? = null)
 @Serializable data class SessionList(val sessions: List<SessionSummary>)
 @Serializable data class SessionKeyParams(val sessionKey: String)
@@ -123,6 +149,126 @@ data class GitCommit(
 @Serializable data class GitLogParams(val sessionKey: String, val limit: Int? = null)
 @Serializable data class GitLogResult(val isRepo: Boolean, val commits: List<GitCommit>)
 
+// —— 手机端 Git 面板（与电脑端 gitBoard 面板一一对应） ——
+
+@Serializable
+data class GitChange(
+    val staged: String,
+    val unstaged: String,
+    val path: String,
+    val originalPath: String? = null,
+    val group: String,
+)
+
+@Serializable
+data class GitBranchRef(
+    val name: String,
+    val kind: String,
+    val current: Boolean,
+    val short: String,
+    val upstream: String? = null,
+    val ahead: Int,
+    val behind: Int,
+    val subject: String,
+)
+
+@Serializable
+data class GitGraphCommit(
+    val hash: String,
+    val short: String,
+    val parents: List<String>,
+    val author: String,
+    val email: String,
+    val time: Long,
+    val subject: String,
+    val decorations: String,
+)
+
+@Serializable data class GitStash(val ref: String, val message: String)
+@Serializable data class GitRemote(val name: String, val fetch: String, val push: String)
+@Serializable data class GitWorktree(val path: String, val head: String, val branch: String? = null)
+
+@Serializable
+data class GitOverview(
+    val isRepo: Boolean,
+    val branch: String,
+    val upstream: String? = null,
+    val ahead: Int,
+    val behind: Int,
+    val files: List<GitChange>,
+    val branches: List<GitBranchRef>,
+    val commits: List<GitGraphCommit>,
+    val hasMore: Boolean,
+    val stashes: List<GitStash>,
+    val tags: List<String>,
+    val remotes: List<GitRemote>,
+    val worktrees: List<GitWorktree>,
+    val operation: String? = null,
+)
+
+@Serializable data class GitFileDiff(val path: String, val lines: List<DiffLine>, val truncated: Boolean)
+@Serializable data class GitCommitFile(val status: String, val path: String)
+
+@Serializable
+data class GitCommitDetail(
+    val hash: String,
+    val subject: String,
+    val body: String,
+    val author: String,
+    val email: String,
+    val time: Long,
+    val parents: List<String>,
+    val files: List<GitCommitFile>,
+)
+
+@Serializable
+data class GitCommandEntry(val time: Long, val command: String, val repo: String, val success: Boolean, val output: String)
+
+@Serializable data class GitCommitResult(val committed: Boolean, val pushed: Boolean)
+@Serializable data class GitSyncIncoming(val hash: String, val subject: String)
+@Serializable data class GitSyncResult(val incoming: List<GitSyncIncoming>, val incomingCount: Int, val tracking: Boolean)
+@Serializable data class GitSuggestResult(val message: String)
+@Serializable data class GitStashList(val stashes: List<GitStash>)
+@Serializable data class GitTagList(val tags: List<String>)
+@Serializable data class GitWorktreeList(val worktrees: List<GitWorktree>)
+@Serializable data class GitCommandLog(val entries: List<GitCommandEntry>)
+@Serializable data class GitCloneResult(val path: String)
+
+/** One param bag for every `git.*` method: null fields are dropped, the host validates the rest. */
+@Serializable
+data class GitParams(
+    val sessionKey: String,
+    val paths: List<String>? = null,
+    val tracked: List<String>? = null,
+    val untracked: List<String>? = null,
+    val side: String? = null,
+    val message: String? = null,
+    val action: String? = null,
+    val remote: String? = null,
+    val prompt: String? = null,
+    val name: String? = null,
+    val from: String? = null,
+    val force: Boolean? = null,
+    val noFf: Boolean? = null,
+    val ref: String? = null,
+    val operation: String? = null,
+    val includeUntracked: Boolean? = null,
+    val target: String? = null,
+    val to: String? = null,
+    val branch: String? = null,
+    val path: String? = null,
+    val create: Boolean? = null,
+    val staged: Boolean? = null,
+    val commit: String? = null,
+    val hash: String? = null,
+    val mode: String? = null,
+    val url: String? = null,
+    val limit: Int? = null,
+    val skip: Int? = null,
+    val query: String? = null,
+    val author: String? = null,
+)
+
 @Serializable data class FileEntry(val name: String, val path: String, val dir: Boolean, val size: Long? = null, val mtime: Long? = null)
 @Serializable data class DiffLine(val k: String, val o: Int? = null, val n: Int? = null, val s: String)
 @Serializable data class DiffFile(val path: String, val add: Int, val del: Int, val status: String)
@@ -181,6 +327,10 @@ object RemoteMethods {
     val table: Map<String, Pair<KSerializer<*>, KSerializer<*>>> = mapOf(
         "host.hello" to (HelloParams.serializer() to HelloResult.serializer()),
         "project.list" to (Empty.serializer() to ProjectList.serializer()),
+        "project.add" to (ProjectAddParams.serializer() to ProjectAddResult.serializer()),
+        "fs.browse" to (FsBrowseParams.serializer() to FsBrowseResult.serializer()),
+        "fs.mkdir" to (FsMkdirParams.serializer() to FsMkdirResult.serializer()),
+        "asset.get" to (AssetGetParams.serializer() to AssetGetResult.serializer()),
         "session.watchList" to (WatchListParams.serializer() to SessionList.serializer()),
         "session.unwatchList" to (Empty.serializer() to Empty.serializer()),
         "session.open" to (OpenParams.serializer() to OpenResult.serializer()),
@@ -197,6 +347,36 @@ object RemoteMethods {
         "file.write" to (FileWriteParams.serializer() to FileWriteResult.serializer()),
         "project.setHidden" to (ProjectSetHiddenParams.serializer() to Empty.serializer()),
         "git.log" to (GitLogParams.serializer() to GitLogResult.serializer()),
+        // Git 面板：电脑端能看到、能做的，手机这边一一对应
+        "git.overview" to (GitParams.serializer() to GitOverview.serializer()),
+        "git.stage" to (GitParams.serializer() to Empty.serializer()),
+        "git.unstage" to (GitParams.serializer() to Empty.serializer()),
+        "git.stageAll" to (GitParams.serializer() to Empty.serializer()),
+        "git.unstageAll" to (GitParams.serializer() to Empty.serializer()),
+        "git.discard" to (GitParams.serializer() to Empty.serializer()),
+        "git.exclude" to (GitParams.serializer() to Empty.serializer()),
+        "git.resolve" to (GitParams.serializer() to Empty.serializer()),
+        "git.commit" to (GitParams.serializer() to GitCommitResult.serializer()),
+        "git.suggestCommit" to (GitParams.serializer() to GitSuggestResult.serializer()),
+        "git.sync" to (GitParams.serializer() to GitSyncResult.serializer()),
+        "git.branch" to (GitParams.serializer() to Empty.serializer()),
+        "git.merge" to (GitParams.serializer() to Empty.serializer()),
+        "git.rebase" to (GitParams.serializer() to Empty.serializer()),
+        "git.cherryPick" to (GitParams.serializer() to Empty.serializer()),
+        "git.operation" to (GitParams.serializer() to Empty.serializer()),
+        "git.stash" to (GitParams.serializer() to GitStashList.serializer()),
+        "git.tag" to (GitParams.serializer() to GitTagList.serializer()),
+        "git.remote" to (GitParams.serializer() to Empty.serializer()),
+        "git.worktree" to (GitParams.serializer() to GitWorktreeList.serializer()),
+        "git.diff" to (GitParams.serializer() to GitFileDiff.serializer()),
+        "git.commitDetail" to (GitParams.serializer() to GitCommitDetail.serializer()),
+        "git.reset" to (GitParams.serializer() to Empty.serializer()),
+        "git.checkout" to (GitParams.serializer() to Empty.serializer()),
+        "git.checkoutCommit" to (GitParams.serializer() to Empty.serializer()),
+        "git.init" to (GitParams.serializer() to Empty.serializer()),
+        "git.clone" to (GitParams.serializer() to GitCloneResult.serializer()),
+        "git.commandLog" to (GitParams.serializer() to GitCommandLog.serializer()),
+        "git.clearCommandLog" to (GitParams.serializer() to Empty.serializer()),
         "session.stats" to (SessionKeyParams.serializer() to SessionStatsResult.serializer()),
         "command.list" to (SessionKeyParams.serializer() to CommandListResult.serializer()),
         "turn.rewind" to (RewindParams.serializer() to RewindResult.serializer()),

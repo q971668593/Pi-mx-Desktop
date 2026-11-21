@@ -1,0 +1,20 @@
+{
+  "schema": "git.commitDetail/result",
+  "value": {
+    "hash": "ab12cd3000000000000000000000000000000000",
+    "subject": "feat: 手机端 Git 全量",
+    "body": "把电脑端 Git 面板的能力搬到手机。",
+    "author": "dev",
+    "email": "dev@example.com",
+    "time": 1760000000,
+    "parents": [
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    ],
+    "files": [
+      {
+        "status": "M",
+        "path": "src/remote/rpc.ts"
+      }
+    ]
+  }
+}

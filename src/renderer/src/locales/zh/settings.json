@@ -213,7 +213,9 @@
     "copied": "已复制",
     "fsHint": "提示：Windows 盘符下的项目在 WSL 里经 /mnt 访问，读写较慢；放在发行版文件系统里（\\\\wsl.localhost\\…）的项目会快得多。",
     "switchBusy": "有对话正在运行，结束后再切换运行时。",
-    "switchEnvUnavailable": "无法读取该发行版的环境，请确认它能正常启动（在终端运行 wsl -d <发行版>）。"
+    "switchEnvUnavailable": "无法读取该发行版的环境，请确认它能正常启动（在终端运行 wsl -d <发行版>）。",
+    "contextTitle": "上下文压缩（内置）",
+    "contextDesc": "随安装包自带，自动把过长的对话折叠成摘要，长任务不容易撞窗口。只影响桌面端的会话，终端里的 pi 不受影响；关掉后下一个新会话生效。"
   },
   "appearance": {
     "timeline": "时间线",
@@ -590,13 +592,26 @@
   "extensions": {
     "title": "插件",
     "description": "浏览并安装 Pi 插件，管理已安装插件与扩展状态；与终端 Pi 共用。",
-    "tab": { "market": "插件市场", "installed": "已安装" },
+    "tab": {
+      "market": "插件市场",
+      "installed": "已安装"
+    },
     "openOfficialMarket": "Pi 官方目录",
     "searchPlaceholder": "搜索插件名称、功能或作者…",
     "filterType": "按类型筛选",
     "sortBy": "排序方式",
-    "type": { "all": "全部类型", "extension": "扩展", "skill": "技能", "prompt": "提示词", "theme": "主题" },
-    "sort": { "downloads": "最受欢迎", "recent": "最近更新", "name": "名称 A–Z" },
+    "type": {
+      "all": "全部类型",
+      "extension": "扩展",
+      "skill": "技能",
+      "prompt": "提示词",
+      "theme": "主题"
+    },
+    "sort": {
+      "downloads": "最受欢迎",
+      "recent": "最近更新",
+      "name": "名称 A–Z"
+    },
     "marketHint": "目录数据来自 pi.dev。安装会执行第三方插件代码，建议先查看来源和说明。",
     "translationHint": "顶部切换后按需翻译可见内容。使用「设置 → 插件模型」中的模型，可能产生模型用量。",
     "translateTo": "翻译为{{language}}",
@@ -615,7 +630,13 @@
     "openCatalogDetails": "Pi 目录页面",
     "viewSource": "查看代码仓库",
     "overview": "插件介绍",
-    "detailField": { "version": "版本", "published": "发布时间", "downloads": "下载量", "license": "许可证", "dependencies": "依赖" },
+    "detailField": {
+      "version": "版本",
+      "published": "发布时间",
+      "downloads": "下载量",
+      "license": "许可证",
+      "dependencies": "依赖"
+    },
     "byAuthor": "作者：{{author}}",
     "installed": "已安装",
     "installPackage": "安装",
@@ -644,17 +665,37 @@
     "openSettingsFailed": "无法打开 Pi 配置文件",
     "loadDetails": "加载详情",
     "manageInstalled": "管理 {{name}}",
-    "capabilityStatus": {"ready": "可在会话启用", "configured": "已安装 · 待验证", "missing": "未安装", "unsupported": "系统不兼容", "unknown": "状态未知"},
-    "capabilityHelp": {"web-search": "使用搜索插件查找网页。在对话输入框的「工具」菜单中开启网络搜索。", "computer": "在 Windows 10（19041+）/11 x64 上查看窗口并执行点击或输入。安装后，在对话的「工具」菜单中按需开启。"},
+    "capabilityStatus": {
+      "ready": "可在会话启用",
+      "configured": "已安装 · 待验证",
+      "missing": "未安装",
+      "unsupported": "系统不兼容",
+      "unknown": "状态未知"
+    },
+    "capabilityHelp": {
+      "web-search": "使用搜索插件查找网页。在对话输入框的「工具」菜单中开启网络搜索。",
+      "computer": "在 Windows 10（19041+）/11 x64 上查看窗口并执行点击或输入。安装后，在对话的「工具」菜单中按需开启。"
+    },
     "capabilitiesTitle": "可选能力",
     "capabilitiesDesc": "安装后可在输入框的「工具」菜单中按会话启用。安装包来自第三方 Pi 扩展，首次加载由 Pi Worker 管理。",
-    "capabilityName": { "web-search": "网络搜索（Pi Search）", "computer": "电脑控制（实验性）" },
-    "capabilityDesc": { "web-search": "搜索需要在「设置 → 适配器 → Pi Search」配置可用的搜索 API 和密钥。", "computer": "通过 Windows 辅助功能树和截图查看窗口，再执行点击、输入等操作；仅支持 Windows x64。" },
+    "capabilityName": {
+      "web-search": "网络搜索（Pi Search）",
+      "computer": "电脑控制（实验性）"
+    },
+    "capabilityDesc": {
+      "web-search": "搜索需要在「设置 → 适配器 → Pi Search」配置可用的搜索 API 和密钥。",
+      "computer": "通过 Windows 辅助功能树和截图查看窗口，再执行点击、输入等操作；仅支持 Windows x64。"
+    },
     "computerWarning": "扩展可操作真实桌面。启用前请确认信任该扩展；使用时只给可信对话授权，并随时检查屏幕。",
     "installCapability": "安装或更新并加载",
     "installingCapability": "正在加载扩展…",
-    "capabilityInstallSuccess": { "web-search": "已添加网络搜索扩展。请在设置 → 适配器配置 Pi Search。", "computer": "已添加电脑控制扩展。它只会在你为某个会话启用后使用。" },
-    "capabilityUpdateSuccess": { "computer": "电脑控制扩展已更新并重新加载。" },
+    "capabilityInstallSuccess": {
+      "web-search": "已添加网络搜索扩展。请在设置 → 适配器配置 Pi Search。",
+      "computer": "已添加电脑控制扩展。它只会在你为某个会话启用后使用。"
+    },
+    "capabilityUpdateSuccess": {
+      "computer": "电脑控制扩展已更新并重新加载。"
+    },
     "searchAdapterHint": "搜索 API 的密钥由 Pi Search 适配器管理；此处不会重复保存密钥。",
     "missingRuntime": "未进 Worker 的扩展",
     "missingRuntimeDesc": "本机有 git 克隆，但没列在 settings.packages 里，桌面不会加载。",
@@ -1315,7 +1356,8 @@
       "lan": "局域网",
       "tailscale": "Tailscale",
       "overlay": "组网",
-      "public": "广域网"
+      "public": "广域网",
+      "relay": "中转"
     },
     "pairing": "配对",
     "pairingDesc": "用手机 App 扫描二维码完成配对。Windows 需要在防火墙中允许 pi Desktop 使用专用网络。",
@@ -1356,7 +1398,38 @@
     "projects": "项目",
     "projectsDesc": "手机与电脑看到同一份项目列表，不再需要逐个授权。",
     "projectsShared": "新开的项目会自动出现在手机上；想限制手机能看什么，请直接改电脑上的项目列表。",
-    "noProjects": "还没有打开过项目。"
+    "noProjects": "还没有打开过项目。",
+    "relay": "自建中转",
+    "relayDesc": "自己的中转服务器：电脑主动连出去，手机从任何网络连进来。不用 cloudflared / frp，也不用手机一直挂 VPN；中转只搬字节，内容仍是端到端加密的。",
+    "relayUrl": "中转地址",
+    "relayUrlDesc": "你那台服务器的 域名:端口（建议国内或离你近的机房，延迟最低）。",
+    "relayToken": "口令",
+    "relayTokenDesc": "和服务器启动参数 --token 一致，只有拿得到它的人能把电脑挂上去。",
+    "relaySave": "保存并连接",
+    "relayRemove": "关闭中转",
+    "relayConnected": "已连接",
+    "relayDisconnected": "未连接",
+    "relayLatency": "延迟 {{ms}} ms",
+    "relayClients": "正在承载 {{count}} 台手机",
+    "relayRoom": "房间 {{room}}",
+    "relayHint": "部署一条命令：node scripts/relay/server.mjs --port 8443 --token <口令>，前面挂 caddy / nginx 拿证书即可。电脑开着 VPN 时，请把中转域名/IP 加到 VPN 的直连（排除）列表，否则这台电脑到中转会被绕到国外，延迟反而更高。",
+    "relayInvalid": "地址看不懂：填域名或 域名:端口 就行。",
+    "relayProbe": "检测证书",
+    "relayProbeFailed": "探测不到证书：确认地址和端口，以及服务器是否已启动。",
+    "relayTrust": "信任并保存",
+    "relayPinned": "已信任证书 {{pin}}…",
+    "relayWizard": "配置向导（给别人装的时候用）",
+    "relayWizardDesc": "别人的手机也要连自己的电脑时，让他用自己的服务器跑一条命令就行。",
+    "relayWizardShow": "展开向导",
+    "relayWizardHide": "收起向导",
+    "relayStep1": "准备一台能上网的服务器（阿里云/腾讯云轻量 1 核 1G 就够），拿到公网 IP，root 登录。",
+    "relayStep2": "生成口令，把下面的命令整条复制到服务器上执行；脚本会装好服务、开机自启、生成证书，并打印「中转地址 / 口令 / 证书指纹」。",
+    "relayStep3": "到云控制台的防火墙（安全组）放行同一个端口；回到这里填地址和口令，点「检测证书」→「信任并保存」，手机重新扫码。",
+    "relayTokenGenerate": "生成口令",
+    "relayTokenRegenerate": "换一个口令",
+    "relayCopyCommand": "复制命令",
+    "relayCommandHint": "先点「生成口令」，这里会出现一条可直接粘贴到服务器执行的命令。",
+    "relayWizardNote": "口令只在这里显示一次，请顺手存到自己的密码本里；这条命令里的口令和上面「口令」输入框是同一个。"
   },
   "purge": {
     "description": "接管 pi 的系统提示词：开启后当前会话下一条消息就换成本地人设，不再走 pi 自带的身份与拒绝话术。只换提示词，不 patch 程序本体。",
@@ -1435,7 +1508,7 @@
     "restored": "已恢复到该备份",
     "failed": "操作失败，请查看日志"
   },
-  "imageGen":   {
+  "imageGen": {
     "title": "生图",
     "description": "把生图收进应用自己走：用本机 ChatGPT/Codex 订阅授权，或任意 OpenAI 兼容中转。配好后 AI 用内置 image_gen 出图，不必再挂 MCP 生图工具，也不必来回导入。",
     "provider": "生图通道",

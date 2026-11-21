@@ -6,7 +6,7 @@ import { Image as ImageIcon, Sparkles } from "@renderer/components/icons"
 import { ImageLightbox } from "@renderer/components/ui/image-lightbox"
 import { ipcClient } from "@renderer/lib/ipc-client"
 import { useUIStore } from "@renderer/stores/ui-store"
-import { contextMenuItemClass, contextMenuPanelClass, useDismissContextMenu } from "@renderer/features/workspace/context-menu-shared"
+import { contextMenuItemClass, contextMenuPanelClass, useContextMenuPlacement, useDismissContextMenu } from "@renderer/features/workspace/context-menu-shared"
 import { findChatImageRefs, type ChatImageRef } from "@shared/chat-image-paths"
 
 type ImageTarget = { path: string; name: string; x: number; y: number }
@@ -198,9 +198,16 @@ function ImageActionMenu({ menu, onClose, onCopy, onSave, onAddToChat, onAnnotat
   const { t } = useTranslation("timeline")
   const ref = useRef<HTMLDivElement>(null)
   useDismissContextMenu(!!menu, ref, onClose)
+  // 图片在窗口底部时菜单向上弹，否则最后几项会被切掉。
+  const placement = useContextMenuPlacement(!!menu, menu, ref)
   if (!menu) return null
   return createPortal(
-    <div ref={ref} className={contextMenuPanelClass} style={{ left: menu.x, top: menu.y }} role="menu">
+    <div
+      ref={ref}
+      className={contextMenuPanelClass}
+      style={{ left: placement?.left ?? menu.x, top: placement?.top ?? menu.y, ...(placement ? {} : { visibility: 'hidden' as const }) }}
+      role="menu"
+    >
       <button type="button" className={contextMenuItemClass} onClick={onCopy}>{t("image.copy")}</button>
       <button type="button" className={contextMenuItemClass} onClick={onSave}>{t("image.saveAs")}</button>
       <button type="button" className={contextMenuItemClass} onClick={onAddToChat}>{t("image.addToChat")}</button>

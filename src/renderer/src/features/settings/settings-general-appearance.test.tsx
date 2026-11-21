@@ -34,6 +34,7 @@ vi.mock('@renderer/features/settings/settings-draft-context', () => ({
   useSettingsDraft: () => ({
     draft: {
       autoOpenLastProject: false,
+      builtinBillionContext: true,
       autoCheckRegistryUpdates: true,
       includePrereleaseUpdates: false,
       alertSoundEnabled: false,

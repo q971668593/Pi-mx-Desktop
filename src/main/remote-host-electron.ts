@@ -1,8 +1,8 @@
 import { app, safeStorage } from 'electron'
-import { chmodSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve as resolvePath, sep } from 'node:path'
 import { hostname } from 'node:os'
 import type { CacheWarming, UiResponse } from '@shared/remote'
 import { normalizeSessionFileKey } from '@shared/session-file-key'
@@ -16,7 +16,7 @@ import { configStore } from './config-store'
 import { getSessionLeafOverride, setSessionLeafOverride } from './session-leaf-override'
 import { resolvePathUnderWorkspace, workspaceFsListDir, workspaceFsReadText, workspaceFsWriteText } from './workspace-fs'
 import { extname } from 'node:path'
-import { readFile as readFileBytes, stat as statFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile as readFileBytes, stat as statFile } from 'node:fs/promises'
 import { gitExec, isGitRepository } from './git-workspace'
 import { workspaceFsSearch } from './workspace-file-search'
 import { scanStaticSlashCommands } from './commands-catalog'
@@ -25,8 +25,11 @@ import { getDesktopSkillOverrides, isSkillEnabled } from './pi-skill-overrides'
 import { awaitWslVm } from './wsl/wsl-env'
 import { isSandboxWorkspacePath, sandboxLabel } from './sandbox-workspaces'
 import { invokeHandler } from './ipc/registry'
-import type { HostLiveState, HostModelList, HostSessionHistory, HostSessionRow, HostTimelineItem, RemoteHostPort, SendMode } from './remote/host-port'
+import type { GitBoardMethod, HostDirListing, HostLiveState, HostModelList, HostSessionHistory, HostSessionRow, HostTimelineItem, RemoteHostPort, SendMode } from './remote/host-port'
+import { RpcFail } from './remote/errors'
 import { sessionPreviewProcess } from './session-preview-process'
+import { sqliteIndex } from './sqlite-index'
+import { stopTerminalsForWorkspace } from './terminal/terminal-service'
 import { readSessionMetaFromFile } from './session-file-meta'
 import { getTrustedWorkspaceRoot } from './trusted-workspace'
 import { readGitDiffVsHead } from './git-workspace'
@@ -34,6 +37,30 @@ import { sessionUsage } from './usage-scan'
 import { getMainWindow } from './window'
 import { workerManager } from './worker-manager'
 import { getAgentRuntimeConfig } from './wsl/runtime-config'
+
+/** 手机选项目时不上前凑的系统目录（Windows 下选中只会让人迷路）。 */
+const DIR_SKIP = new Set(['System Volume Information', '$Recycle.Bin', '$RECYCLE.BIN', 'node_modules', '.git'])
+const DIR_MAX = 400
+
+/** 顶层入口：Windows 给盘符，其它平台给 /；再补上用户主目录和桌面。 */
+async function hostRoots(): Promise<Array<{ name: string; path: string }>> {
+  const out: Array<{ name: string; path: string }> = []
+  if (process.platform === 'win32') {
+    for (let code = 65; code <= 90; code += 1) {
+      const drive = `${String.fromCharCode(code)}:\\`
+      if (existsSync(drive)) out.push({ name: `${String.fromCharCode(code)}:`, path: drive })
+    }
+  } else {
+    out.push({ name: '/', path: '/' })
+  }
+  const home = app.getPath('home')
+  if (home) {
+    out.push({ name: basename(home) || home, path: home })
+    const desktop = app.getPath('desktop')
+    if (desktop && existsSync(desktop)) out.push({ name: basename(desktop), path: desktop })
+  }
+  return out
+}
 
 /**
  * Electron implementation of the remote gateway's port. Reads go through the same registered
@@ -103,8 +130,70 @@ export function createElectronRemoteHost(): RemoteHostPort {
     hiddenProjects: () => (configStore.get('hiddenWorktrees') || []) as string[],
     setProjectHidden(projectId: string, hidden: boolean): void {
       const canonical = trustedProjects().find((t) => comparable(t) === comparable(projectId)) ?? projectId
-      if (hidden) configStore.hideWorktree(canonical)
-      else configStore.unhideProject(canonical)
+      if (hidden) {
+        configStore.hideWorktree(canonical)
+        // 手机端隐藏项目：电脑上这个项目跑着的终端一并停掉
+        stopTerminalsForWorkspace(canonical)
+      } else configStore.unhideProject(canonical)
+    },
+
+    /**
+     * 手机「新建项目」：把这个文件夹登记进项目列表（和电脑端点开一个文件夹同一本账）。
+     * 不走 `workspace.open`：那会把电脑端当前项目也切走，手机加项目不该动桌面。
+     */
+    async addProject(path: string): Promise<{ id: string; name: string }> {
+      const target = resolvePath(path)
+      if (!isAbsolute(target)) throw new RpcFail('bad_request', 'invalid_path')
+      const info = await statFile(target).catch(() => null)
+      if (!info?.isDirectory()) throw new RpcFail('not_found', 'folder_not_found')
+      const name = basename(target.replace(/[\/]+$/, '')) || target
+      configStore.addRecentProject(target)
+      try {
+        sqliteIndex.upsertWorkspace(target, name, target)
+      } catch (e) {
+        console.warn('[remote] project index skipped (sqlite):', (e as Error).message)
+      }
+      return { id: target, name }
+    },
+
+    /** 一次一层地翻电脑目录：给手机选项目文件夹用（顶层先给盘符 / 用户目录）。 */
+    async browseDirs(path: string, dotfiles: boolean): Promise<HostDirListing> {
+      const roots = await hostRoots()
+      if (!path.trim()) return { path: '', parent: null, roots, dirs: [], truncated: false }
+      const target = resolvePath(path)
+      const info = await statFile(target).catch(() => null)
+      if (!info?.isDirectory()) throw new RpcFail('not_found', 'folder_not_found')
+      const entries = await readdir(target, { withFileTypes: true }).catch(() => [])
+      const dirs = entries
+        .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
+        .filter((entry) => dotfiles || !entry.name.startsWith('.'))
+        .filter((entry) => !DIR_SKIP.has(entry.name))
+        .map((entry) => {
+          const child = join(target, entry.name)
+          return { name: entry.name, path: child, repo: existsSync(join(child, '.git')) }
+        })
+        .sort((a, b) => Number(b.repo) - Number(a.repo) || a.name.localeCompare(b.name, 'zh'))
+      const parent = dirname(target)
+      return {
+        path: target,
+        parent: parent && parent !== target ? parent : null,
+        roots,
+        dirs: dirs.slice(0, DIR_MAX),
+        truncated: dirs.length > DIR_MAX,
+      }
+    },
+
+    /** 新建一个文件夹（手机直接建一个新项目目录）。 */
+    async makeDir(parent: string, name: string): Promise<string> {
+      const clean = name.trim()
+      if (!clean || clean === '.' || clean === '..' || clean.includes('/') || clean.includes('\\')) throw new RpcFail('bad_request', 'invalid_name')
+      const base = resolvePath(parent)
+      const target = join(base, clean)
+      if (!target.startsWith(base + sep) && target !== base) throw new RpcFail('bad_request', 'invalid_path')
+      await mkdir(target, { recursive: false }).catch((e: unknown) => {
+        throw new RpcFail('bad_request', (e as Error).message.includes('EEXIST') ? 'already_exists' : 'mkdir_failed')
+      })
+      return target
     },
 
     async listSessions(projectId: string): Promise<HostSessionRow[]> {
@@ -386,6 +475,16 @@ export function createElectronRemoteHost(): RemoteHostPort {
     async searchFiles(projectId: string, query: string) {
       const r = await workspaceFsSearch({ workspaceRoot: projectId, query, maxResults: 60 })
       return r.ok ? r.entries.map((e) => ({ name: e.name, path: e.path, dir: e.isDirectory })) : []
+    },
+
+    /** Git board: the phone drives the very handlers the desktop Git panel uses. */
+    async gitBoard(projectId: string, method: GitBoardMethod, params: Record<string, unknown>) {
+      const result = await invokeHandler<Record<string, unknown> & { ok?: boolean; error?: string }>(`ipc:gitBoard.${method}`, {
+        cwd: projectId,
+        ...params,
+      })
+      if (!result || result.ok === false) throw new RpcFail('bad_request', String(result?.error || 'git_failed'))
+      return result
     },
 
     capabilityCatalog,

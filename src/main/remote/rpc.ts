@@ -1,8 +1,10 @@
-import { ATTACHMENT_MAX_BYTES, REMOTE_METHODS, isRemoteMethod, roleAllows, type MethodParams, type MethodResult, type RemoteMethod, type Role } from '@shared/remote'
+import { createHash } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
+import { ASSET_CHUNK_MAX, ATTACHMENT_MAX_BYTES, REMOTE_METHODS, isRemoteMethod, roleAllows, type MethodParams, type MethodResult, type RemoteMethod, type Role } from '@shared/remote'
 import { normalizeSessionFileKey } from '@shared/session-file-key'
 import type { AssetInfo } from './assets'
 import { RpcFail } from './errors'
-import type { RemoteHostPort } from './host-port'
+import type { GitBoardMethod, RemoteHostPort } from './host-port'
 import type { HubClient, SessionHub } from './session-hub'
 import type { UiRouter } from './ui-router'
 
@@ -40,6 +42,12 @@ export class RemoteRpc {
 
   constructor(private readonly ctx: RpcContext) {
     const { port, hub, ui } = ctx
+    /** Mutating git ops share one shape: authorize the session, run the desktop handler, answer `{}`. */
+    const gitSync = async (sessionKey: string, method: GitBoardMethod, params: Record<string, unknown>): Promise<Record<string, never>> => {
+      const { projectId } = await hub.authorize(sessionKey)
+      await port.gitBoard(projectId, method, params)
+      return {}
+    }
     this.handlers = {
       'host.hello': async (caller) => ({
         hostId: ctx.hostId(),
@@ -77,6 +85,34 @@ export class RemoteRpc {
         port.notifySettingsChanged('projects')
         return {}
       },
+      // —— 静态资源走会话通道：手机经中转时拿不到 HTTP /assets，明文 HTTP 也不该用 ——
+      'asset.get': async (_c, p) => {
+        // 白名单与路径校验都在 port.assetPath 里；这里只负责切块，哈希自己算（手机仍以 hello 里的为准）
+        const path = port.assetPath(p.name)
+        if (!path) throw new RpcFail('not_found', 'unknown asset')
+        const bytes = await readFile(path).catch(() => null)
+        if (!bytes) throw new RpcFail('not_found', 'asset file unreadable')
+        const offset = p.offset ?? 0
+        if (offset > bytes.length) throw new RpcFail('bad_request', 'offset past the end')
+        const limit = p.limit ?? ASSET_CHUNK_MAX
+        const chunk = bytes.subarray(offset, Math.min(bytes.length, offset + limit))
+        return {
+          name: p.name,
+          total: bytes.length,
+          offset,
+          sha256: createHash('sha256').update(bytes).digest('hex'),
+          data: chunk.toString('base64'),
+        }
+      },
+      // —— 手机上「新建项目」：翻电脑目录 → 把这个文件夹变成项目 → 建对话 ——
+      'project.add': async (_c, p) => {
+        const added = await port.addProject(p.path)
+        port.notifySettingsChanged('projects')
+        port.notifySessionsChanged(added.id)
+        return { project: { id: added.id, name: added.name } }
+      },
+      'fs.browse': async (_c, p) => port.browseDirs(p.path ?? '', p.dotfiles === true),
+      'fs.mkdir': async (_c, p) => ({ path: await port.makeDir(p.parent, p.name) }),
       'session.watchList': async (caller, p) => ({ sessions: await hub.watchList(caller, p.projectId) }),
       'session.unwatchList': async (caller) => {
         hub.unwatchList(caller)
@@ -195,6 +231,122 @@ export class RemoteRpc {
         const { projectId } = await hub.authorize(p.sessionKey)
         return port.gitLog(projectId, p.limit ?? 20)
       },
+      // —— 手机端 Git 面板：与电脑端 gitBoard 面板同一套 handler ——
+      'git.overview': async (_c, p) => {
+        const { projectId } = await hub.authorize(p.sessionKey)
+        const r = await port.gitBoard(projectId, 'overview', { ...(p.skip ? { skip: p.skip } : {}), ...(p.query ? { query: p.query } : {}), ...(p.author ? { author: p.author } : {}) })
+        return r as unknown as MethodResult<'git.overview'>
+      },
+      'git.stage': async (_c, p) => gitSync(p.sessionKey, 'stage', { paths: p.paths }),
+      'git.unstage': async (_c, p) => gitSync(p.sessionKey, 'unstage', { paths: p.paths }),
+      'git.stageAll': async (_c, p) => gitSync(p.sessionKey, 'stageAll', {}),
+      'git.unstageAll': async (_c, p) => gitSync(p.sessionKey, 'unstageAll', {}),
+      'git.discard': async (_c, p) =>
+        gitSync(p.sessionKey, 'discard', { ...(p.tracked ? { tracked: p.tracked } : {}), ...(p.untracked ? { untracked: p.untracked } : {}) }),
+      'git.exclude': async (_c, p) => gitSync(p.sessionKey, 'exclude', { paths: p.paths }),
+      'git.resolve': async (_c, p) => gitSync(p.sessionKey, 'resolve', { paths: p.paths, side: p.side }),
+      'git.commit': async (_c, p) => {
+        const { projectId } = await hub.authorize(p.sessionKey)
+        const r = (await port.gitBoard(projectId, 'commit', {
+          message: p.message,
+          ...(p.paths ? { paths: p.paths } : {}),
+          ...(p.action ? { action: p.action } : {}),
+          ...(p.remote ? { remote: p.remote } : {}),
+        })) as { committed?: boolean; pushed?: boolean }
+        return { committed: r.committed !== false, pushed: r.pushed === true }
+      },
+      'git.suggestCommit': async (_c, p) => {
+        const { projectId } = await hub.authorize(p.sessionKey)
+        const r = (await port.gitBoard(projectId, 'suggestCommit', { ...(p.prompt ? { prompt: p.prompt } : {}) })) as { text?: string }
+        return { message: String(r.text || '') }
+      },
+      'git.sync': async (_c, p) => {
+        const { projectId } = await hub.authorize(p.sessionKey)
+        const r = (await port.gitBoard(projectId, 'sync', { action: p.action })) as {
+          incoming?: Array<{ hash: string; subject: string }>
+          incomingCount?: number
+          tracking?: boolean
+        }
+        return { incoming: r.incoming ?? [], incomingCount: r.incomingCount ?? 0, tracking: r.tracking !== false }
+      },
+      'git.branch': async (_c, p) =>
+        gitSync(p.sessionKey, 'branch', {
+          action: p.action,
+          name: p.name,
+          ...(p.from ? { from: p.from } : {}),
+          ...(p.force ? { force: p.force } : {}),
+        }),
+      'git.merge': async (_c, p) => gitSync(p.sessionKey, 'merge', { ref: p.ref, ...(p.noFf ? { noFf: p.noFf } : {}) }),
+      'git.rebase': async (_c, p) => gitSync(p.sessionKey, 'rebase', { ref: p.ref }),
+      'git.cherryPick': async (_c, p) => gitSync(p.sessionKey, 'cherryPick', { ref: p.ref }),
+      'git.operation': async (_c, p) => gitSync(p.sessionKey, 'operation', { operation: p.operation, action: p.action }),
+      'git.stash': async (_c, p) => {
+        const { projectId } = await hub.authorize(p.sessionKey)
+        const r = (await port.gitBoard(projectId, 'stash', {
+          action: p.action,
+          ...(p.message ? { message: p.message } : {}),
+          ...(p.ref ? { ref: p.ref } : {}),
+          ...(p.includeUntracked ? { includeUntracked: true } : {}),
+        })) as { stashes?: unknown }
+        return { stashes: (p.action === 'list' ? (r.stashes as never) : []) ?? [] }
+      },
+      'git.tag': async (_c, p) => {
+        const { projectId } = await hub.authorize(p.sessionKey)
+        const r = (await port.gitBoard(projectId, 'tag', {
+          action: p.action,
+          ...(p.name ? { name: p.name } : {}),
+          ...(p.target ? { target: p.target } : {}),
+          ...(p.message ? { message: p.message } : {}),
+          ...(p.remote ? { remote: p.remote } : {}),
+        })) as { tags?: string[] }
+        return { tags: p.action === 'list' ? (r.tags ?? []) : [] }
+      },
+      'git.remote': async (_c, p) =>
+        gitSync(p.sessionKey, 'remote', {
+          action: p.action,
+          name: p.name,
+          ...(p.url ? { url: p.url } : {}),
+          ...(p.to ? { to: p.to } : {}),
+          ...(p.branch ? { branch: p.branch } : {}),
+        }),
+      'git.worktree': async (_c, p) => {
+        const { projectId } = await hub.authorize(p.sessionKey)
+        const r = (await port.gitBoard(projectId, 'worktree', {
+          action: p.action,
+          ...(p.path ? { path: p.path } : {}),
+          ...(p.branch ? { branch: p.branch } : {}),
+          ...(p.create ? { create: true } : {}),
+        })) as { worktrees?: unknown }
+        return { worktrees: (p.action === 'list' ? (r.worktrees as never) : []) ?? [] }
+      },
+      'git.diff': async (_c, p) => {
+        const { projectId } = await hub.authorize(p.sessionKey)
+        const r = (await port.gitBoard(projectId, 'diff', {
+          path: p.path,
+          ...(p.staged ? { staged: true } : {}),
+          ...(p.commit ? { commit: p.commit } : {}),
+        })) as { path?: string; lines?: unknown; truncated?: boolean }
+        return { path: p.path, lines: (r.lines as never) ?? [], truncated: r.truncated === true }
+      },
+      'git.commitDetail': async (_c, p) => {
+        const { projectId } = await hub.authorize(p.sessionKey)
+        return (await port.gitBoard(projectId, 'commitDetail', { ref: p.ref })) as unknown as MethodResult<'git.commitDetail'>
+      },
+      'git.reset': async (_c, p) => gitSync(p.sessionKey, 'reset', { hash: p.hash, mode: p.mode }),
+      'git.checkout': async (_c, p) => gitSync(p.sessionKey, 'checkout', { ref: p.ref }),
+      'git.checkoutCommit': async (_c, p) => gitSync(p.sessionKey, 'checkoutCommit', { ref: p.ref }),
+      'git.init': async (_c, p) => gitSync(p.sessionKey, 'init', {}),
+      'git.clone': async (_c, p) => {
+        const { projectId } = await hub.authorize(p.sessionKey)
+        const r = (await port.gitBoard(projectId, 'clone', { url: p.url, path: p.path })) as { path?: string }
+        return { path: String(r.path || p.path) }
+      },
+      'git.commandLog': async (_c, p) => {
+        const { projectId } = await hub.authorize(p.sessionKey)
+        const r = (await port.gitBoard(projectId, 'log', { ...(p.limit ? { limit: p.limit } : {}) })) as { entries?: unknown }
+        return { entries: (r.entries as never) ?? [] }
+      },
+      'git.clearCommandLog': async (_c, p) => gitSync(p.sessionKey, 'clearLog', {}),
       'file.search': async (_c, p) => {
         const { projectId } = await hub.authorize(p.sessionKey)
         return { entries: (await port.searchFiles(projectId, p.query)).slice(0, 60) }

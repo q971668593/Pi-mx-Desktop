@@ -1,0 +1,114 @@
+{
+  "schema": "git.overview/result",
+  "value": {
+    "isRepo": true,
+    "branch": "main",
+    "upstream": "origin/main",
+    "ahead": 1,
+    "behind": 2,
+    "files": [
+      {
+        "staged": "M",
+        "unstaged": ".",
+        "path": "src/app.ts",
+        "group": "staged"
+      },
+      {
+        "staged": ".",
+        "unstaged": "M",
+        "path": "src/remote/rpc.ts",
+        "group": "unstaged"
+      },
+      {
+        "staged": "?",
+        "unstaged": "?",
+        "path": ".文档/AI产物/报告/手机-Git.md",
+        "group": "untracked"
+      },
+      {
+        "staged": "U",
+        "unstaged": "U",
+        "path": "src/conflict.ts",
+        "originalPath": "src/old-conflict.ts",
+        "group": "conflict"
+      }
+    ],
+    "branches": [
+      {
+        "name": "main",
+        "kind": "local",
+        "current": true,
+        "short": "aaaaaaa",
+        "upstream": "origin/main",
+        "ahead": 1,
+        "behind": 2,
+        "subject": "fix: 并发刷新"
+      },
+      {
+        "name": "origin/feat/git",
+        "kind": "remote",
+        "current": false,
+        "short": "bbbbbbb",
+        "upstream": null,
+        "ahead": 0,
+        "behind": 0,
+        "subject": "feat: 手机端 Git 全量"
+      }
+    ],
+    "commits": [
+      {
+        "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "short": "aaaaaaa",
+        "parents": [
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        "author": "dev",
+        "email": "dev@example.com",
+        "time": 1760000000,
+        "subject": "fix: 并发刷新",
+        "decorations": "HEAD -> main, origin/main"
+      },
+      {
+        "hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "short": "bbbbbbb",
+        "parents": [],
+        "author": "dev",
+        "email": "dev@example.com",
+        "time": 1759900000,
+        "subject": "init",
+        "decorations": ""
+      }
+    ],
+    "hasMore": true,
+    "stashes": [
+      {
+        "ref": "stash@{0}",
+        "message": "WIP on main: 12ab34 草稿"
+      }
+    ],
+    "tags": [
+      "v1.1.8",
+      "v1.1.7"
+    ],
+    "remotes": [
+      {
+        "name": "origin",
+        "fetch": "git@github.com:q971668593/Pi-mx-Desktop.git",
+        "push": "git@github.com:q971668593/Pi-mx-Desktop.git"
+      }
+    ],
+    "worktrees": [
+      {
+        "path": "/work/pi-app",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "branch": "main"
+      },
+      {
+        "path": "/work/pi-app-feat",
+        "head": "cccccccccccccccccccccccccccccccccccccccc",
+        "branch": null
+      }
+    ],
+    "operation": "merge"
+  }
+}

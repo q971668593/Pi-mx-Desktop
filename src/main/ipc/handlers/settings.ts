@@ -93,6 +93,19 @@ export function registerSettingsHandlers(): void {
     }
     configStore.set(key, req.value as StoreSchema[typeof key])
     if (key === 'sessionCapabilities') remoteTap.settingsChanged('capabilities')
+    // 内置上下文压缩扩展是在 worker 建会话时挂上去的：改了开关就把 worker 重启一次，
+    // 让「下一个新会话生效」不需要用户自己重启应用。有活回合时不动，自然等下一个 worker。
+    if (key === 'builtinBillionContext') {
+      const cwd = workerManager.cwd || configStore.get('currentProject')
+      if (cwd && workerManager.isRunning && !workerManager.hasActiveTurns) {
+        try {
+          await workerManager.stop()
+          await workerManager.start(cwd)
+        } catch (e) {
+          console.warn('[settings] worker restart after builtinBillionContext change failed:', e)
+        }
+      }
+    }
     return { key: req.key, value: req.value }
   })
 

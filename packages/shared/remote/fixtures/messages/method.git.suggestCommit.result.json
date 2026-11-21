@@ -1,0 +1,6 @@
+{
+  "schema": "git.suggestCommit/result",
+  "value": {
+    "message": "feat(手机/Git): 全量对齐电脑端"
+  }
+}

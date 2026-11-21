@@ -21,7 +21,9 @@ import javax.net.ssl.X509TrustManager
  * Either way the session itself is still authenticated by the host's static X25519 key from the QR,
  * so a wrong certificate can at worst make us fail to connect, never impersonate the desktop.
  */
-class PinnedTrustManager(private val pin: String?) : X509TrustManager {
+class PinnedTrustManager(private val pins: Set<String>) : X509TrustManager {
+    constructor(pin: String?) : this(listOfNotNull(pin).toSet())
+
     private val system: X509TrustManager? = runCatching {
         TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
             .apply { init(null as KeyStore?) }
@@ -36,7 +38,8 @@ class PinnedTrustManager(private val pin: String?) : X509TrustManager {
 
     override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {
         val leaf = chain?.firstOrNull() ?: throw CertificateException("empty certificate chain")
-        if (pin != null && spkiSha256(leaf) == pin) return
+        // 电脑自己的证书，或自建中转（自签）那段的证书：两个指纹都在配对时给过
+        if (spkiSha256(leaf) in pins) return
         val fallback = system ?: throw CertificateException("no system trust store")
         // Throws when the chain is not publicly trusted either.
         fallback.checkServerTrusted(chain, authType)
@@ -51,9 +54,9 @@ class PinnedTrustManager(private val pin: String?) : X509TrustManager {
 }
 
 /** Runs after the trust manager: a pinned self-signed certificate has no meaningful hostname. */
-fun pinnedHostnameVerifier(pin: String?): HostnameVerifier = HostnameVerifier { hostname, session ->
+fun pinnedHostnameVerifier(pins: Set<String>): HostnameVerifier = HostnameVerifier { hostname, session ->
     val leaf = runCatching { session?.peerCertificates?.firstOrNull() as? X509Certificate }.getOrNull()
-    if (pin != null && leaf != null && PinnedTrustManager.spkiSha256(leaf) == pin) {
+    if (leaf != null && PinnedTrustManager.spkiSha256(leaf) in pins) {
         true
     } else {
         // Public certificate (tunnel): the platform verifies the name as usual.

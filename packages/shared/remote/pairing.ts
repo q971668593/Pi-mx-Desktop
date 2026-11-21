@@ -14,6 +14,11 @@ export const PairOfferSchema = z
     endpoints: z.array(z.string().min(1)).min(1),
     /** base64url(sha256(SPKI)) of the TLS certificate the host serves. Phones pin it. */
     tls: z.string().min(1).optional(),
+    /**
+     * base64url(sha256(SPKI)) of a self-signed certificate on the relay. Phones accept it for the
+     * relay endpoint so a relay can run on a bare IP without a public certificate.
+     */
+    relayTls: z.string().min(1).optional(),
     pairToken: z.string().min(16),
     exp: z.number().int(),
   })

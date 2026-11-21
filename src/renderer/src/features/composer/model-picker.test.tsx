@@ -120,6 +120,30 @@ describe('ModelPicker runtime confirmation', () => {
     expect(screen.queryByRole('button', { name: /grok/i })).toBeNull()
   })
 
+  it('filters the list by the keyword typed into the search box', async () => {
+    invoke.mockResolvedValue({
+      models: [
+        { provider: 'openai', id: 'gpt-4o', available: true },
+        { provider: 'openai', id: 'gpt-4o-mini', available: true },
+        { provider: 'anthropic', id: 'claude-3-7', available: true },
+      ],
+    })
+
+    render(<ModelPicker />)
+    const search = (await screen.findByRole('textbox')) as HTMLInputElement
+    expect(search).toBeTruthy()
+    // 输入框必须能拿到焦点，不然关键字的键会跑到消息框去
+    expect(document.activeElement).toBe(search)
+
+    fireEvent.change(search, { target: { value: 'claude' } })
+    await waitFor(() => expect(screen.queryByRole('button', { name: /gpt-4o/i })).toBeNull())
+    expect(screen.getByRole('button', { name: /claude-3-7/i })).toBeTruthy()
+
+    fireEvent.change(search, { target: { value: 'mini' } })
+    await waitFor(() => expect(screen.queryByRole('button', { name: /claude-3-7/i })).toBeNull())
+    expect(screen.getByRole('button', { name: /gpt-4o-mini/i })).toBeTruthy()
+  })
+
   it('does not reload on non-run events', async () => {
     invoke.mockResolvedValue({ models: [] })
 

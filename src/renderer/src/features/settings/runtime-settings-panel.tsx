@@ -5,6 +5,7 @@ import { cn } from '@renderer/lib/utils'
 import { ipcClient } from '@renderer/lib/ipc-client'
 import { AlertTriangle, Check, Copy, Loader2, RefreshCw, XCircle } from '@renderer/components/icons'
 import { SettingRow, SettingsSection } from './settings-page-shared'
+import { Switch } from '@renderer/components/ui/switch'
 import { selectCls, btnOutline } from './settings-controls'
 import { useSettingsDraft } from './settings-draft-context'
 import type { PythonRuntimeStatusResponse } from '@shared/ipc-contract'
@@ -34,7 +35,7 @@ const INSTALL_PI = 'npm i -g @earendil-works/pi-coding-agent'
 
 export function RuntimeSettingsPanel() {
   const { t } = useTranslation()
-  const { draft, setAgentRuntime } = useSettingsDraft()
+  const { draft, setAgentRuntime, setBuiltinBillionContext } = useSettingsDraft()
   const isWindows = useMemo(() => (window.piDesktop?.platform ?? '') === 'win32', [])
   const [distros, setDistros] = useState<WslDistroInfo[] | null>(null)
   const [probe, setProbe] = useState<WslProbeResult | null>(null)
@@ -121,6 +122,9 @@ export function RuntimeSettingsPanel() {
       </SettingsSection>
     )}
     <SettingsSection title={t('settings:runtime.sectionAgentRuntime')} description={t('settings:runtime.sectionAgentRuntimeDesc')}>
+      <SettingRow label={t('settings:runtime.contextTitle')} description={t('settings:runtime.contextDesc')}>
+        <Switch checked={draft.builtinBillionContext} onCheckedChange={setBuiltinBillionContext} />
+      </SettingRow>
       <SettingRow label={t('settings:runtime.mode')} description={t('settings:runtime.modeDesc')}>
         <select
           className={cn(selectCls, 'min-w-[min(220px,60vw)]')}

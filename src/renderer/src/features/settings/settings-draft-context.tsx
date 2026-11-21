@@ -60,6 +60,7 @@ type SettingsDraftContextValue = {
   setBackground: (background: BackgroundSettings) => void
   setLanguage: (l: LanguageChoice) => void
   setAutoOpenLastProject: (v: boolean) => void
+  setBuiltinBillionContext: (v: boolean) => void
   setAutoCheckRegistryUpdates: (v: boolean) => void
   setIncludePrereleaseUpdates: (v: boolean) => void
   setAlertSoundEnabled: (v: boolean) => void
@@ -271,6 +272,7 @@ export function SettingsDraftProvider({ children }: { children: ReactNode }) {
       setBackground: (background) => patch((d) => ({ ...d, background })),
       setLanguage: (l) => patch((d) => ({ ...d, language: l })),
       setAutoOpenLastProject: (v) => patch((d) => ({ ...d, autoOpenLastProject: v })),
+      setBuiltinBillionContext: (v) => patch((d) => ({ ...d, builtinBillionContext: v })),
       setAutoCheckRegistryUpdates: (v) => patch((d) => ({ ...d, autoCheckRegistryUpdates: v })),
       setIncludePrereleaseUpdates: (v) => patch((d) => ({ ...d, includePrereleaseUpdates: v })),
       setAlertSoundEnabled: (v) => patch((d) => ({ ...d, alertSoundEnabled: v })),

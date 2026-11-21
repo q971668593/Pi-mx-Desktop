@@ -173,6 +173,139 @@ export const GitCommitSchema = z
   .strict()
 export type GitCommit = z.infer<typeof GitCommitSchema>
 
+/** One changed path in the working tree (`group` decides which bucket the phone lists it under). */
+export const GIT_CHANGE_GROUPS = ['conflict', 'staged', 'unstaged', 'untracked'] as const
+export const GitChangeSchema = z
+  .object({
+    staged: z.string(),
+    unstaged: z.string(),
+    path: z.string(),
+    originalPath: z.string().optional(),
+    group: z.enum(GIT_CHANGE_GROUPS),
+  })
+  .strict()
+export type GitChange = z.infer<typeof GitChangeSchema>
+
+/** A local or remote branch row (desktop 分支 tab). */
+export const GitBranchRefSchema = z
+  .object({
+    name: z.string(),
+    kind: z.enum(['local', 'remote']),
+    current: z.boolean(),
+    short: z.string(),
+    upstream: z.string().nullable(),
+    ahead: nn,
+    behind: nn,
+    subject: z.string(),
+  })
+  .strict()
+export type GitBranchRef = z.infer<typeof GitBranchRefSchema>
+
+/** A commit in the graph tab: parents drive the lane drawing on the desktop. */
+export const GitGraphCommitSchema = z
+  .object({
+    hash: z.string(),
+    short: z.string(),
+    parents: z.array(z.string()),
+    author: z.string(),
+    email: z.string(),
+    time: z.number().int(),
+    subject: z.string(),
+    decorations: z.string(),
+  })
+  .strict()
+export type GitGraphCommit = z.infer<typeof GitGraphCommitSchema>
+
+export const GitStashSchema = z.object({ ref: z.string(), message: z.string() }).strict()
+export const GitRemoteSchema = z.object({ name: z.string(), fetch: z.string(), push: z.string() }).strict()
+export const GitWorktreeSchema = z.object({ path: z.string(), head: z.string(), branch: z.string().nullable() }).strict()
+
+/** The whole Git board in one call: branch head, changes, graph, branches, and 更多 supplies. */
+export const GitOverviewSchema = z
+  .object({
+    isRepo: z.boolean(),
+    branch: z.string(),
+    upstream: z.string().nullable(),
+    ahead: nn,
+    behind: nn,
+    files: z.array(GitChangeSchema),
+    branches: z.array(GitBranchRefSchema),
+    commits: z.array(GitGraphCommitSchema),
+    hasMore: z.boolean(),
+    stashes: z.array(GitStashSchema),
+    tags: z.array(z.string()),
+    remotes: z.array(GitRemoteSchema),
+    worktrees: z.array(GitWorktreeSchema),
+    /** An unfinished merge / rebase / cherry-pick / revert the phone can continue or abort. */
+    operation: z.enum(['merge', 'rebase', 'cherry-pick', 'revert']).nullable(),
+  })
+  .strict()
+export type GitOverview = z.infer<typeof GitOverviewSchema>
+
+/** One file's diff lines, rendered with the same rows as the review screen. */
+export const GitFileDiffSchema = z.object({ path: z.string(), lines: z.array(DiffLineSchema), truncated: z.boolean() }).strict()
+
+/** What one commit changed (graph tab → commit sheet). */
+export const GitCommitDetailSchema = z
+  .object({
+    hash: z.string(),
+    subject: z.string(),
+    body: z.string(),
+    author: z.string(),
+    email: z.string(),
+    time: z.number().int(),
+    parents: z.array(z.string()),
+    files: z.array(z.object({ status: z.string(), path: z.string() }).strict()),
+  })
+  .strict()
+export type GitCommitDetail = z.infer<typeof GitCommitDetailSchema>
+
+/** One recorded git command (desktop 命令记录 tab). */
+export const GitCommandEntrySchema = z
+  .object({ time: z.number().int(), command: z.string(), repo: z.string(), success: z.boolean(), output: z.string() })
+  .strict()
+export type GitCommandEntry = z.infer<typeof GitCommandEntrySchema>
+
+export const GIT_BRANCH_ACTIONS = ['create', 'rename', 'delete', 'track', 'checkout'] as const
+export const GIT_STASH_ACTIONS = ['list', 'save', 'pop', 'apply', 'drop'] as const
+export const GIT_TAG_ACTIONS = ['list', 'create', 'delete', 'push'] as const
+export const GIT_REMOTE_ACTIONS = ['add', 'remove', 'setUrl', 'rename', 'publish', 'deleteBranch'] as const
+export const GIT_WORKTREE_ACTIONS = ['list', 'add', 'remove'] as const
+export const GIT_OPERATIONS = ['merge', 'rebase', 'cherry-pick', 'revert'] as const
+
+/** Chunk size for `asset.get`: the phone loops until `total` bytes are in. */
+export const ASSET_CHUNK_MAX = 1024 * 1024
+
+/** A static asset the phone needs (mermaid.min.js), served over the encrypted session, not HTTP. */
+export const AssetGetResultSchema = z
+  .object({
+    name: z.string(),
+    /** Full size in bytes. */
+    total: z.number().int().nonnegative(),
+    offset: z.number().int().nonnegative(),
+    /** sha256 of the whole file (same value `host.hello` advertises). */
+    sha256: z.string(),
+    /** base64 of this chunk. */
+    data: z.string(),
+  })
+  .strict()
+
+/** One folder the phone can pick as a project (the 「新建项目」browser). */
+export const FsDirSchema = z.object({ name: z.string(), path: z.string(), repo: z.boolean() }).strict()
+export type FsDir = z.infer<typeof FsDirSchema>
+
+/** A folder on the desktop machine, one level at a time. `path: ''` lists the roots (drives / home). */
+export const FsBrowseResultSchema = z
+  .object({
+    path: z.string(),
+    parent: z.string().nullable(),
+    roots: z.array(z.object({ name: z.string(), path: z.string() }).strict()),
+    dirs: z.array(FsDirSchema),
+    truncated: z.boolean(),
+  })
+  .strict()
+export type FsBrowseResult = z.infer<typeof FsBrowseResultSchema>
+
 function method<P extends z.ZodTypeAny, R extends z.ZodTypeAny>(params: P, result: R, role: Role) {
   return { params, result, role }
 }
@@ -182,6 +315,34 @@ export const REMOTE_METHODS = {
   'project.list': method(empty, z.object({ projects: z.array(ProjectInfoSchema) }).strict(), 'viewer'),
   /** Hide / unhide a project on the desktop (the phone mirrors the sidebar). */
   'project.setHidden': method(z.object({ projectId: z.string().min(1), hidden: z.boolean() }).strict(), empty, 'operator'),
+  /**
+   * Add a folder of the desktop machine as a project (the phone's 「新建项目」): it joins the desktop
+   * sidebar / recent projects, then the phone can create a session in it.
+   */
+  'project.add': method(z.object({ path: z.string().min(1).max(4096) }).strict(), z.object({ project: ProjectInfoSchema }).strict(), 'operator'),
+  /** Browse the desktop filesystem to pick that folder. `path: ''` answers the roots (drives / home). */
+  'fs.browse': method(z.object({ path: z.string().max(4096).optional(), dotfiles: z.boolean().optional() }).strict(), FsBrowseResultSchema, 'operator'),
+  /** Create a folder inside `parent` (a brand-new project folder on the desktop). */
+  /**
+   * Static assets over the session channel. The phone cannot fetch `/assets` over HTTP when it is
+   * behind the relay (only WebSocket is tunneled), and plain HTTP would be unencrypted anyway.
+   */
+  'asset.get': method(
+    z
+      .object({
+        name: z.string().min(1).max(120),
+        offset: z.number().int().nonnegative().optional(),
+        limit: z.number().int().min(1).max(ASSET_CHUNK_MAX).optional(),
+      })
+      .strict(),
+    AssetGetResultSchema,
+    'viewer',
+  ),
+  'fs.mkdir': method(
+    z.object({ parent: z.string().min(1).max(4096), name: z.string().trim().min(1).max(200) }).strict(),
+    z.object({ path: z.string() }).strict(),
+    'operator',
+  ),
   'session.watchList': method(
     z.object({ projectId: z.string().optional() }).strict(),
     z.object({ sessions: z.array(SessionSummarySchema) }).strict(),
@@ -324,6 +485,172 @@ export const REMOTE_METHODS = {
     z.object({ isRepo: z.boolean(), commits: z.array(GitCommitSchema) }).strict(),
     'viewer',
   ),
+  /**
+   * The desktop Git board on the phone: header (branch / ahead / behind), the change list, the graph,
+   * branches, stashes, tags, remotes, worktrees and any unfinished operation — one round trip.
+   */
+  'git.overview': method(
+    z
+      .object({
+        sessionKey,
+        skip: z.number().int().min(0).max(100_000).optional(),
+        query: z.string().trim().max(300).optional(),
+        author: z.string().trim().max(200).optional(),
+      })
+      .strict(),
+    GitOverviewSchema,
+    'viewer',
+  ),
+  /** Stage paths (`git add -A --`). */
+  'git.stage': method(z.object({ sessionKey, paths: z.array(z.string().min(1)).min(1).max(5000) }).strict(), empty, 'operator'),
+  'git.unstage': method(z.object({ sessionKey, paths: z.array(z.string().min(1)).min(1).max(5000) }).strict(), empty, 'operator'),
+  'git.stageAll': method(z.object({ sessionKey }).strict(), empty, 'operator'),
+  'git.unstageAll': method(z.object({ sessionKey }).strict(), empty, 'operator'),
+  /** Throw away working-tree edits (tracked → checkout, untracked → delete). */
+  'git.discard': method(
+    z.object({ sessionKey, tracked: z.array(z.string().min(1)).max(5000).optional(), untracked: z.array(z.string().min(1)).max(5000).optional() }).strict(),
+    empty,
+    'operator',
+  ),
+  /** Add paths to `.git/info/exclude` (desktop 「忽略」). */
+  'git.exclude': method(z.object({ sessionKey, paths: z.array(z.string().min(1)).min(1).max(5000) }).strict(), empty, 'operator'),
+  /** Resolve a conflicted file by taking one side. */
+  'git.resolve': method(
+    z.object({ sessionKey, paths: z.array(z.string().min(1)).min(1).max(5000), side: z.enum(['ours', 'theirs']) }).strict(),
+    empty,
+    'operator',
+  ),
+  /** Commit; `stage-and-commit` stages everything first, `commit-and-push` also pushes. */
+  'git.commit': method(
+    z
+      .object({
+        sessionKey,
+        message: z.string().trim().min(1).max(20_000),
+        paths: z.array(z.string().min(1)).max(5000).optional(),
+        action: z.enum(['commit', 'stage-and-commit', 'commit-and-push']).optional(),
+        remote: z.string().trim().min(1).max(250).optional(),
+      })
+      .strict(),
+    z.object({ committed: z.boolean(), pushed: z.boolean() }).strict(),
+    'operator',
+  ),
+  /** Draft a commit message with the desktop's plugin model (the same handler the 生成说明 button uses). */
+  'git.suggestCommit': method(
+    z.object({ sessionKey, prompt: z.string().trim().max(8000).optional() }).strict(),
+    z.object({ message: z.string() }).strict(),
+    'operator',
+  ),
+  /** fetch / pull / push; fetch also returns what is coming in. */
+  'git.sync': method(
+    z.object({ sessionKey, action: z.enum(['fetch', 'pull', 'push']) }).strict(),
+    z
+      .object({
+        incoming: z.array(z.object({ hash: z.string(), subject: z.string() }).strict()),
+        incomingCount: z.number().int().nonnegative(),
+        tracking: z.boolean(),
+      })
+      .strict(),
+    'operator',
+  ),
+  'git.branch': method(
+    z
+      .object({
+        sessionKey,
+        action: z.enum(GIT_BRANCH_ACTIONS),
+        name: z.string().trim().min(1).max(250),
+        from: z.string().trim().max(250).optional(),
+        force: z.boolean().optional(),
+      })
+      .strict(),
+    empty,
+    'operator',
+  ),
+  'git.merge': method(z.object({ sessionKey, ref: z.string().trim().min(1).max(300), noFf: z.boolean().optional() }).strict(), empty, 'operator'),
+  'git.rebase': method(z.object({ sessionKey, ref: z.string().trim().min(1).max(300) }).strict(), empty, 'operator'),
+  'git.cherryPick': method(z.object({ sessionKey, ref: z.string().trim().min(1).max(300) }).strict(), empty, 'operator'),
+  /** `--continue` / `--abort` for an unfinished merge, rebase, cherry-pick or revert. */
+  'git.operation': method(
+    z.object({ sessionKey, operation: z.enum(GIT_OPERATIONS), action: z.enum(['continue', 'abort']) }).strict(),
+    empty,
+    'operator',
+  ),
+  'git.stash': method(
+    z
+      .object({
+        sessionKey,
+        action: z.enum(GIT_STASH_ACTIONS),
+        message: z.string().max(500).optional(),
+        ref: z.string().max(100).optional(),
+        includeUntracked: z.boolean().optional(),
+      })
+      .strict(),
+    z.object({ stashes: z.array(GitStashSchema) }).strict(),
+    'operator',
+  ),
+  'git.tag': method(
+    z
+      .object({
+        sessionKey,
+        action: z.enum(GIT_TAG_ACTIONS),
+        name: z.string().max(250).optional(),
+        target: z.string().max(300).optional(),
+        message: z.string().max(1000).optional(),
+        remote: z.string().max(100).optional(),
+      })
+      .strict(),
+    z.object({ tags: z.array(z.string()) }).strict(),
+    'operator',
+  ),
+  'git.remote': method(
+    z
+      .object({
+        sessionKey,
+        action: z.enum(GIT_REMOTE_ACTIONS),
+        name: z.string().min(1).max(250),
+        url: z.string().max(1000).optional(),
+        to: z.string().max(250).optional(),
+        branch: z.string().max(250).optional(),
+      })
+      .strict(),
+    empty,
+    'operator',
+  ),
+  'git.worktree': method(
+    z
+      .object({
+        sessionKey,
+        action: z.enum(GIT_WORKTREE_ACTIONS),
+        path: z.string().max(1000).optional(),
+        branch: z.string().max(250).optional(),
+        create: z.boolean().optional(),
+      })
+      .strict(),
+    z.object({ worktrees: z.array(GitWorktreeSchema) }).strict(),
+    'operator',
+  ),
+  /** One file's diff (working tree, index or a commit). */
+  'git.diff': method(
+    z.object({ sessionKey, path: z.string().min(1).max(4096), staged: z.boolean().optional(), commit: z.string().max(100).optional() }).strict(),
+    GitFileDiffSchema,
+    'viewer',
+  ),
+  'git.commitDetail': method(z.object({ sessionKey, ref: z.string().min(7).max(64) }).strict(), GitCommitDetailSchema, 'viewer'),
+  'git.reset': method(
+    z.object({ sessionKey, hash: z.string().min(7).max(64), mode: z.enum(['soft', 'mixed', 'hard']) }).strict(),
+    empty,
+    'operator',
+  ),
+  'git.checkout': method(z.object({ sessionKey, ref: z.string().trim().min(1).max(300) }).strict(), empty, 'operator'),
+  'git.checkoutCommit': method(z.object({ sessionKey, ref: z.string().min(7).max(64) }).strict(), empty, 'operator'),
+  'git.init': method(z.object({ sessionKey }).strict(), empty, 'operator'),
+  'git.clone': method(z.object({ sessionKey, url: z.string().trim().min(1).max(1000), path: z.string().trim().min(1).max(1000) }).strict(), z.object({ path: z.string() }).strict(), 'operator'),
+  /** Recorded git commands of the project (desktop 命令记录). */
+  'git.commandLog': method(
+    z.object({ sessionKey, limit: z.number().int().min(1).max(200).optional() }).strict(),
+    z.object({ entries: z.array(GitCommandEntrySchema) }).strict(),
+    'viewer',
+  ),
+  'git.clearCommandLog': method(z.object({ sessionKey }).strict(), empty, 'operator'),
   'file.search': method(
     z.object({ sessionKey, query: z.string().max(512) }).strict(),
     z.object({ entries: z.array(FileEntrySchema) }).strict(),

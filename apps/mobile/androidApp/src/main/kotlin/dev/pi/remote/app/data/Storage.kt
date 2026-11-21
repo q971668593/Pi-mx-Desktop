@@ -83,6 +83,8 @@ data class SavedHost(
     val manualEndpoints: List<String> = emptyList(),
     /** SPKI fingerprint of the desktop's certificate, pinned when this phone paired. */
     val tlsPin: String? = null,
+    /** 自建中转（自签证书）的指纹；只有走中转地址时用得上。 */
+    val relayTlsPin: String? = null,
 ) {
     /** Everything to probe: what worked and what the host announced, then the user's own addresses. */
     val allEndpoints: List<String> get() = (endpoints + manualEndpoints).distinct()

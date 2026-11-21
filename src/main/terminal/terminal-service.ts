@@ -61,3 +61,14 @@ export function runningTerminalCount(): number {
 export function shutdownTerminals(): void {
   manager?.killAll()
 }
+
+/**
+ * 项目被隐藏 / 从列表移除时，停掉它底下起的终端（含子目录里跑的，比如任务里的 dev server）。
+ * 从没开过终端就什么都不做（也不去加载原生 pty 模块）。
+ */
+export function stopTerminalsForWorkspace(root: string): number {
+  if (!manager) return 0
+  const killed = manager.killWorkspace(root)
+  if (killed.length) console.info(`[terminal] stopped ${killed.length} terminal(s) of hidden project ${root}`)
+  return killed.length
+}

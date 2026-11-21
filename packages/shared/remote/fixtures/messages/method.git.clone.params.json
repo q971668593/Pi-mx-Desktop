@@ -1,0 +1,8 @@
+{
+  "schema": "git.clone/params",
+  "value": {
+    "sessionKey": "/home/u/.pi/agent/sessions/--work-pi-app--/2026-10-05T14-02-11_a1b2.jsonl",
+    "url": "https://github.com/q971668593/Pi-mx-Desktop.git",
+    "path": "pi-app"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "schema": "git.diff/result",
+  "value": {
+    "path": "src/app.ts",
+    "lines": [
+      {
+        "k": "gap",
+        "s": "@@ -1,4 +1,6 @@"
+      },
+      {
+        "k": "ctx",
+        "o": 1,
+        "n": 1,
+        "s": "import { app } from 'electron'"
+      },
+      {
+        "k": "del",
+        "o": 2,
+        "s": "const a = 1"
+      },
+      {
+        "k": "add",
+        "n": 2,
+        "s": "const a = 2"
+      }
+    ],
+    "truncated": false
+  }
+}

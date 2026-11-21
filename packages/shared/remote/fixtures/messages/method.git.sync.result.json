@@ -1,0 +1,13 @@
+{
+  "schema": "git.sync/result",
+  "value": {
+    "incoming": [
+      {
+        "hash": "ab12cd3",
+        "subject": "feat: 手机端 Git 全量"
+      }
+    ],
+    "incomingCount": 1,
+    "tracking": true
+  }
+}

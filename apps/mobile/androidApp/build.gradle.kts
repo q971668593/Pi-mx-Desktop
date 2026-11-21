@@ -6,8 +6,10 @@ plugins {
 }
 
 // versionName follows the desktop app (root package.json); versionCode = major·10000 + minor·100 + patch.
+// providers.fileContents 把 package.json 变成配置缓存的输入：改了版本号会重新读，
+// 否则配置缓存命中时一直用旧值（打完包版本号还停在上一个）。
 val appVersion: String = Regex("\"version\"\\s*:\\s*\"([^\"]+)\"")
-    .find(rootDir.resolve("../../package.json").readText())!!.groupValues[1]
+    .find(providers.fileContents(layout.projectDirectory.file("../../../package.json")).asText.get())!!.groupValues[1]
 val appVersionCode: Int = appVersion.substringBefore('-').split('.').map { it.toInt() }.let { (ma, mi, pa) -> ma * 10000 + mi * 100 + pa }
 
 // Release signing comes from the environment (CI restores the keystore from secrets).

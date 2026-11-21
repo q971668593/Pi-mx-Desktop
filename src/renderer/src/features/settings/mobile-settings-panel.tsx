@@ -24,7 +24,7 @@ type RemoteStatus = {
   port: number
   error?: string
   endpoints: string[]
-  endpointInfo?: { url: string; kind: 'lan' | 'tailscale' | 'overlay' | 'public' }[]
+  endpointInfo?: { url: string; kind: 'lan' | 'tailscale' | 'overlay' | 'relay' | 'public' }[]
   hostName: string
   hostKeyEphemeral: boolean
   pairing: { link: string; exp: number } | null
@@ -35,6 +35,21 @@ type RemoteStatus = {
   projectInfo?: Record<string, { label?: string; temporary?: boolean }>
   tls: { spki: string; fingerprint: string; notAfter: number; subjectAltNames: string[]; ephemeral: boolean } | null
   publicHosts: string[]
+  /** 自建中转：电脑主动连出去，手机从任何网络连进来。 */
+  relay: {
+    configured: boolean
+    configuredUrl: string
+    configuredToken: boolean
+    url: string
+    room: string
+    connected: boolean
+    latencyMs: number | null
+    connections: number
+    error?: string
+    since: number
+    /** 自签证书中转的指纹（base64url sha256 SPKI），手机按这个认证书。 */
+    pin?: string
+  } | null
 }
 
 const POLL_MS = 3000
@@ -57,6 +72,19 @@ export function MobileSettingsPanel() {
   const [busy, setBusy] = useState(false)
   const [portDraft, setPortDraft] = useState('')
   const [hostDraft, setHostDraft] = useState('')
+  const [relayUrlDraft, setRelayUrlDraft] = useState('')
+  const [relayTokenDraft, setRelayTokenDraft] = useState('')
+  // 自签证书的中转：先探一次指纹，确认后再信任并保存（等于把中转当 TOFU 目标）
+  const [probed, setProbed] = useState<{ spki: string; fingerprint: string; subject: string } | null>(null)
+  const [relayError, setRelayError] = useState<string | null>(null)
+  // 「配置向导」：给别人用的时候，从这里生成一条属于他自己服务器的安装命令
+  const [wizardOpen, setWizardOpen] = useState(false)
+  const [installToken, setInstallToken] = useState('')
+  // 已保存的中转地址回填一次；口令不回读，留空就表示“沿用已保存的”。
+  useEffect(() => {
+    if (!status?.relay) return
+    setRelayUrlDraft((prev) => prev || status.relay!.configuredUrl)
+  }, [status?.relay?.configuredUrl])
   const now = useNow(!!status?.pairing)
 
   const call = useCallback(async (channel: string, request?: unknown) => {
@@ -245,6 +273,177 @@ export function MobileSettingsPanel() {
               </button>
             </form>
             <span className="text-[11px] leading-4 text-foreground-tertiary">{t('settings:mobile.tunnelHint')}</span>
+          </div>
+        </SettingRow>
+      </SettingsSection>
+
+      {/* 自建中转：不依赖 cloudflared / frp，手机也不用一直挂 VPN */}
+      <SettingsSection title={t('settings:mobile.relay')} description={t('settings:mobile.relayDesc')}>
+        <SettingRow label={t('settings:mobile.relayUrl')} description={t('settings:mobile.relayUrlDesc')}>
+          <input
+            className={cn(numberInputCls, 'w-[15rem] text-left font-mono text-[11.5px]')}
+            placeholder="relay.example.com:443"
+            aria-label={t('settings:mobile.relayUrl')}
+            value={relayUrlDraft}
+            onChange={(event) => setRelayUrlDraft(event.target.value)}
+          />
+        </SettingRow>
+        <SettingRow label={t('settings:mobile.relayToken')} description={t('settings:mobile.relayTokenDesc')}>
+          <input
+            className={cn(numberInputCls, 'w-[15rem] text-left font-mono text-[11.5px]')}
+            type="password"
+            autoComplete="off"
+            aria-label={t('settings:mobile.relayToken')}
+            placeholder={status.relay?.configuredToken ? '••••••••（留空沿用）' : '——'}
+            value={relayTokenDraft}
+            onChange={(event) => setRelayTokenDraft(event.target.value)}
+          />
+        </SettingRow>
+        <SettingRow label={t('settings:mobile.relayWizard')} description={t('settings:mobile.relayWizardDesc')}>
+          <button type="button" className={btnCompact} onClick={() => setWizardOpen((open) => !open)}>
+            {wizardOpen ? t('settings:mobile.relayWizardHide') : t('settings:mobile.relayWizardShow')}
+          </button>
+        </SettingRow>
+        {wizardOpen
+          ? (() => {
+              const host = relayUrlDraft.trim().replace(/^wss?:\/\//, '')
+              const port = /:(\d+)$/.exec(host)?.[1] ?? '8443'
+              const token = installToken
+              const command = token
+                ? `curl -fsSL https://raw.githubusercontent.com/q971668593/Pi-mx-Desktop/main/scripts/relay/install.sh | bash -s -- --port ${port} --token ${token}`
+                : ''
+              return (
+                <div className="settings-row flex flex-col gap-2 text-[12px] leading-[1.7] text-foreground-secondary">
+                  <ol className="ml-4 list-decimal space-y-1">
+                    <li>{t('settings:mobile.relayStep1')}</li>
+                    <li>{t('settings:mobile.relayStep2')}</li>
+                    <li>{t('settings:mobile.relayStep3')}</li>
+                  </ol>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      className={btnCompact}
+                      onClick={() => {
+                        const bytes = new Uint8Array(24)
+                        crypto.getRandomValues(bytes)
+                        const next = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+                        setInstallToken(next)
+                        setRelayTokenDraft(next)
+                      }}
+                    >
+                      {installToken ? t('settings:mobile.relayTokenRegenerate') : t('settings:mobile.relayTokenGenerate')}
+                    </button>
+                    <button
+                      type="button"
+                      className={btnCompact}
+                      disabled={!command}
+                      onClick={() => void navigator.clipboard.writeText(command).catch(() => {})}
+                    >
+                      {t('settings:mobile.relayCopyCommand')}
+                    </button>
+                  </div>
+                  <code className="block max-w-full overflow-x-auto whitespace-pre rounded-md border border-border/60 bg-[var(--bg-2)]/50 p-2 font-mono text-[11px]">
+                    {command || t('settings:mobile.relayCommandHint')}
+                  </code>
+                  <span className="text-[11px] leading-4 text-foreground-tertiary">{t('settings:mobile.relayWizardNote')}</span>
+                </div>
+              )
+            })()
+          : null}
+        <SettingRow
+          label={
+            status.relay?.connected
+              ? t('settings:mobile.relayConnected')
+              : status.relay?.configured
+                ? t('settings:mobile.relayDisconnected')
+                : t('settings:mobile.relaySave')
+          }
+          description={
+            status.relay?.error === 'invalid_url'
+              ? t('settings:mobile.relayInvalid')
+              : [
+                  status.relay?.latencyMs != null ? t('settings:mobile.relayLatency', { ms: status.relay.latencyMs }) : '',
+                  status.relay?.connections ? t('settings:mobile.relayClients', { count: status.relay.connections }) : '',
+                  status.relay?.room ? t('settings:mobile.relayRoom', { room: status.relay.room }) : '',
+                ]
+                  .filter(Boolean)
+                  .join(' · ') || undefined
+          }
+        >
+          <div className="flex max-w-[22rem] flex-col items-end gap-1.5">
+            <div className="flex gap-1">
+              <button
+                type="button"
+                className={btnCompact}
+                disabled={busy || !relayUrlDraft.trim() || (!relayTokenDraft.trim() && !status.relay?.configuredToken)}
+                onClick={() => void call('remote.setRelay', { url: relayUrlDraft.trim(), token: relayTokenDraft.trim() })}
+              >
+                {t('settings:mobile.relaySave')}
+              </button>
+              {status.relay?.configured && (
+                <button
+                  type="button"
+                  className={btnCompact}
+                  disabled={busy}
+                  onClick={() => {
+                    setRelayTokenDraft('')
+                    void call('remote.setRelay', { url: '', token: '' })
+                  }}
+                >
+                  {t('settings:mobile.relayRemove')}
+                </button>
+              )}
+            </div>
+            {probed ? (
+              <div className="flex flex-col items-end gap-1 rounded-md border border-border/60 bg-[var(--bg-2)]/40 px-2 py-1.5">
+                <code className="max-w-full truncate font-mono text-[11px] text-foreground-secondary" title={probed.fingerprint}>
+                  {probed.fingerprint || probed.spki}
+                </code>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    className={btnCompact}
+                    disabled={busy}
+                    onClick={() => {
+                      void call('remote.setRelay', { url: relayUrlDraft.trim(), token: relayTokenDraft.trim(), pin: probed.spki })
+                      setProbed(null)
+                    }}
+                  >
+                    {t('settings:mobile.relayTrust')}
+                  </button>
+                  <button type="button" className={btnCompact} onClick={() => setProbed(null)}>
+                    {t('common:cancel')}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                {status.relay?.pin ? (
+                  <span className="text-[11px] text-foreground-tertiary">{t('settings:mobile.relayPinned', { pin: status.relay.pin.slice(0, 12) })}</span>
+                ) : null}
+                <button
+                  type="button"
+                  className={btnCompact}
+                  disabled={busy || !relayUrlDraft.trim()}
+                  onClick={() => {
+                    setBusy(true)
+                    ipcClient
+                      .invoke('remote.relayProbe', { url: relayUrlDraft.trim() })
+                      .then((info) => {
+                        const cert = info as { spki: string; fingerprint: string; subject: string } | null
+                        setProbed(cert)
+                        setRelayError(cert ? null : t('settings:mobile.relayProbeFailed'))
+                      })
+                      .catch(() => setRelayError(t('settings:mobile.relayProbeFailed')))
+                      .finally(() => setBusy(false))
+                  }}
+                >
+                  {t('settings:mobile.relayProbe')}
+                </button>
+              </div>
+            )}
+            {relayError ? <span className="text-[11px] text-red-600 dark:text-red-400">{relayError}</span> : null}
+            <span className="text-[11px] leading-4 text-foreground-tertiary">{t('settings:mobile.relayHint')}</span>
           </div>
         </SettingRow>
       </SettingsSection>

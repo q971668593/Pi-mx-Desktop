@@ -54,6 +54,39 @@ describe('PtyManager', () => {
     expect(m.count).toBe(0)
   })
 
+  it('stops every terminal of a hidden project, including subfolders, and leaves others running', () => {
+    const spawned: Array<ReturnType<typeof fakePty>> = []
+    const spawn = vi.fn(() => {
+      const pty = fakePty()
+      spawned.push(pty)
+      return pty as unknown as PtyProcess
+    })
+    const sink = { data: vi.fn(), exit: vi.fn() }
+    const m = new PtyManager(spawn, sink, () => ({}))
+    const project = '/work/pi-app'
+    const inProject = m.create(profile, { cwd: project, workspace: project, cols: 80, rows: 24 })
+    const subFolder = m.create(profile, { cwd: `${project}/packages/app`, workspace: `${project}/packages/app`, cols: 80, rows: 24 })
+    const other = m.create(profile, { cwd: '/work/other', workspace: '/work/other', cols: 80, rows: 24 })
+    // 名字像、但不在这个项目里的不能被误杀
+    const lookalike = m.create(profile, { cwd: '/work/pi-app-2', workspace: '/work/pi-app-2', cols: 80, rows: 24 })
+    expect(m.count).toBe(4)
+
+    const killed = m.killWorkspace(project)
+    expect(killed.sort()).toEqual([inProject.id, subFolder.id].sort())
+    expect(m.count).toBe(2)
+    expect(spawned[0].killed).toBe(true)
+    expect(spawned[1].killed).toBe(true)
+    expect(spawned[2].killed).toBe(false)
+    expect(spawned[3].killed).toBe(false)
+    // 关掉的终端仍然走一次 exit，渲染层才能把 tab 标成已结束
+    spawned[0].exit(0)
+    expect(sink.exit).toHaveBeenCalledWith(inProject.id, 0)
+    void other
+    void lookalike
+    // 重复隐藏是幂等的
+    expect(m.killWorkspace(project)).toEqual([])
+  })
+
   it('closes a terminal from the tool side and reports it, leaving running ones alone', () => {
     const pty = fakePty()
     const sink = { data: vi.fn(), exit: vi.fn(), closed: vi.fn() }

@@ -46,6 +46,8 @@ export type WorkerModelRuntime = Pick<
 export type WorkerMutableState = {
   sdk: typeof import('@earendil-works/pi-coding-agent') | null
   activeSdkPath: string | null
+  /** 随安装包携带的扩展（billion-context）——只在这个 worker 的会话里加载。 */
+  builtinExtensionPaths: string[]
   sharedEventBus: EventBus | null
   /** Canonical model/auth runtime owned by the current AgentSessionRuntime services. */
   modelRuntime: WorkerModelRuntime | null
@@ -72,6 +74,7 @@ export type WorkerMutableState = {
 export const st: WorkerMutableState = {
   sdk: null,
   activeSdkPath: null,
+  builtinExtensionPaths: [],
   sharedEventBus: null,
   modelRuntime: null,
   session: null,
@@ -235,6 +238,7 @@ function buildRuntimeFactory(): CreateAgentSessionRuntimeFactory {
       agentDir,
       resourceLoaderOptions: {
         eventBus: st.sharedEventBus!,
+        ...(st.builtinExtensionPaths.length > 0 ? { additionalExtensionPaths: [...st.builtinExtensionPaths] } : {}),
         extensionFactories: [...piBuiltinExtensions(sdk), capabilitiesExtension, goalExtension, runtimeBudgetExtension, browserToolsExtension, terminalToolsExtension, teamToolsExtension, imageToolsExtension, askToolsExtension, modelRoutersExtension(agentDir)],
         extensionsOverride: (result) => guardExtensionCapabilityTools(decorateQuestionnaireTools(result, cwd)),
         skillsOverride: applySkillsOverride as never,

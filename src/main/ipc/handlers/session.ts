@@ -130,6 +130,19 @@ function restoreSessionFromUndo(trashId: string): { sessionFile: string; workspa
   }
 }
 
+/**
+ * 停掉某个项目里起的终端。
+ * 按需加载：terminal-service 会拉起 electron 的 window 模块，静态引入会污染这些 handler 的测试依赖图。
+ */
+async function stopTerminalsOf(path: string): Promise<void> {
+  try {
+    const mod = await import('../../terminal/terminal-service')
+    mod.stopTerminalsForWorkspace(path)
+  } catch (error) {
+    console.warn('[session] could not stop terminals for hidden project:', error instanceof Error ? error.message : error)
+  }
+}
+
 export function registerSessionHandlers(): void {
   registerHandlerWithSchema('ipc:session.list', sessionListSchema, async (req) => {
     const workspaceId = req.workspaceId || workerManager.cwd || configStore.get('currentProject') || ''
@@ -774,6 +787,7 @@ export function registerSessionHandlers(): void {
       if (!isRepositoryGroup && typeof configStore.hideWorktree === 'function') {
         configStore.hideWorktree(target)
       }
+      await stopTerminalsOf(target)
     }
     if (!isRepositoryGroup && siblingPaths.length > 0) {
       const recentAfter = configStore.get('recentProjects') || []
@@ -826,6 +840,8 @@ export function registerSessionHandlers(): void {
     if (!paths.length) return { ok: false, error: 'missing path' }
     for (const path of paths) {
       if (typeof configStore.hideWorktree === 'function') configStore.hideWorktree(path)
+      // 项目藏起来了，它在跑的终端（dev server 之类）也该停，不然还会占端口/吃 CPU
+      await stopTerminalsOf(path)
     }
     return { ok: true, hiddenProjects: configStore.get('hiddenWorktrees') || [] }
   })

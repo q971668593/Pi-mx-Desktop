@@ -78,6 +78,32 @@ describe('transport security', () => {
     expect(gw.status(true).tls!.spki).toBe(before)
   })
 
+  it('publishes the self-hosted relay endpoint right after the LAN addresses', async () => {
+    // 中转配置直接写进 auth（不起真实连接）：这里只验地址与状态怎么给到手机
+    gw.auth.setRelay({ url: 'relay.example.com:8443', token: 'relay-token' })
+    const info = gw.status(true).endpointInfo
+    const relays = info.filter((e) => e.kind === 'relay')
+    expect(relays).toHaveLength(1)
+    expect(relays[0].url).toMatch(/^wss:\/\/relay\.example\.com:8443\/c\/r_[A-Za-z0-9_-]+$/)
+
+    gw.auth.setPublicHosts(['pi.example.com:443'])
+    const order = gw.status(true).endpointInfo.map((e) => e.kind)
+    expect(order.indexOf('relay')).toBeGreaterThanOrEqual(order.filter((k) => k === 'lan' || k === 'tailscale' || k === 'overlay').length)
+    expect(order.indexOf('relay')).toBeLessThan(order.indexOf('public'))
+
+    expect(gw.status(true).relay).toMatchObject({
+      configured: true,
+      configuredUrl: 'wss://relay.example.com:8443',
+      connected: false,
+      room: expect.stringMatching(/^r_/),
+    })
+
+    gw.auth.setRelay(null)
+    gw.auth.setPublicHosts([])
+    expect(gw.status(true).relay).toBeNull()
+    expect(gw.status(true).endpointInfo.some((e) => e.kind === 'relay')).toBe(false)
+  })
+
   it('adds wide-area endpoints from the public host list', async () => {
     gw.setPublicHosts(['pi.example.com:8443', 'edge.trycloudflare.com:443'])
     const info = gw.status(true).endpointInfo
@@ -246,6 +272,28 @@ describe('sessions', () => {
     expect(new Set(r.commands.map((x) => x.category))).toEqual(new Set(['prompt', 'skill', 'extension']))
   })
 
+  it('serves the mermaid asset over the encrypted session, in chunks', async () => {
+    const body = 'window.mermaid={initialize(){},run(){return Promise.resolve()}}'.repeat(100)
+    host.addAsset('mermaid.min.js', body)
+    const c = await pairNew()
+    const first = (await c.call('asset.get', { name: 'mermaid.min.js', offset: 0, limit: 500 })) as {
+      total: number
+      sha256: string
+      data: string
+    }
+    expect(first.total).toBe(body.length)
+    const chunks = [Buffer.from(first.data, 'base64').toString()]
+    for (let offset = 500; offset < first.total; offset += 500) {
+      const next = (await c.call('asset.get', { name: 'mermaid.min.js', offset, limit: 500 })) as { data: string }
+      chunks.push(Buffer.from(next.data, 'base64').toString())
+    }
+    expect(chunks.join('')).toBe(body)
+    expect(first.sha256).toMatch(/^[0-9a-f]{64}$/)
+    // 白名单之外的名字一律不认
+    await expect(c.call('asset.get', { name: 'secret.txt' })).rejects.toMatchObject({ err: { code: 'not_found' } })
+    await expect(c.call('asset.get', { name: 'mermaid.min.js', offset: 999_999 })).rejects.toMatchObject({ err: { code: 'bad_request' } })
+  })
+
   it('browses and searches project files', async () => {
     const c = await pairNew()
     const root = (await c.call('file.list', { sessionKey: session, path: '.' })) as { entries: { name: string; dir: boolean }[] }
@@ -277,6 +325,72 @@ describe('sessions', () => {
     expect(one.file!.lines.filter((l) => l.k === 'gap')).toEqual([{ k: 'gap', s: 'export function logout() {' }])
     expect(one.file!.lines.find((l) => l.s === '  store.clear({ keepDevice: true })')).toEqual({ k: 'add', n: 42, s: '  store.clear({ keepDevice: true })' })
     await expect(c.call('review.diff', { sessionKey: session, scope: 'git', path: 'nope.ts' })).rejects.toMatchObject({ err: { code: 'not_found' } })
+  })
+
+  it('adds a folder of the desktop as a project, then starts a chat there', async () => {
+    const c = await pairNew()
+    const roots = (await c.call('fs.browse', {})) as { path: string; roots: { path: string }[] }
+    expect(roots.path).toBe('')
+    expect(roots.roots.map((r) => r.path)).toEqual(['/work'])
+
+    const listing = (await c.call('fs.browse', { path: '/work' })) as { dirs: { name: string; repo: boolean }[] }
+    expect(listing.dirs.map((d) => [d.name, d.repo])).toEqual([
+      ['pi-app', true],
+      ['new-project', false],
+    ])
+
+    const made = (await c.call('fs.mkdir', { parent: '/work', name: 'fresh' })) as { path: string }
+    expect(made.path).toBe('/work/fresh')
+
+    const added = (await c.call('project.add', { path: made.path })) as { project: { id: string; name: string } }
+    expect(added.project).toEqual({ id: '/work/fresh', name: 'fresh' })
+    // 加完就能在项目列表里看到，也能直接在这开局
+    const projects = (await c.call('project.list', {})) as { projects: { id: string }[] }
+    expect(projects.projects.map((p) => p.id)).toContain('/work/fresh')
+    const created = (await c.call('session.create', { projectId: made.path })) as { sessionKey: string }
+    expect(created.sessionKey).toContain('fresh')
+
+    // 只读设备不能翻电脑目录，也不能加项目
+    gw.setDeviceRole(c.hello!.deviceId, 'viewer')
+    await expect(c.call('fs.browse', { path: '/work' })).rejects.toMatchObject({ err: { code: 'forbidden' } })
+    await expect(c.call('project.add', { path: made.path })).rejects.toMatchObject({ err: { code: 'forbidden' } })
+  })
+
+  it('drives the desktop git board from the phone', async () => {
+    const c = await pairNew()
+    const overview = (await c.call('git.overview', { sessionKey: session })) as {
+      branch: string
+      upstream: string | null
+      files: { path: string; group: string }[]
+      branches: { name: string; current: boolean }[]
+      commits: { hash: string }[]
+      tags: string[]
+      operation: string | null
+    }
+    expect(overview.branch).toBe('main')
+    expect(overview.upstream).toBe('origin/main')
+    expect(overview.files.map((f) => [f.path, f.group])).toEqual([['src/app.ts', 'unstaged']])
+    expect(overview.branches.map((b) => [b.name, b.current])).toEqual([['main', true]])
+    expect(overview.commits).toHaveLength(1)
+    expect(overview.tags).toEqual(['v1.0.0'])
+    expect(overview.operation).toBeNull()
+
+    const diff = (await c.call('git.diff', { sessionKey: session, path: 'src/app.ts' })) as { lines: unknown[] }
+    expect(diff.lines).toEqual([{ k: 'add', n: 1, s: 'hello' }])
+
+    await c.call('git.stage', { sessionKey: session, paths: ['src/app.ts'] })
+    expect(await c.call('git.commit', { sessionKey: session, message: 'feat: 手机端 Git', action: 'commit-and-push' })).toEqual({
+      committed: true,
+      pushed: false,
+    })
+    expect(((await c.call('git.commandLog', { sessionKey: session })) as { entries: unknown[] }).entries).toEqual([])
+    const detail = (await c.call('git.commitDetail', { sessionKey: session, ref: 'a'.repeat(40) })) as { subject: string }
+    expect(detail.subject).toBe('feat: 首条提交')
+
+    // 只读设备只能看，不能动仓库
+    gw.setDeviceRole(c.hello!.deviceId, 'viewer')
+    await expect(c.call('git.commit', { sessionKey: session, message: 'x' })).rejects.toMatchObject({ err: { code: 'forbidden' } })
+    await expect(c.call('git.overview', { sessionKey: session })).resolves.toMatchObject({ branch: 'main' })
   })
 
   it('reviews what one turn changed', async () => {

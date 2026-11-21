@@ -33,6 +33,7 @@ function draft(): SettingsDraft {
     background: { shared: true },
     language: 'en',
     autoOpenLastProject: true,
+    builtinBillionContext: true,
     autoCheckRegistryUpdates: true,
     includePrereleaseUpdates: false,
     alertSoundEnabled: true,

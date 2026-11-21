@@ -82,6 +82,7 @@ fun InboxScreen(repo: RemoteRepository, onOpen: (String) -> Unit, onHosts: () ->
     val prefs = LocalUiPrefs.current
     val scope = rememberCoroutineScope()
     var picking by remember { mutableStateOf(false) }
+    var pickerOpen by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
     var pendingProject by remember { mutableStateOf<String?>(null) }
@@ -100,6 +101,7 @@ fun InboxScreen(repo: RemoteRepository, onOpen: (String) -> Unit, onHosts: () ->
             val key = repo.createSession(projectId, null)
             pendingProject = null
             picking = false
+            pickerOpen = false
             if (key != null) onOpen(key)
         }
     }
@@ -184,6 +186,20 @@ fun InboxScreen(repo: RemoteRepository, onOpen: (String) -> Unit, onHosts: () ->
         PiSheet(onDismiss = { picking = false }) {
             Column(Modifier.padding(bottom = 18.dp)) {
                 Text(stringResource(R.string.new_session_title), style = Pi.t.bodyMedium.copy(color = Pi.c.fg), modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+                // 项目不在列表里？直接去电脑上翻文件夹，选中就地建项目再开对话。
+                Row(
+                    Modifier.fillMaxWidth().clickable(role = Role.Button) { picking = false; pickerOpen = true }.padding(horizontal = 20.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    PiIcon(PiIcons.Folder, Pi.c.blue, 16.dp)
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.picker_browse), style = Pi.t.body.copy(color = Pi.c.fg))
+                        Text(stringResource(R.string.picker_browse_hint), style = Pi.t.meta.copy(color = Pi.c.fg3), maxLines = 2)
+                    }
+                    PiIcon(PiIcons.ChevronRight, Pi.c.fg3)
+                }
+                Hairline()
                 SectionLabel(stringResource(R.string.new_session_pick))
                 // New chats go to real projects; desktop temporary chats are one-offs.
                 val last = prefs?.lastProject
@@ -202,6 +218,14 @@ fun InboxScreen(repo: RemoteRepository, onOpen: (String) -> Unit, onHosts: () ->
                 }
             }
         }
+    }
+    if (pickerOpen) {
+        ProjectPickerSheet(
+            repo = repo,
+            creating = pendingProject != null,
+            onCreate = { create(it) },
+            onDismiss = { pickerOpen = false },
+        )
     }
     if (menu && prefs != null) InboxMenu(prefs, repo, onHosts = { menu = false; onHosts() }, onDismiss = { menu = false })
 }

@@ -63,7 +63,9 @@ class HostConnection(
     private val onPaired: (Hs2Payload) -> Unit = {},
     /** SPKI fingerprint pinned at pairing; null = system certificates only (manual addresses). */
     private val tlsPin: String? = null,
-    private val client: HttpClient = httpClientFor(tlsPin),
+    /** 自建中转（自签证书）的指纹：只在连中转地址时用得上，和电脑自己的指纹二选一。 */
+    private val relayPin: String? = null,
+    private val client: HttpClient = httpClientFor(tlsPin, relayPin),
     private val pingIntervalMs: Long = 15_000,
 ) {
     sealed interface State {
@@ -297,21 +299,22 @@ class HostConnection(
          * both the trust manager and (for self-signed certificates) a hostname verifier that defers
          * to the pin instead of the certificate's names.
          */
-        fun httpClientFor(tlsPin: String?): HttpClient = HttpClient(OkHttp) {
+        fun httpClientFor(tlsPin: String?, relayPin: String? = null): HttpClient = HttpClient(OkHttp) {
+            val pins = listOfNotNull(tlsPin, relayPin).toSet()
             install(WebSockets)
             engine {
                 config {
                     connectTimeout(4, TimeUnit.SECONDS)
                     readTimeout(0, TimeUnit.SECONDS)
                     pingInterval(0, TimeUnit.SECONDS)
-                    val trust = PinnedTrustManager(tlsPin)
+                    val trust = PinnedTrustManager(pins)
                     runCatching {
                         val factory = javax.net.ssl.SSLContext.getInstance("TLS").apply {
                             init(null, arrayOf<TrustManager>(trust), null)
                         }.socketFactory
                         sslSocketFactory(factory, trust)
                     }
-                    hostnameVerifier(pinnedHostnameVerifier(tlsPin))
+                    hostnameVerifier(pinnedHostnameVerifier(pins))
                 }
             }
         }

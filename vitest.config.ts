@@ -25,6 +25,8 @@ export default defineConfig({
       'packages/shared/**/*.test.ts',
       'src/browser-runtime/**/*.test.ts',
       'src/extension-compat/**/*.test.ts',
+      // 自建中转是给 VPS 直接跑的 .mjs（不需要构建），测试也放它旁边
+      'scripts/relay/**/*.test.mjs',
     ],
     exclude: ['node_modules/**', 'out/**', 'dist/**', 'e2e/**'],
   },

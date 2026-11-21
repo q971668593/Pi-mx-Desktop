@@ -57,6 +57,8 @@ export interface StoreSchema {
   autoCheckRegistryUpdates: boolean
   /** Python setup prompt is shown once; Python remains optional for the desktop app. */
   pythonSetupPromptHandled: boolean
+  /** 内置上下文压缩扩展（billion-context，随安装包携带）：默认开，关掉后新会话不再加载 */
+  builtinBillionContext: boolean
   /** 检查更新时包含预发布 */
   includePrereleaseUpdates: boolean
   /** 上次自动更新检查时间戳（毫秒）；0 = 从未检查。用于避免每次启动都打 GitHub */
@@ -161,6 +163,7 @@ const store = new Store<StoreSchema>({
     autoOpenLastProject: true,
     autoCheckRegistryUpdates: true,
     pythonSetupPromptHandled: false,
+    builtinBillionContext: true,
     includePrereleaseUpdates: false,
     lastUpdateCheckAt: 0,
     ignoredUpdateVersion: '',

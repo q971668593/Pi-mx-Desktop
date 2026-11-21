@@ -19,6 +19,9 @@ export async function handleInit(msg: WorkerIncomingMessage, reply: WorkerReply)
         try {
           console.log('[Worker] Initializing st.session for:', msg.cwd)
           st.activeSdkPath = typeof msg.sdkPath === 'string' && msg.sdkPath ? msg.sdkPath : null
+          st.builtinExtensionPaths = Array.isArray(msg.builtinExtensions)
+            ? msg.builtinExtensions.filter((p): p is string => typeof p === 'string' && p.length > 0)
+            : []
           let sdkFallback = false
           try {
             if (st.activeSdkPath) {

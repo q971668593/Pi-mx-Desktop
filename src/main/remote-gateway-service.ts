@@ -3,6 +3,8 @@ import type { Role } from '@shared/remote'
 import { RemoteGateway, type GatewayStatus } from './remote/gateway'
 import { createElectronRemoteHost } from './remote-host-electron'
 import { detectTailnetName } from './remote/tailnet'
+import { probeRelayCert, type RelayCertInfo } from './remote/relay-agent'
+import { normalizeRelayBase } from '@shared/relay'
 
 /**
  * Owns the single RemoteGateway: created lazily, started when the user enables it (or at boot
@@ -93,6 +95,33 @@ export async function regenerateRemotePairing(): Promise<RemoteStatus> {
 export async function setRemoteProjects(projects: string[]): Promise<RemoteStatus> {
   instance().auth.setProjects(projects)
   return remoteStatus()
+}
+
+/**
+ * 自建中转：电脑主动连出去，手机再从任何网络连进来（不用装任何第三方隧道，也不用一直挂 VPN）。
+ * 传 null 或空地址＝关掉，回到原来的局域网 / 手工公网入口。
+ */
+export async function setRemoteRelay(config: { url: string; token: string; pin?: string } | null): Promise<RemoteStatus> {
+  const gw = instance()
+  const url = config?.url?.trim() ?? ''
+  if (!url) {
+    gw.setRelay(null)
+    return remoteStatus()
+  }
+  // 口令留空＝沿用已保存的那个（设置页不把口令读回前端）。
+  const token = config?.token?.trim() || gw.auth.relay?.token || ''
+  gw.setRelay({ url, token, ...(config?.pin ? { pin: config.pin } : {}) })
+  return remoteStatus()
+}
+
+/**
+ * 探测中转的 TLS 证书指纹（不校验证书链）：自签证书的中转靠这把指纹让手机认。
+ * 拿到的指纹在设置页点「信任」时随 `setRelay` 存下来，并写进配对链接。
+ */
+export async function probeRemoteRelay(url: string): Promise<RelayCertInfo | null> {
+  const base = normalizeRelayBase(url)
+  if (!base) return null
+  return probeRelayCert(base)
 }
 
 /** Wide-area `host:port` list: tunnel hostname or a forwarded port on the router. */
