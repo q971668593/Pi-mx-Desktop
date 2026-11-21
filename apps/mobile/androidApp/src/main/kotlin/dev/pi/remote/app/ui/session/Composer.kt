@@ -129,20 +129,29 @@ fun Composer(
                     },
                 )
             }
-            // 第一行：模型单独占一行，名字给足宽度（一行放不下时省略号，不挤思考程度）
-            Row(
-                Modifier.fillMaxWidth().heightIn(min = 34.dp).clip(RoundedCornerShape(8.dp))
-                    .clickable(role = Role.Button, onClick = onModel).padding(horizontal = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    modelLabel,
-                    style = Pi.t.secondary.copy(color = Pi.c.fg2),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                PiIcon(PiIcons.ChevronDown, Pi.c.fg3, 12.dp)
+            // 第一行：模型 + 思考程度（左边点模型、右边点思考，各占一半，谁也挤不掉谁）
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.weight(1f).heightIn(min = 34.dp).clip(RoundedCornerShape(8.dp))
+                        .clickable(role = Role.Button, onClick = onModel).padding(horizontal = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(modelLabel, style = Pi.t.secondary.copy(color = Pi.c.fg2), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    Spacer(Modifier.width(4.dp))
+                    PiIcon(PiIcons.ChevronDown, Pi.c.fg3, 12.dp)
+                }
+                if (thinkingLabel != null) {
+                    Row(
+                        Modifier.weight(1f).heightIn(min = 34.dp).clip(RoundedCornerShape(8.dp))
+                            .clickable(role = Role.Button, onClick = onThinking)
+                            .semantics { contentDescription = thinkingLabel }.padding(horizontal = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        PiIcon(PiIcons.Bulb, Pi.c.fg3, 14.dp)
+                        Spacer(Modifier.width(4.dp))
+                        Text(thinkingLabel, style = Pi.t.secondary.copy(color = Pi.c.fg2), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    }
+                }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 // 第二行：附件 / 命令 / 文件 与 思考程度 / 工具
@@ -161,19 +170,6 @@ fun Composer(
                             Modifier.size(36.dp).clip(CircleShape).clickable(enabled = editable, role = Role.Button, onClick = onFiles),
                             contentAlignment = Alignment.Center,
                         ) { PiIcon(PiIcons.At, Pi.c.fg2, 17.dp, contentDescription = stringResource(R.string.files_open)) }
-                        if (thinkingLabel != null) {
-                            Row(
-                                Modifier.heightIn(min = 36.dp).clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button, onClick = onThinking)
-                                    .semantics { contentDescription = thinkingLabel }.padding(horizontal = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                PiIcon(PiIcons.Bulb, Pi.c.fg3, 14.dp)
-                                if (!compact) {
-                                    Spacer(Modifier.width(4.dp))
-                                    Text(thinkingLabel, style = Pi.t.secondary.copy(color = Pi.c.fg2), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                }
-                            }
-                        }
                         val toolsDesc = stringResource(R.string.tools_count, toolsOn)
                         Row(
                             Modifier.heightIn(min = 36.dp).clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button, onClick = onTools).semantics { contentDescription = toolsDesc }.padding(horizontal = 8.dp),

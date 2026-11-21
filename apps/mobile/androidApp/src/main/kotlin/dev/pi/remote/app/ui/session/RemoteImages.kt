@@ -8,6 +8,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -29,6 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -110,12 +113,26 @@ fun RemoteImageStrip(
     }
 }
 
-/** 全屏看图：点任意位置关闭，底部显示文件名。 */
+/** 全屏看图：点任意位置关闭；长按保存到相册（手机上最常用的带走方式）。 */
 @Composable
 fun ImagePreviewDialog(bitmap: ImageBitmap, path: String, onDismiss: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     Box(
         Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.92f))
-            .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null, onClick = onDismiss),
+            .pointerInput(bitmap) {
+                detectTapGestures(
+                    onTap = { onDismiss() },
+                    onLongPress = {
+                        val bmp = bitmap.asAndroidBitmap()
+                        val uri = dev.pi.remote.app.data.MediaExport.saveToGallery(context, bmp, path.substringAfterLast('/').ifEmpty { "pi-image.png" })
+                        android.widget.Toast.makeText(
+                            context,
+                            if (uri != null) dev.pi.remote.R.string.image_saved else dev.pi.remote.R.string.projfiles_image_failed,
+                            android.widget.Toast.LENGTH_SHORT,
+                        ).show()
+                    },
+                )
+            },
         contentAlignment = Alignment.Center,
     ) {
         Image(

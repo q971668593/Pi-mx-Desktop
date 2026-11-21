@@ -1298,7 +1298,7 @@
   },
   "mobile": {
     "title": "手机连接",
-    "description": "在同一局域网内，用 pi Remote 手机 App 查看和继续驱动会话。连接全程端到端加密，不经过任何服务器。",
+    "description": "在同一局域网内，用 Pi mx Remote 手机 App 查看和继续驱动会话。连接全程端到端加密，不经过任何服务器。",
     "loading": "读取中…",
     "connection": "连接",
     "enable": "允许手机连接",
@@ -1320,7 +1320,7 @@
     "pairing": "配对",
     "pairingDesc": "用手机 App 扫描二维码完成配对。Windows 需要在防火墙中允许 pi Desktop 使用专用网络。",
     "qrLabel": "配对二维码",
-    "scanHint": "用 pi Remote 扫码",
+    "scanHint": "用 Pi mx Remote 扫码",
     "expiresIn": "{{time}} 后失效",
     "expired": "已失效，请重新生成",
     "noPairing": "还没有配对码",

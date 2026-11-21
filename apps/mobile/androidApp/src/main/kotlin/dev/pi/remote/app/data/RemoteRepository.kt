@@ -309,6 +309,9 @@ class RemoteRepository(
                 }
                 // 运行中/已结束都算宿主收到了那条消息
                 u.sessions.forEach { if (it.status == "running" || it.status == "needsInput") _pendingSends.update { p -> p - it.sessionKey } }
+                // 当前正在看的会话有变化：主动补一次，避免漏包导致"发了没显示"
+                val open = openKey
+                if (open != null && u.sessions.any { it.sessionKey == open }) scope.launch { resync(open) }
                 persistInbox()
                 noticeTransitions(before, u.sessions)
             }
@@ -415,6 +418,8 @@ class RemoteRepository(
         if (mode == "prompt") _pendingSends.update { it + (key to text.trim()) }
         return try {
             a.send(key, text, mode, "m_${UUID.randomUUID()}")
+            // 宿主收下之后立刻补一次同步：万一补丁在路上丢了，也不会出现「发了没反应、退出再进才看到」。
+            if (mode == "prompt") scope.launch { delay(700); resync(key) }
             SendOutcome.Sent
         } catch (e: HostConnection.ConnectionLost) {
             SendOutcome.Unknown
@@ -422,6 +427,12 @@ class RemoteRepository(
             _pendingSends.update { it - key }
             SendOutcome.Failed(e.message ?: "send failed")
         }
+    }
+
+    /** 主动对齐一次时间线（补发/漏包时用）：没有本地时间线就从快照重建。 */
+    suspend fun resync(key: String) {
+        if (conn?.isReady != true) return
+        reopen(key)
     }
 
     /** Queued texts the host pulled back, or null when the stop did not reach it. */

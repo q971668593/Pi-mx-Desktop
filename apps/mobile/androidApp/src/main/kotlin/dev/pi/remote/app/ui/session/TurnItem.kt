@@ -91,6 +91,8 @@ data class TurnCallbacks(
     val loadImage: suspend (String) -> android.graphics.Bitmap? = { null },
     /** 点缩略图看大图。 */
     val onOpenImage: (android.graphics.Bitmap, String) -> Unit = { _, _ -> },
+    /** 点回复里提到的文件（说明文档、生图、日志…）打开预览。 */
+    val onOpenFile: (String) -> Unit = {},
 )
 
 enum class MessagePart { User, Answer }
@@ -147,6 +149,11 @@ fun TurnItem(turn: Turn, expanded: Boolean, divider: Long?, now: Long, mermaid: 
                     },
                 ),
             )
+            // 回复里提到的文件做成可点的小卡片：生成的说明文档、海报、日志都能直接打开。
+            if (!turn.running) {
+                val refs = remember(turn.id, turn.answer) { dev.pi.remote.app.data.FileRefs.find(turn.answer) }
+                FileRefChips(refs, onOpen = cb.onOpenFile)
+            }
         }
         turn.error?.let { e ->
             Row(verticalAlignment = Alignment.Top) {

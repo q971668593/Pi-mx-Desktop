@@ -86,6 +86,7 @@ fun InboxScreen(repo: RemoteRepository, onOpen: (String) -> Unit, onHosts: () ->
     var refreshing by remember { mutableStateOf(false) }
     var pendingProject by remember { mutableStateOf<String?>(null) }
     var pendingDelete by remember { mutableStateOf<dev.pi.remote.protocol.SessionSummary?>(null) }
+    var hiddenSheet by remember { mutableStateOf(false) }
     val shared by repo.pendingShare.collectAsState()
     val canCreate = repo.canWrite && connection is HostConnection.State.Ready
     val latency by repo.latency.collectAsState()
@@ -116,6 +117,7 @@ fun InboxScreen(repo: RemoteRepository, onOpen: (String) -> Unit, onHosts: () ->
             onNew = { picking = true },
             onNewIn = { create(it) },
             onAskDelete = { pendingDelete = it },
+            onShowHidden = { hiddenSheet = true },
             latencyMs = latency,
             onHideProject = { project, hide ->
                 scope.launch {
@@ -151,6 +153,29 @@ fun InboxScreen(repo: RemoteRepository, onOpen: (String) -> Unit, onHosts: () ->
                         pendingDelete = null
                         scope.launch { repo.deleteSession(key) }
                     }, color = Pi.c.bad)
+                }
+            }
+        }
+    }
+    if (hiddenSheet) {
+        PiSheet(onDismiss = { hiddenSheet = false }) {
+            Column(Modifier.padding(bottom = 20.dp)) {
+                Text(stringResource(R.string.inbox_hidden_title), style = Pi.t.bodyMedium.copy(color = Pi.c.fg), modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+                val list = inbox.projects.filter { it.hidden && !it.temporary }
+                if (list.isEmpty()) {
+                    Text(stringResource(R.string.inbox_hidden_none), style = Pi.t.meta.copy(color = Pi.c.fg3), modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+                } else for (p in list) {
+                    Row(Modifier.fillMaxWidth().heightIn(min = Pi.row).padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(p.name, style = Pi.t.secondary.copy(color = Pi.c.fg), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(p.id, style = Pi.t.meta.copy(color = Pi.c.fg3), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        QuietButton(stringResource(R.string.inbox_unhide), {
+                            scope.launch {
+                                if (repo.setProjectHidden(p.id, false)) repo.refreshInbox()
+                            }
+                        }, icon = PiIcons.Eye)
+                    }
                 }
             }
         }
@@ -247,6 +272,8 @@ fun InboxContent(
     latencyMs: Long? = null,
     /** 长按一行要删除：由外层弹二次确认（删了就没了，不能一手滑）。 */
     onAskDelete: ((dev.pi.remote.protocol.SessionSummary) -> Unit)? = null,
+    /** 顶部眼睛：弹窗看已隐藏的项目。 */
+    onShowHidden: () -> Unit = {},
     refreshing: Boolean = false,
     onRefresh: () -> Unit = {},
     modifier: Modifier = Modifier.fillMaxSize(),
@@ -285,6 +312,9 @@ fun InboxContent(
                     Spacer(Modifier.width(4.dp))
                     PiIcon(PiIcons.ChevronDown, Pi.c.fg3, 12.dp)
                 }
+            }
+            if (hidden.isNotEmpty()) {
+                IconAction(PiIcons.Eye, stringResource(R.string.inbox_hidden_group, hidden.size), onShowHidden)
             }
             if (canCreate) IconAction(PiIcons.Plus, stringResource(R.string.inbox_new), onNew)
             onMenu?.let { IconAction(PiIcons.More, stringResource(R.string.more), it) }
@@ -405,15 +435,27 @@ fun InboxContent(
 }
 
 @Composable
-private fun ProjectHeader(name: String, count: Int, closed: Boolean, onToggle: () -> Unit, onNew: (() -> Unit)?, onHide: (() -> Unit)? = null) {
+private fun ProjectHeader(
+    name: String,
+    count: Int,
+    closed: Boolean,
+    onToggle: () -> Unit,
+    onNew: (() -> Unit)?,
+    onHide: (() -> Unit)? = null,
+) {
     val angle by animateFloatAsState(if (closed) 0f else 90f, label = "group")
-    Row(Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onToggle).padding(start = 18.dp, end = 6.dp).heightIn(min = 40.dp), verticalAlignment = Alignment.CenterVertically) {
-        PiIcon(PiIcons.ChevronRight, Pi.c.fg3, 12.dp, Modifier.rotate(angle))
-        Spacer(Modifier.width(8.dp))
-        Text(name, style = Pi.t.secondary.copy(color = Pi.c.fg), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-        Spacer(Modifier.width(6.dp))
-        Text("$count", style = Pi.t.meta.copy(color = Pi.c.fg3))
-        Spacer(Modifier.weight(1f))
+    Row(Modifier.fillMaxWidth().heightIn(min = 40.dp).padding(start = 18.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        // 只有左边这块负责展开/收起，右侧的眼睛/加号各自独立可点（之前会被整行点击吞掉）。
+        Row(
+            Modifier.weight(1f).heightIn(min = 40.dp).clickable(role = Role.Button, onClick = onToggle),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            PiIcon(PiIcons.ChevronRight, Pi.c.fg3, 12.dp, Modifier.rotate(angle))
+            Spacer(Modifier.width(8.dp))
+            Text(name, style = Pi.t.secondary.copy(color = Pi.c.fg), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            Spacer(Modifier.width(6.dp))
+            Text("$count", style = Pi.t.meta.copy(color = Pi.c.fg3))
+        }
         onNew?.let { IconAction(PiIcons.Plus, stringResource(R.string.inbox_new), it, tint = Pi.c.fg3, size = 16.dp) }
         onHide?.let { IconAction(PiIcons.Eye, stringResource(R.string.inbox_hide), it, tint = Pi.c.fg3, size = 16.dp) }
     }

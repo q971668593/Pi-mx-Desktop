@@ -44,6 +44,8 @@
     <string name="inbox_search">搜索项目或会话</string>
     <string name="inbox_no_project_match">没有匹配的项目</string>
     <string name="inbox_project_empty">这个项目下还没有会话</string>
+    <string name="inbox_hidden_title">Hidden projects</string>
+    <string name="inbox_hidden_none">Nothing hidden. Hiding a project on the desktop hides it here too.</string>
     <string name="inbox_hidden_group">已隐藏 · %d（与电脑同步）</string>
     <string name="inbox_unhide">恢复这个项目</string>
     <string name="inbox_hide">隐藏这个项目（同步到电脑）</string>
@@ -237,6 +239,9 @@
     <string name="review_remove_comment">Remove comment</string>
     <string name="review_insert">Insert into message</string>
     <plurals name="review_comment_count"><item quantity="one">%d comment</item><item quantity="other">%d comments</item></plurals>
+    <string name="panel_tab_run">Run</string>
+    <string name="git_changes">Changes · %1$s · %2$d files</string>
+    <string name="git_no_changes">No uncommitted changes</string>
     <string name="panel_tab_files">Files</string>
     <string name="panel_tab_git">Git</string>
     <string name="panel_tab_team">Team</string>
@@ -259,6 +264,10 @@
     <string name="git_not_repo">This project is not a git repository</string>
     <string name="git_empty">No commits yet</string>
     <string name="git_by">%1$s · %2$s</string>
+    <string name="image_saved">Saved to Gallery</string>
+    <string name="image_save">Save</string>
+    <string name="image_share">Share</string>
+    <string name="image_longpress_hint">Long-press the image to save</string>
     <string name="projfiles_title">Files</string>
     <string name="projfiles_search">Search files in this project</string>
     <string name="projfiles_failed">Could not list files</string>

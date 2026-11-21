@@ -138,8 +138,10 @@ fun SessionPanel(
     onBranches: (() -> Unit)? = null,
     onGit: (() -> Unit)? = null,
     onFiles: (() -> Unit)? = null,
-    /** 面板里的 tab（文件 / Git / 团队 / 终端 / 浏览器），和桌面端一致。 */
-    tabHost: (@Composable () -> Unit)? = null,
+    /** tab 内容需要读远端：文件 / Git / 工作团队都走它。 */
+    repo: dev.pi.remote.app.data.RemoteRepository? = null,
+    sessionKey: String = "",
+    canWrite: Boolean = false,
     usage: SessionUsage? = null,
 ) {
     val p = progress()
@@ -163,7 +165,13 @@ fun SessionPanel(
                     PiIcon(PiIcons.X, Pi.c.fg2, 15.dp, contentDescription = stringResource(R.string.close))
                 }
             }
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 20.dp)) {
+            if (repo != null) {
+                Box(Modifier.weight(1f)) {
+                    SessionPanelTabs(repo, sessionKey, canWrite, runContent = {
+                        RunTab(facts, stats, statsLoading, usage)
+                    })
+                }
+            } else Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 20.dp)) {
                 Text(facts.title.ifEmpty { "—" }, style = Pi.t.bodyMedium.copy(color = Pi.c.fg), maxLines = 3, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(4.dp))
                 Text(facts.projectPath, style = Pi.t.meta.copy(color = Pi.c.fg3), maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -176,10 +184,6 @@ fun SessionPanel(
 
                 Section(stringResource(R.string.panel_context)) {
                     ContextBlock(stats, statsLoading)
-                }
-
-                if (tabHost != null) {
-                    Column(Modifier.fillMaxWidth().padding(top = 6.dp)) { tabHost() }
                 }
 
                 Section(stringResource(R.string.panel_session)) {
@@ -213,6 +217,39 @@ private fun Section(title: String, content: @Composable () -> Unit) {
     Text(title, style = Pi.t.meta.copy(color = Pi.c.fg3))
     Spacer(Modifier.height(8.dp))
     content()
+}
+
+@Composable
+private fun RunTab(facts: SessionFacts, stats: ContextStats?, statsLoading: Boolean, usage: SessionUsage?) {
+    Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 20.dp)) {
+        Text(facts.title.ifEmpty { "—" }, style = Pi.t.bodyMedium.copy(color = Pi.c.fg), maxLines = 3, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(4.dp))
+        Text(facts.projectPath, style = Pi.t.meta.copy(color = Pi.c.fg3), maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Dot(facts.statusColor, 7.dp)
+            Spacer(Modifier.width(8.dp))
+            Text(facts.status, style = Pi.t.secondary.copy(color = Pi.c.fg2))
+        }
+        Section(stringResource(R.string.panel_context)) { ContextBlock(stats, statsLoading) }
+        Section(stringResource(R.string.panel_session)) {
+            Fact(stringResource(R.string.model), facts.model?.substringAfter('/') ?: "—")
+            Fact(stringResource(R.string.thinking), thinkingLabel(facts.thinking))
+            Fact(stringResource(R.string.panel_turns), "${facts.turns}")
+            if (usage != null && usage.calls > 0) Fact(stringResource(R.string.panel_cost), pluralStringResource(R.plurals.panel_cost_value, usage.calls, formatCost(usage.cost), usage.calls))
+            Fact(stringResource(R.string.panel_tool_calls), "${facts.toolCalls}")
+            if (facts.files > 0) Fact(stringResource(R.string.panel_project_files), stringResource(R.string.panel_files_value, facts.files, facts.added, facts.deleted))
+            if (facts.workedMs > 0) Fact(stringResource(R.string.panel_worked), formatClock(facts.workedMs))
+            Fact(stringResource(R.string.panel_capabilities), "${facts.toolsOn}")
+            if (facts.queued > 0) Fact(stringResource(R.string.panel_queued), "${facts.queued}")
+            if (facts.todoTotal != null && facts.todoTotal > 0) Fact(stringResource(R.string.panel_todo), "${facts.todoDone ?: 0} / ${facts.todoTotal}")
+        }
+        if (facts.sessionFile.isNotEmpty()) {
+            Section(stringResource(R.string.panel_file)) {
+                Text(facts.sessionFile.substringAfterLast('/').substringAfterLast('\\'), style = Pi.t.mono.copy(color = Pi.c.fg2), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
 }
 
 @Composable

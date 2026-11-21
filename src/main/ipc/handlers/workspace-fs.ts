@@ -161,8 +161,10 @@ export function registerWorkspaceFsHandlers(): void {
 
   registerHandlerWithSchema('ipc:shell.readImagePreview', shellReadImagePreviewSchema, async (req) => {
     let resolved = await resolveImagePreviewPath(req)
-    if (!resolved.ok && resolved.error === 'not_found') {
-      // 会话里的图片引用常常是相对「工具 cwd」的短路径（honors/x.webp）：按路径尾巴在工作区里找回。
+    const looksImage = /\.(png|jpe?g|webp|gif|bmp|svg|avif|ico|tiff?)$/i.test(String(req.path || ''))
+    if (!resolved.ok && looksImage) {
+      // 模型写的图片路径经常不可靠：可能是相对「工具 cwd」的短路径、被它挪过目录、甚至写成
+      // 另一个项目下的路径。只要还是图片扩展名，就按文件名在工作区里再找一次（含 generated-images）。
       const located = await locateWorkspaceFile(req.workspaceRoot, req.path, { preferSuffix: true })
       if (located) resolved = { ok: true, abs: located }
     }

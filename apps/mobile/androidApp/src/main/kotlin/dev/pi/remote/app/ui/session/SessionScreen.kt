@@ -244,6 +244,7 @@ fun SessionScreen(repo: RemoteRepository, sessionKey: String, onBack: () -> Unit
     var gitSheet by remember { mutableStateOf(false) }
     var filesSheet by remember { mutableStateOf(false) }
     var imagePreview by remember { mutableStateOf<Pair<android.graphics.Bitmap, String>?>(null) }
+    var filePreview by remember { mutableStateOf<String?>(null) }
     fun loadBranches() {
         branchesFailed = false
         scope.launch { repo.branches(sessionKey).onSuccess { branches = it }.onFailure { branchesFailed = true } }
@@ -380,7 +381,9 @@ fun SessionScreen(repo: RemoteRepository, sessionKey: String, onBack: () -> Unit
         onProjectFiles = { filesSheet = true },
         loadImage = { path -> repo.projectImage(sessionKey, path) },
         onOpenImage = { bitmap, path -> imagePreview = bitmap to path },
-        tabHost = { SessionPanelTabs(repo, sessionKey, repo.canWrite) },
+        panelRepo = repo,
+        panelSessionKey = sessionKey,
+        panelCanWrite = repo.canWrite,
         modelLabelOverride = modelOverride?.let { id ->
             models?.models?.firstOrNull { it.id == id }?.let { it.name ?: it.id.substringAfter('/') } ?: id.substringAfter('/')
         },
@@ -451,6 +454,10 @@ fun SessionScreen(repo: RemoteRepository, sessionKey: String, onBack: () -> Unit
 
     imagePreview?.let { (bitmap, path) ->
         ImagePreviewDialog(bitmap.asImageBitmap(), path, onDismiss = { imagePreview = null })
+    }
+
+    filePreview?.let { path ->
+        FilePreviewSheet(repo = repo, sessionKey = sessionKey, path = path, onDismiss = { filePreview = null })
     }
 
     review?.let { target ->
@@ -567,8 +574,10 @@ fun SessionContent(
     onProjectFiles: () -> Unit = {},
     /** 刚选完的模型名：先回显，等下一轮 run 的 timeline.state 再接管。 */
     modelLabelOverride: String? = null,
-    /** ⋯ 面板里的 tab 内容（文件 / Git / 团队 / 终端 / 浏览器）。 */
-    tabHost: (@androidx.compose.runtime.Composable () -> Unit)? = null,
+    /** ⋯ 面板要给 tab 读远端数据（文件 / Git / 团队）。 */
+    panelRepo: dev.pi.remote.app.data.RemoteRepository? = null,
+    panelSessionKey: String = "",
+    panelCanWrite: Boolean = false,
     /** 聊天里加载项目内图片（生图/截图）；外层把 repo + sessionKey 绑好传进来。 */
     loadImage: suspend (String) -> android.graphics.Bitmap? = { null },
     /** 点缩略图看大图：外层负责弹全屏。 */
@@ -794,7 +803,9 @@ fun SessionContent(
             settlePanel(1000f)
             onBranches()
         },
-        tabHost = tabHost,
+        repo = panelRepo,
+        sessionKey = panelSessionKey,
+        canWrite = panelCanWrite,
         onChanges = {
             settlePanel(1000f)
             onReview(ReviewTarget("git", turns.lastOrNull()?.id))

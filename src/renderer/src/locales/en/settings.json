@@ -1303,7 +1303,7 @@
   },
   "mobile": {
     "title": "Mobile",
-    "description": "View and continue your sessions from the pi Remote phone app on the same local network. Connections are end-to-end encrypted and never pass through a server.",
+    "description": "View and continue your sessions from the Pi mx Remote phone app on the same local network. Connections are end-to-end encrypted and never pass through a server.",
     "loading": "Loading…",
     "connection": "Connection",
     "enable": "Allow phone connections",
@@ -1325,7 +1325,7 @@
     "pairing": "Pairing",
     "pairingDesc": "Scan the code with the phone app to pair. On Windows, allow pi Desktop on private networks in the firewall.",
     "qrLabel": "Pairing QR code",
-    "scanHint": "Scan with pi Remote",
+    "scanHint": "Scan with Pi mx Remote",
     "expiresIn": "Expires in {{time}}",
     "expired": "Expired — generate a new code",
     "noPairing": "No pairing code yet",

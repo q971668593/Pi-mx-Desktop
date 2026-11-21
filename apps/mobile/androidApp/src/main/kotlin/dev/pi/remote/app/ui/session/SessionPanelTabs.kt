@@ -54,15 +54,22 @@ import dev.pi.remote.protocol.GitCommit
 import kotlinx.coroutines.launch
 
 /** 与桌面端侧栏一致的 tab 顺序：文件 / Git / 工作团队 / 终端 / 浏览器。 */
-private val TABS = listOf("files", "git", "team", "terminal", "browser")
+private val TABS = listOf("run", "files", "git", "team")
 
 /**
  * 会话面板的 tab 区（⋯ 打开的那一栏）：文件可预览可编辑保存，Git 看改动与提交，
  * 工作团队读电脑上的看板文件；终端与浏览器依赖桌面窗口，这里只给入口说明。
  */
 @Composable
-fun SessionPanelTabs(repo: RemoteRepository, sessionKey: String, canWrite: Boolean, modifier: Modifier = Modifier) {
-    var tab by remember { mutableStateOf("files") }
+fun SessionPanelTabs(
+    repo: RemoteRepository,
+    sessionKey: String,
+    canWrite: Boolean,
+    runContent: (@Composable () -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
+    // 概览（Run）第一个：上下文、本会话、会话文件都在里面，和电脑端 Run tab 对齐。
+    var tab by remember { mutableStateOf("run") }
     Column(modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             for (key in TABS) {
@@ -81,7 +88,7 @@ fun SessionPanelTabs(repo: RemoteRepository, sessionKey: String, canWrite: Boole
             "files" -> FilesTab(repo, sessionKey, canWrite)
             "git" -> GitTab(repo, sessionKey)
             "team" -> TeamTab(repo, sessionKey)
-            else -> DesktopOnlyTab(tab)
+            else -> TeamTab(repo, sessionKey)
         }
     }
 }
@@ -89,9 +96,7 @@ fun SessionPanelTabs(repo: RemoteRepository, sessionKey: String, canWrite: Boole
 private fun tabLabel(key: String) = when (key) {
     "files" -> R.string.panel_tab_files
     "git" -> R.string.panel_tab_git
-    "team" -> R.string.panel_tab_team
-    "terminal" -> R.string.panel_tab_terminal
-    else -> R.string.panel_tab_browser
+    else -> R.string.panel_tab_team
 }
 
 @Composable
@@ -296,17 +301,6 @@ private fun TeamTab(repo: RemoteRepository, sessionKey: String) {
 
 /** 团队看板的固定位置，和桌面端一致。 */
 private const val TEAM_BOARD_PATH = ".文档/开发规范/看板/当前批次.md"
-
-@Composable
-private fun DesktopOnlyTab(tab: String) {
-    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(
-            stringResource(if (tab == "terminal") R.string.panel_terminal_hint else R.string.panel_browser_hint),
-            style = Pi.t.secondary.copy(color = Pi.c.fg2),
-        )
-        Text(stringResource(R.string.panel_desktop_only), style = Pi.t.meta.copy(color = Pi.c.fg3))
-    }
-}
 
 /** 供 Compose Preview / 截图之外的调用方复用：当前 section 的标题。 */
 @Composable
