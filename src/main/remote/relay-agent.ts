@@ -247,10 +247,16 @@ export class RelayAgent {
     }, wait)
   }
 
-  /** 一台手机进来：本地开一条回环连接，网关照常做握手与鉴权。 */
+  /**
+   * 一台手机进来：本地开一条回环连接，网关照常做握手与鉴权。
+   *
+   * 网关是 https（wss）端点，回环这一跳也必须 wss，否则握手在本地就被 1011 挂断、手机那头
+   * 只能看到「连不上电脑」。回环 + 自签证书所以不校验证书链：身份由二维码里的宿主机静态公钥
+   * 与端到端加密的握手保证，TLS 在这里只是隧道。
+   */
   private openLocal(id: string): void {
     const port = this.options.localPort()
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, { handshakeTimeout: 10_000 })
+    const ws = new WebSocket(`wss://127.0.0.1:${port}/ws`, { handshakeTimeout: 10_000, rejectUnauthorized: false })
     const entry = { ws, queue: [] as Array<{ payload: Uint8Array; text: boolean }> }
     this.locals.set(id, entry)
     this.patch({ connections: this.locals.size })

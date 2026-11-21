@@ -17,8 +17,13 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup()
 })
 
+/**
+ * 本地网关替身。真实网关（src/main/remote/gateway.ts）是 https 端点，回环这一跳也只说 wss；
+ * 早前这里用的是明文 ws，所以「agent 拿 ws 连 TLS 端口」这个 bug 在单测里从未暴露。
+ */
 async function echoGateway(): Promise<number> {
-  const server = createServer()
+  const material = createSelfSignedCert(['127.0.0.1', 'localhost'])
+  const server = createHttpsServer({ key: material.keyPem, cert: material.certPem })
   const wss = new WebSocketServer({ server })
   wss.on('connection', (ws) => {
     ws.on('message', (data, isBinary) => ws.send(data, { binary: isBinary }))

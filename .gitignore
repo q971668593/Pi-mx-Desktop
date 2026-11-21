@@ -105,3 +105,6 @@ resources/purge/persona.md
 # 生成的图片与运行产物不进仓库
 generated-images/
 runs/
+
+# 过程产物目录（脚本/日志/截图/报告/导出数据），只在本机
+.文档/
