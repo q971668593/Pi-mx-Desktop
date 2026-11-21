@@ -55,7 +55,9 @@ const tmp = join(work, 'tmp')
 /** Downscale a rendered/captured PNG for the README and store it as 8-bit. */
 const optimize = (file, width) => execFileSync('magick', [file, '-resize', `${width}x>`, '-strip', '-depth', '8', '-define', 'png:compression-level=9', file])
 
-checkTools()
+// 只拍静帧（screens/visuals/usage）时不需要 ffmpeg；录制步骤才要。
+const RECORDING_STEPS = new Set(['agent', 'composer', 'review', 'files', 'parallel', 'terminal', 'branches', 'visuals', 'all'])
+checkTools([...only].some((step) => RECORDING_STEPS.has(step)))
 mkdirSync(rawDir, { recursive: true })
 mkdirSync(tmp, { recursive: true })
 

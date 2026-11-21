@@ -11,8 +11,11 @@ const kb = (file) => `${Math.round(statSync(file).size / 1024)} KB`
 const px = (value) => value * VIEWPORT.scale
 const cropArg = ({ x, y, width, height }) => `${px(width)}x${px(height)}+${px(x)}+${px(y)}`
 
-export function checkTools() {
-  for (const [cmd, args] of [['magick', ['-version']], ['ffmpeg', ['-version']], ['git', ['--version']]]) {
+/** `needFfmpeg=false` 时只校验静帧要用的工具：GIF 录制才依赖 ffmpeg。 */
+export function checkTools(needFfmpeg = true) {
+  const tools = [['magick', ['-version']], ['git', ['--version']]]
+  if (needFfmpeg) tools.push(['ffmpeg', ['-version']])
+  for (const [cmd, args] of tools) {
     try {
       execFileSync(cmd, args, { stdio: 'ignore' })
     } catch {
