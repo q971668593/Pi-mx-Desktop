@@ -32,6 +32,7 @@
     <string name="pair_err_unpaired">The computer doesn’t know this phone. Scan a new code to pair.</string>
     <string name="pair_err_invalid">That isn’t a valid pairing link.</string>
     <string name="conn_connecting">Connecting…</string>
+    <string name="conn_reconnecting_n">Reconnecting (attempt %d)…</string>
     <string name="conn_reconnecting">Reconnecting…</string>
     <string name="conn_refused">The computer refused this phone.</string>
     <string name="conn_retry">Retry</string>

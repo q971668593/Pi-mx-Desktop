@@ -1,3 +1,4 @@
+import { FailedLine } from './failed-line'
 import { useUIStore } from '@renderer/stores/ui-store'
 import type { TimelineItem, ToolTimelineItem } from '@renderer/stores/ui-store-types'
 import { cn } from '@renderer/lib/utils'
@@ -173,14 +174,7 @@ const TimelineItemBase = memo(function TimelineItem({
                 ) : null
               }
             >
-              <div className="timeline-status-line timeline-status-line--warn text-[12px]">
-                {/* A failed request (retries exhausted) keeps its reason when read back from history. */}
-                {typeof item.errorMessage === 'string' && item.errorMessage.trim()
-                  ? t('timeline:interruptedError', { error: item.errorMessage.trim() })
-                  : t('timeline:interruptedEmpty', {
-                      defaultValue: '回复未完成（程序关闭或中断）。可点回退到上一条后继续。',
-                    })}
-              </div>
+              <FailedLine error={typeof item.errorMessage === 'string' ? item.errorMessage : null} />
             </MessageHoverShell>
           </div>
         )

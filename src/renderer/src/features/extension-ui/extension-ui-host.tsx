@@ -84,18 +84,27 @@ function SelectDialog({ title, options, onPick, onSuspend, onCancel }: {
   )
 }
 
-function ConfirmDialog({ title, message, onAnswer, onSuspend, onCancel }: {
+function ConfirmDialog({ title, message, sessionFile, onAnswer, onSuspend, onCancel }: {
   title: string
   message: string
+  sessionFile?: string
   onAnswer: (confirmed: boolean) => void
   onSuspend: () => void
   onCancel: () => void
 }) {
   const { t } = useTranslation()
+  const [remember, setRemember] = useState(false)
   const yesRef = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     yesRef.current?.focus({ preventScroll: true })
   }, [])
+  // 记住规则要在应答前写：主进程用它接住下一同类请求。
+  const answer = (confirmed: boolean) => {
+    if (remember && title.trim()) {
+      void ipcClient.invoke('extension.rememberConfirm', { sessionFile, title, confirmed }).catch(() => {})
+    }
+    onAnswer(confirmed)
+  }
   return (
     <ExtensionDialogShell title={title} onDismiss={onSuspend} wide>
       {message.trim() && (
@@ -107,14 +116,18 @@ function ConfirmDialog({ title, message, onAnswer, onSuspend, onCancel }: {
         <button type="button" className="mr-auto rounded-md px-2 py-1.5 text-[12.5px] text-muted-foreground hover:text-foreground" onClick={onCancel}>
           {t('extension:cancel')}
         </button>
-        <button type="button" className="rounded-md border px-3 py-1.5 text-[13px] hover:bg-muted" onClick={() => onAnswer(false)}>
+        <label className="mr-auto flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+          <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="h-3 w-3" />
+          {t('extension:rememberConfirm')}
+        </label>
+        <button type="button" className="rounded-md border px-3 py-1.5 text-[13px] hover:bg-muted" onClick={() => answer(false)}>
           {t('extension:no')}
         </button>
         <button
           ref={yesRef}
           type="button"
           className="rounded-md bg-primary px-3.5 py-1.5 text-[13px] text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-1"
-          onClick={() => onAnswer(true)}
+          onClick={() => answer(true)}
         >
           {t('extension:yes')}
         </button>
@@ -213,6 +226,7 @@ export function ExtensionUIHost() {
           key={pending.id}
           title={pending.title}
           message={pending.message}
+          sessionFile={pending.sessionFile}
           onAnswer={(confirmed) => answer({ confirmed })}
           onSuspend={suspendActiveDialog}
           onCancel={() => cancelWorker(pending.id)}

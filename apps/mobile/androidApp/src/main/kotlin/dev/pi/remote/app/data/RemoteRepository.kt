@@ -95,6 +95,9 @@ class RemoteRepository(
     val active: StateFlow<SavedHost?> = _active
     private val _connection = MutableStateFlow<HostConnection.State>(HostConnection.State.Idle)
     val connection: StateFlow<HostConnection.State> = _connection
+    /** 心跳往返时间（毫秒），断开后为 null。 */
+    private val _latency = MutableStateFlow<Long?>(null)
+    val latency: StateFlow<Long?> = _latency
     private val _inbox = MutableStateFlow(InboxState())
     val inbox: StateFlow<InboxState> = _inbox
     private val _timelines = MutableStateFlow<Map<String, SessionTimeline>>(emptyMap())
@@ -246,6 +249,7 @@ class RemoteRepository(
         conn = c
         api = RemoteApi(c)
         jobs += scope.launch { c.state.collect { s -> _connection.value = s; if (s is HostConnection.State.Ready) onReady(s) } }
+        jobs += scope.launch { c.latencyMs.collect { _latency.value = it } }
         jobs += scope.launch { c.events.collect(::onEvent) }
         c.start()
     }

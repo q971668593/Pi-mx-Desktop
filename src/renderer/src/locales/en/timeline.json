@@ -37,17 +37,17 @@
     "previewUnavailable": "Preview unavailable (missing file or unsupported format)",
     "copy": "Copy image",
     "copied": "Image copied",
-    "saveAs": "Save image as\u2026",
+    "saveAs": "Save image as…",
     "saved": "Image saved",
-    "annotate": "Annotate\u2026",
+    "annotate": "Annotate…",
     "color": "Color",
     "brush": "Brush",
     "close": "Close",
     "addToChat": "Add to chat",
     "addedToChat": "Added to chat",
     "resetZoom": "Reset",
-    "adding": "Adding\u2026",
-    "loading": "Loading image\u2026",
+    "adding": "Adding…",
+    "loading": "Loading image…",
     "discardAnnotation": "This annotation has not been added to the chat. Close and discard it?",
     "annotationPrompt": "Edit the original image using this annotation: {{path}}",
     "actionFailed": "The image action failed. Try again."
@@ -331,5 +331,20 @@
     "earlierCalls": "Show {{count}} earlier calls",
     "collapseCalls": "Hide earlier calls",
     "modelCost": "Model calls: {{cost}}"
+  },
+  "failed": {
+    "reasonTimeout": "The model timed out",
+    "reasonConnection": "Cannot reach the service (network/proxy)",
+    "reasonQuota": "Rate limited or out of quota",
+    "reasonAuth": "Key rejected or not permitted",
+    "reasonContext": "Context too long",
+    "reasonStatus": "Service returned {{status}}",
+    "reasonOther": "This turn failed",
+    "reasonUnknown": "Reply did not finish (app closed or interrupted)",
+    "showDetail": "Raw error",
+    "hideDetail": "Hide",
+    "copy": "Copy error",
+    "copied": "Error copied",
+    "copyFailed": "Copy failed"
   }
 }

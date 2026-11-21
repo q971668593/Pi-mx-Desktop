@@ -225,7 +225,10 @@ fun useTicker(active: Boolean, periodMs: Long = 1000): Long {
 @Composable
 fun ConnectionBanner(state: dev.pi.remote.net.HostConnection.State, onRetry: () -> Unit) {
     when (state) {
-        is dev.pi.remote.net.HostConnection.State.Backoff -> Banner(androidx.compose.ui.res.stringResource(dev.pi.remote.R.string.conn_reconnecting), androidx.compose.ui.res.stringResource(dev.pi.remote.R.string.conn_retry), onRetry)
+        is dev.pi.remote.net.HostConnection.State.Backoff -> {
+            val text = androidx.compose.ui.res.stringResource(dev.pi.remote.R.string.conn_reconnecting_n, state.attempt.coerceAtLeast(1))
+            Banner(text, androidx.compose.ui.res.stringResource(dev.pi.remote.R.string.conn_retry), onRetry)
+        }
         is dev.pi.remote.net.HostConnection.State.Connecting -> if (state.attempt > 0) Banner(androidx.compose.ui.res.stringResource(dev.pi.remote.R.string.conn_reconnecting))
         is dev.pi.remote.net.HostConnection.State.Refused -> Banner(androidx.compose.ui.res.stringResource(dev.pi.remote.R.string.conn_refused))
         else -> Unit

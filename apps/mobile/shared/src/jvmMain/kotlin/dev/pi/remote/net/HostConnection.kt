@@ -84,6 +84,9 @@ class HostConnection(
     val state: StateFlow<State> = _state
     private val _events = MutableSharedFlow<Event>(extraBufferCapacity = 256)
     val events: SharedFlow<Event> = _events
+    /** 心跳往返时间：给界面显示连接质量用；断开后清空。 */
+    private val _latencyMs = MutableStateFlow<Long?>(null)
+    val latencyMs: StateFlow<Long?> = _latencyMs
 
     private var endpoints = endpoints
     private var pairToken = pairToken
@@ -94,6 +97,7 @@ class HostConnection(
     private val sendLock = Mutex()
     @Volatile private var sender: (suspend (ByteArray) -> Unit)? = null
     @Volatile private var channel: SecureChannel? = null
+    private val pingSentAt = ConcurrentHashMap<String, Long>()
 
     val isReady: Boolean get() = _state.value is State.Ready
 
@@ -103,6 +107,8 @@ class HostConnection(
     }
 
     fun stop() {
+        _latencyMs.value = null
+        pingSentAt.clear()
         loop?.cancel()
         loop = null
         failPending()
@@ -214,7 +220,10 @@ class HostConnection(
                     }
                     when (frame.k) {
                         "res" -> frame.id?.let { pending.remove(it)?.complete(frame) }
-                        "pong" -> lastPong.set(System.currentTimeMillis())
+                        "pong" -> {
+                            lastPong.set(System.currentTimeMillis())
+                            frame.id?.let { id -> pingSentAt.remove(id)?.let { at -> _latencyMs.value = System.currentTimeMillis() - at } }
+                        }
                         "evt" -> if (frame.m != null && frame.p != null) _events.emit(Event(frame.m, frame.p))
                     }
                 }
@@ -226,7 +235,11 @@ class HostConnection(
                         close()
                         return@launch
                     }
-                    rawSend(Frame(v = PROTOCOL_VERSION, k = "ping", id = "p${ids.incrementAndGet()}"))
+                    val pingId = "p${ids.incrementAndGet()}"
+                    pingSentAt[pingId] = System.currentTimeMillis()
+                    // 只留最近几次，避免长时间在线时表无限增长
+                    if (pingSentAt.size > 8) pingSentAt.keys.firstOrNull()?.let { pingSentAt.remove(it) }
+                    rawSend(Frame(v = PROTOCOL_VERSION, k = "ping", id = pingId))
                 }
             }
             try {

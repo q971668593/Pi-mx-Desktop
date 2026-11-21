@@ -97,6 +97,8 @@ export interface StoreSchema {
   projectDisplayNames: Record<string, string>
   /** 从侧栏列表中移除/隐藏的 Git worktree 路径 */
   hiddenWorktrees: string[]
+  /** 首次启动运行环境引导：done + 用户选的内置/全局 */
+  runtimeOnboarding?: { done: boolean; mode: 'builtin' | 'global' | null }
   /** 语音输入 ASR 配置 */
   asrConfig: AsrConfig
   /** Agent 运行时：host = Windows 宿主，wsl = 在 WSL 发行版内运行 */

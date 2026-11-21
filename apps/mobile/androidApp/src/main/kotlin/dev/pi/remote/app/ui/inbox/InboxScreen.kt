@@ -88,6 +88,7 @@ fun InboxScreen(repo: RemoteRepository, onOpen: (String) -> Unit, onHosts: () ->
     var pendingDelete by remember { mutableStateOf<dev.pi.remote.protocol.SessionSummary?>(null) }
     val shared by repo.pendingShare.collectAsState()
     val canCreate = repo.canWrite && connection is HostConnection.State.Ready
+    val latency by repo.latency.collectAsState()
 
     fun create(projectId: String) {
         if (pendingProject != null) return
@@ -115,6 +116,7 @@ fun InboxScreen(repo: RemoteRepository, onOpen: (String) -> Unit, onHosts: () ->
             onNew = { picking = true },
             onNewIn = { create(it) },
             onAskDelete = { pendingDelete = it },
+            latencyMs = latency,
             onHideProject = { project, hide ->
                 scope.launch {
                     if (repo.setProjectHidden(project.id, hide)) repo.refreshInbox()
@@ -241,6 +243,8 @@ fun InboxContent(
     onNewIn: ((String) -> Unit)? = null,
     onMenu: (() -> Unit)? = null,
     onHideProject: ((dev.pi.remote.protocol.ProjectInfo, Boolean) -> Unit)? = null,
+    /** 心跳往返时间，用来在标题旁显示连接质量。 */
+    latencyMs: Long? = null,
     /** 长按一行要删除：由外层弹二次确认（删了就没了，不能一手滑）。 */
     onAskDelete: ((dev.pi.remote.protocol.SessionSummary) -> Unit)? = null,
     refreshing: Boolean = false,
@@ -269,6 +273,15 @@ fun InboxContent(
                     Dot(if (online) Pi.c.ok else Pi.c.fg3)
                     Spacer(Modifier.width(8.dp))
                     Text(hostName.ifEmpty { "pi" }, style = Pi.t.title.copy(color = Pi.c.fg), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    // 连接质量：在线时给心跳往返，掉了就靠下面的横幅说重连第几次
+                    val ping = latencyMs
+                    if (online && ping != null) {
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "${ping.coerceAtMost(9999)}ms",
+                            style = Pi.t.meta.copy(color = if (ping < 120) Pi.c.ok else if (ping < 400) Pi.c.warn else Pi.c.bad),
+                        )
+                    }
                     Spacer(Modifier.width(4.dp))
                     PiIcon(PiIcons.ChevronDown, Pi.c.fg3, 12.dp)
                 }

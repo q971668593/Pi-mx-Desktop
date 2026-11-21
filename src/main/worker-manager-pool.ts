@@ -1,5 +1,6 @@
 import { utilityProcess, app, type BrowserWindow } from 'electron'
 import type { AppEvent } from '@shared/app-events'
+import { confirmRuleFor } from './extension-ui-confirm-rules'
 import { remoteTap } from './remote/tap'
 import type { WorkerResponsePayload } from '@shared/worker-rpc-types'
 import { windowsPathToWsl } from '@shared/wsl-path'
@@ -227,6 +228,15 @@ export function attachWorkerHandlers(
       if (!allow) return
       if (method === 'notify' && !isForeground && req.notifyType !== 'error') return
       if (req.id && method !== 'notify') extensionUiDialogSource.set(req.id, slot)
+      // 「本次会话都允许」：命中规则就直接替用户答，不再弹窗。
+      if (method === 'confirm' && req.id) {
+        const remembered = confirmRuleFor(slot.sessionFile || slot.poolKey, String((req as { title?: string }).title ?? ''))
+        if (remembered !== undefined) {
+          extensionUiDialogSource.delete(req.id)
+          transport.postMessage({ type: 'extension-ui-response', response: { id: req.id, confirmed: remembered } })
+          return
+        }
+      }
       const request =
         method === 'notify' || !data.request || typeof data.request !== 'object'
           ? data.request

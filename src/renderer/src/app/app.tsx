@@ -36,6 +36,7 @@ import { loadNormalizedRightPanelPrefs } from '@renderer/lib/right-panel-runtime
 import { normalizeTimelineMaxAutoExpandedTools, normalizeTimelineVisibleTurns } from '@shared/timeline-settings'
 import { SidePanelHost } from '@renderer/features/side-panels/side-panel-host'
 import { ExtensionUIHost } from '@renderer/features/extension-ui/extension-ui-host'
+import { RuntimeOnboardingDialog } from '@renderer/features/onboarding/runtime-onboarding-dialog'
 import { QuestionnaireDock } from '@renderer/features/extension-ui/questionnaire-dock'
 import { AppToaster } from '@renderer/components/app/app-toaster'
 import { markExtensionNotifyAppReady } from '@renderer/lib/extension-notify-policy'
@@ -504,6 +505,8 @@ export default function App() {
       </div>
       <AppToaster />
       <ExtensionUIHost />
+      {/* 第一次启动：选内置还是全局 pi（建议全局），缺 node/npm 时当场一键装。 */}
+      <RuntimeOnboardingDialog />
       <AppUpdateHost />
       <CloseDecisionDialog />
       {paletteAndShortcuts}

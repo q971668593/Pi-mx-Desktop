@@ -4,7 +4,7 @@
 > 事实源：`src/main/**/*.ts` 中的 `registerHandler` / `registerHandlerWithSchema` 调用。
 > 手写文档在 `doc/IPC-CONTRACTS.md`；本文件保证「代码里注册了什么」与「文档里写了什么」不会漂移。
 
-- invoke 通道：**311** 个（唯一）
+- invoke 通道：**315** 个（唯一）
 - main → renderer 事件通道：**12** 个（唯一）
 - 非字面量注册：**0** 处
 - 动态事件通道（通道名非常量，未收录）：**7** 处
@@ -32,17 +32,18 @@
 | `prompt` | 6 |
 | `window` | 6 |
 | `adapter` | 5 |
+| `extension` | 5 |
 | `purge` | 5 |
 | `resource` | 5 |
 | `sdk` | 5 |
 | `skills` | 5 |
 | `terminal` | 5 |
-| `extension` | 4 |
 | `git` | 4 |
 | `imageGen` | 4 |
 | `project` | 4 |
 | `promptInject` | 4 |
 | `python` | 4 |
+| `runtime` | 4 |
 | `shell` | 4 |
 | `clipboard` | 3 |
 | `dialog` | 3 |
@@ -66,7 +67,6 @@
 | `prompts` | 1 |
 | `registry` | 1 |
 | `resources` | 1 |
-| `runtime` | 1 |
 | `thinkingLevel` | 1 |
 | `usage` | 1 |
 
@@ -363,6 +363,16 @@
 | `ipc:adapter.field.options` | registerHandler | `src/main/ipc/handlers/adapter-panels.ts` |
 | `ipc:adapter.sidePanel.getState` | registerHandler | `src/main/ipc/handlers/adapter-panels.ts` |
 
+### extension（5）
+
+| 通道 | 注册方式 | 注册位置 |
+| --- | --- | --- |
+| `ipc:extension.cancelUI` | registerHandler | `src/main/ipc/handlers/extension-ui.ts` |
+| `ipc:extension.config.get` | registerHandler | `src/main/ipc/handlers/extension-ui.ts` |
+| `ipc:extension.config.set` | registerHandler | `src/main/ipc/handlers/extension-ui.ts` |
+| `ipc:extension.rememberConfirm` | registerHandler | `src/main/ipc/handlers/extension-ui.ts` |
+| `ipc:extension.respondUI` | registerHandler | `src/main/ipc/handlers/extension-ui.ts` |
+
 ### purge（5）
 
 | 通道 | 注册方式 | 注册位置 |
@@ -413,15 +423,6 @@
 | `ipc:terminal.resize` | registerHandlerWithSchema | `src/main/ipc/handlers/terminal.ts` |
 | `ipc:terminal.runTasks` | registerHandlerWithSchema | `src/main/ipc/handlers/terminal.ts` |
 
-### extension（4）
-
-| 通道 | 注册方式 | 注册位置 |
-| --- | --- | --- |
-| `ipc:extension.cancelUI` | registerHandler | `src/main/ipc/handlers/extension-ui.ts` |
-| `ipc:extension.config.get` | registerHandler | `src/main/ipc/handlers/extension-ui.ts` |
-| `ipc:extension.config.set` | registerHandler | `src/main/ipc/handlers/extension-ui.ts` |
-| `ipc:extension.respondUI` | registerHandler | `src/main/ipc/handlers/extension-ui.ts` |
-
 ### git（4）
 
 | 通道 | 注册方式 | 注册位置 |
@@ -466,6 +467,15 @@
 | `ipc:python.installLatest` | registerHandler | `src/main/ipc/handlers/settings.ts` |
 | `ipc:python.openDownloads` | registerHandler | `src/main/ipc/handlers/settings.ts` |
 | `ipc:python.status` | registerHandler | `src/main/ipc/handlers/settings.ts` |
+
+### runtime（4）
+
+| 通道 | 注册方式 | 注册位置 |
+| --- | --- | --- |
+| `ipc:runtime.getState` | registerHandlerWithSchema | `src/main/ipc/handlers/model-runtime.ts` |
+| `ipc:runtime.onboarding.complete` | registerHandlerWithSchema | `src/main/ipc/handlers/runtime-onboarding.ts` |
+| `ipc:runtime.onboarding.get` | registerHandler | `src/main/ipc/handlers/runtime-onboarding.ts` |
+| `ipc:runtime.probe` | registerHandler | `src/main/ipc/handlers/runtime-onboarding.ts` |
 
 ### shell（4）
 
@@ -629,12 +639,6 @@
 | 通道 | 注册方式 | 注册位置 |
 | --- | --- | --- |
 | `ipc:resources.list` | registerHandler | `src/main/ipc/handlers/pi-sdk.ts` |
-
-### runtime（1）
-
-| 通道 | 注册方式 | 注册位置 |
-| --- | --- | --- |
-| `ipc:runtime.getState` | registerHandlerWithSchema | `src/main/ipc/handlers/model-runtime.ts` |
 
 ### thinkingLevel（1）
 

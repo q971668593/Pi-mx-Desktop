@@ -331,5 +331,20 @@
     "discardAnnotation": "标注还没添加到对话，关闭后这些笔迹会丢掉。仍要关闭吗？",
     "annotationPrompt": "请按照这张标注修改原图：{{path}}",
     "actionFailed": "图片操作失败，请重试"
+  },
+  "failed": {
+    "reasonTimeout": "模型响应超时",
+    "reasonConnection": "连不上服务（网络/代理）",
+    "reasonQuota": "额度或频率被限",
+    "reasonAuth": "密钥失效或没权限",
+    "reasonContext": "上下文太长",
+    "reasonStatus": "服务返回 {{status}}",
+    "reasonOther": "这一轮失败了",
+    "reasonUnknown": "回复未完成（程序关闭或中断）",
+    "showDetail": "原始错误",
+    "hideDetail": "收起",
+    "copy": "复制错误",
+    "copied": "已复制错误",
+    "copyFailed": "复制失败"
   }
 }
