@@ -36,6 +36,34 @@ src/renderer/src/features/settings/purge-settings-panel.tsx
 
 `/purge [on|off|status|mode|source|reload]` 命令仍然保留，改的是同一份 `config.json`，终端 `pi` 也能用。
 
+## 人设为什么不进仓库（开源角度的取舍）
+
+`resources/purge/persona.md` 被 `.gitignore` 排除，仓库里只有 **能力**（导入入口、格式、校验、开关）和一份
+**模板** `resources/purge/persona.example.md`。
+
+理由不是"藏私"，而是三条硬账：
+
+1. **开源的是软件，不是某个人的提示词。** 人设等于别人的 dotfiles / 主题 / 个人笔记：它只对写它的那个人有意义，
+   对使用者没有复现价值 —— 真正有价值的是"可以换成自己的"。
+2. **风险不对称。** 把人设放进公开仓库，几乎不会让项目更受欢迎（大多数人只关心功能），
+   却会把仓库暴露在内容审查和举报面前：这类"替换模型系统提示词"的文本，是平台风控最容易命中的一类，
+   仓库一旦被限流/封禁，代码和 Release 一起没。安装包不公开分发，风险面小得多。
+3. **它是会过期的配置，不是稳定的代码。** 提示词跟模型版本走，几个月就要调一次；
+   放进仓库意味着每次调口味都得留一条公开 commit，历史还删不掉。
+
+所以采用：**能力开源 + 内容私有**。
+官方发版时由 CI 用仓库 secret `PURGE_PERSONA_B64` 还原人设进安装包；
+fork 或自己克隆的仓库没有这个 secret 也能正常打包，只是包里不带人设，设置页会提示导入。
+
+想用自己的：
+
+```bash
+cp resources/purge/persona.example.md resources/purge/persona.md   # 然后改成自己的
+```
+
+想让它跟官方一样自动进安装包：把 base64 存成仓库 secret `PURGE_PERSONA_B64`
+（`[Convert]::ToBase64String([IO.File]::ReadAllBytes('…\persona.md'))` → 剪贴板 → Settings → Secrets → Actions）。
+
 ## 打包
 
 人设正文**不进 git**（`.gitignore` 里 `resources/purge/persona.md`）：仓库是公开的，安装包才发给自己。

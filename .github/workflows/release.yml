@@ -64,13 +64,22 @@ jobs:
           if [ -n "${PURGE_PERSONA_B64:-}" ]; then
             printf '%s' "$PURGE_PERSONA_B64" | base64 -d > resources/purge/persona.md
           fi
-          # 人设故意不进公开仓库（见 .gitignore）。CI 是干净检出，没有这一步打出来的安装包
-          # 一定是「破甲点开提示未找到人设」。宁可让流水线红，也不发这种包。
-          if ! node scripts/purge-persona.mjs --check --require; then
+          # 人设故意不进公开仓库（见 .gitignore、doc/purge.md）。CI 是干净检出，没有这一步
+          # 打出来的安装包一定是「破甲点开提示未找到人设」。
+          #
+          # 官方仓库：宁可让流水线红，也不发这种包。
+          # fork / 别人克隆的仓库：没有 secret 也要能打包（否则谁都拿不到安装包），
+          # 只是包里不带人设，设置页会提示导入 —— 自己补 PURGE_PERSONA_B64 就能和官方一致。
+          # 注意：`--check` 在文件缺失时也返回 0（它是「只检查、不写」），所以这里直接看文件
+          if [ -s resources/purge/persona.md ]; then
+            wc -c resources/purge/persona.md
+            exit 0
+          fi
+          if [ "${GITHUB_REPOSITORY}" = "q971668593/Pi-mx-Desktop" ]; then
             echo "::error::resources/purge/persona.md is missing. Add the PURGE_PERSONA_B64 repository secret (base64 of the persona markdown) and re-run."
             exit 1
           fi
-          wc -c resources/purge/persona.md
+          echo "::warning::building without a persona (fork build) — 破甲页会提示导入人设，见 doc/purge.md" 
 
       - name: Clean dist
         run: if (Test-Path dist) { Remove-Item -Recurse -Force dist }
