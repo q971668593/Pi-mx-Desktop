@@ -63,6 +63,10 @@ function summarizeBoard(cwd: string): Record<string, unknown> {
     exists: snapshot.exists,
     batch: snapshot.batch,
     goal: snapshot.goal,
+    autoTeam: snapshot.autoTeam,
+    autoHint: snapshot.autoTeam
+      ? '自动模式已开启：用户让干活时主动拆卡并派发，不必等派发指令。'
+      : '手动模式：只按显式拆卡/派发指令行动。',
     roles: snapshot.roles.map((role) => ({
       role: role.role,
       model: role.model || null,

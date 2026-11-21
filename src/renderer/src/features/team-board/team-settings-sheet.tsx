@@ -72,6 +72,23 @@ export function TeamSettingsSheet({
     return levels && levels.length ? levels : ALL_EFFORTS
   }
 
+  const fillGlobalDefault = async () => {
+    try {
+      const response = await ipcClient.invoke('pi.settings.get')
+      const provider = String(response?.settings?.defaultProvider || '').trim()
+      const model = String(response?.settings?.defaultModel || '').trim()
+      if (!provider || !model) {
+        toast.message(t('team:globalDefaultMissing'))
+        return
+      }
+      const value = `${provider}/${model}`
+      setDraft((current) => current.map((item) => ({ ...item, model: value, effort: item.effort || '' })))
+      toast.success(t('team:fillGlobalDefault'))
+    } catch (error) {
+      toast.error(t('team:statusFailed'), { description: String((error as Error)?.message || error) })
+    }
+  }
+
   const save = async () => {
     setSaving(true)
     try {
@@ -111,6 +128,13 @@ export function TeamSettingsSheet({
 
       <div className="team-sheet-scroll team-scroll">
         <p className="text-2xs leading-relaxed text-foreground-secondary">{t('team:settingsDesc')}</p>
+        <button
+          type="button"
+          onClick={() => void fillGlobalDefault()}
+          className="mt-2 inline-flex items-center gap-1 rounded border border-border/50 px-2 py-1 text-2xs text-foreground-secondary hover:bg-[var(--bg-hover)] hover:text-foreground"
+        >
+          {t('team:fillGlobalDefault')}
+        </button>
         {loading ? <p className="mt-1 text-2xs text-foreground-tertiary">{t('team:loadingModels')}</p> : null}
         {loadError ? <p className="mt-1 text-2xs text-amber-600">{t('team:modelLoadFailed')}</p> : null}
 

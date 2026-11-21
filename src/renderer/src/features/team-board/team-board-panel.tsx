@@ -306,6 +306,19 @@ export function TeamBoardPanel() {
     }
   }
 
+  const toggleAutoMode = async () => {
+    if (!snapshot?.exists) return
+    const next = snapshot.autoTeam !== true
+    try {
+      const response = await ipcClient.invoke('teamBoard.autoMode.set', { workspaceId, autoTeam: next })
+      if (response?.snapshot) setSnapshot(response.snapshot as TeamSnapshot)
+      notifyTeamBoardChanged()
+      toast.success(next ? t('team:autoModeEnabled') : t('team:autoModeDisabled'))
+    } catch (caught) {
+      toast.error(t('team:statusFailed'), { description: String((caught as Error)?.message || caught) })
+    }
+  }
+
   const openRunSession = async (run: TeamRun) => {
     try {
       await openTeamSession({ workspaceId, sessionFile: run.sessionFile, sessionId: run.sessionId })
@@ -392,6 +405,21 @@ export function TeamBoardPanel() {
           <span className="shrink-0 text-[12.5px] font-semibold leading-4">{t('team:title')}</span>
           <span className="team-project min-w-0 truncate" title={workspaceId}>{projectName}</span>
           <div className="team-head-actions ml-auto flex shrink-0 items-center gap-0.5">
+            {snapshot?.exists ? (
+              <button
+                type="button"
+                role="switch"
+                aria-checked={snapshot.autoTeam === true}
+                onClick={() => void toggleAutoMode()}
+                title={t('team:autoModeHint')}
+                aria-label={t('team:autoMode')}
+                className="team-auto-switch"
+                data-on={snapshot.autoTeam === true}
+              >
+                <span className="team-auto-knob" />
+                <span className="team-auto-label">{t('team:autoMode')}</span>
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => void refresh({ silent: false })}
@@ -873,7 +901,12 @@ function TaskCard({
           <span className="team-chip" data-tone="danger">{task.blockType}</span>
         ) : null}
         {task.acceptance.length ? (
-          <span className="ml-auto shrink-0 tabular-nums">{accepted}/{task.acceptance.length}</span>
+          <span
+            className="ml-auto shrink-0 tabular-nums"
+            title={t('team:acceptanceCountHint', { done: accepted, total: task.acceptance.length })}
+          >
+            {t('team:acceptanceCount', { done: accepted, total: task.acceptance.length })}
+          </span>
         ) : null}
       </div>
     </button>
@@ -932,13 +965,16 @@ function PeopleView({
                 <span className="team-person-dot" style={{ background: STATUS_COLORS[task.status] }} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-2xs font-medium text-foreground">{task.title}</span>
-                  <span className="block truncate font-mono text-[9.5px] leading-[12px] text-foreground-tertiary">
+                  <span className="block truncate font-mono text-[9.5px] leading-[12px]" style={{ color: STATUS_COLORS[task.status] }}>
                     {task.id} · {statusLabel(task.status, t)}
                   </span>
                 </span>
                 {task.acceptance.length ? (
-                  <span className="shrink-0 text-[9.5px] tabular-nums text-foreground-tertiary">
-                    {task.acceptance.filter((item) => item.done).length}/{task.acceptance.length}
+                  <span
+                    className="shrink-0 text-[9.5px] tabular-nums text-foreground-tertiary"
+                    title={t('team:acceptanceCountHint', { done: task.acceptance.filter((item) => item.done).length, total: task.acceptance.length })}
+                  >
+                    {t('team:acceptanceCount', { done: task.acceptance.filter((item) => item.done).length, total: task.acceptance.length })}
                   </span>
                 ) : null}
               </button>

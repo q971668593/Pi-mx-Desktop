@@ -54,7 +54,7 @@ export const teamToolsExtension: InlineExtension = {
       promptSnippet: 'Split the PRD into task cards and dispatch them on the work-team board with team_board.',
       promptGuidelines: [
         'When the user asks to break work down, split it into cards with team_board action=create_task (one card per independently verifiable deliverable, each with role + concrete acceptance items), then dispatch the ones that can start now.',
-        'Read the board first (action=snapshot) so you reuse existing card ids instead of creating duplicates.',
+        'Read the board first (action=snapshot) so you reuse existing card ids instead of creating duplicates. The snapshot tells you autoTeam: when it is true the user enabled auto workflow — be proactive (create cards and dispatch when they ask for real work); when false (default) only suggest cards and wait for an explicit dispatch instruction.',
         'Do not implement the card work yourself once it is dispatched: the role session does it. Your job is scope, splitting, dispatch and reporting.',
         'Acceptance is human-only: never move a card to 已验收, and do not fake reports. Push to 待审查 and let the owner verify.',
       ],

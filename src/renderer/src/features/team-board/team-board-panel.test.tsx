@@ -60,6 +60,7 @@ function snapshot(overrides: Partial<TeamSnapshot> = {}): TeamSnapshot {
     roles: defaultTeamRoleBindings().map((role) => (role.role === '前端' ? { ...role, model: 'acme/front' } : role)),
     sessions: {},
     runs: [],
+    autoTeam: false,
     ...overrides,
   }
 }

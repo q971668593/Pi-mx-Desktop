@@ -23,10 +23,12 @@ import { workerManager } from '../../worker-manager'
 import {
   bindTeamSession,
   createTeamTask,
+  getTeamAutoMode,
   initTeamProject,
   readTeamSnapshot,
   resolveTeamTaskApproval,
   saveTeamRoles,
+  setTeamAutoMode,
   setTeamTaskStatus,
   settleTeamRun,
   sweepTeamRuns,
@@ -58,12 +60,34 @@ export function registerTeamBoardHandlers(): void {
         workspaceId: workspace,
         mode: z.enum(['new', 'legacy']).optional(),
         name: z.string().max(80).optional(),
+        defaultModel: z.string().max(200).optional(),
       })
       .strict(),
-    async ({ workspaceId, mode, name }) => {
+    async ({ workspaceId, mode, name, defaultModel }) => {
       const cwd = authorizedCwd(workspaceId)
-      const snapshot = initTeamProject(cwd, { mode, name })
+      const preset = String(defaultModel || '').trim()
+      // 只接受 provider/model 形态；形态不对就当没传（角色保持未绑定）。
+      const snapshot = initTeamProject(cwd, { mode, name, ...(preset.includes('/') ? { defaultModel: preset } : {}) })
       return { ok: true, snapshot }
+    },
+  )
+
+  registerHandlerWithSchema(
+    'ipc:teamBoard.autoMode.get',
+    z.object({ workspaceId: workspace }).strict(),
+    async ({ workspaceId }) => {
+      const cwd = authorizedCwd(workspaceId)
+      return { ok: true, autoTeam: getTeamAutoMode(cwd) }
+    },
+  )
+
+  registerHandlerWithSchema(
+    'ipc:teamBoard.autoMode.set',
+    z.object({ workspaceId: workspace, autoTeam: z.boolean() }).strict(),
+    async ({ workspaceId, autoTeam }) => {
+      const cwd = authorizedCwd(workspaceId)
+      const snapshot = setTeamAutoMode(cwd, autoTeam)
+      return { ok: true, autoTeam: snapshot.autoTeam, snapshot }
     },
   )
 

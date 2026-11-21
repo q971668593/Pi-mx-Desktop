@@ -232,6 +232,10 @@ export type TeamState = {
   version: 1
   sessions: TeamSessionMap
   runs: TeamRun[]
+  /** 项目级开关：自动进入工作流（默认手动，只有显式派发才动） */
+  settings?: {
+    autoTeam?: boolean
+  }
 }
 
 export type TeamSnapshot = {
@@ -246,6 +250,8 @@ export type TeamSnapshot = {
   roles: TeamRoleBinding[]
   sessions: TeamSessionMap
   runs: TeamRun[]
+  /** 是否自动进入工作流（项目级开关默认 false） */
+  autoTeam: boolean
 }
 
 export function emptyTeamState(): TeamState {

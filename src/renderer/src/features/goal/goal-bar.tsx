@@ -105,8 +105,9 @@ export function GoalBar({ className }: { className?: string }) {
     }
   }, [goal, t])
 
-  // 没有绑定的会话（首页/新建会话）：目标条不占位。
-  if (!sessionFile) return null
+  // 没有绑定的会话（首页/新建会话），或还没有定目标：目标条不占位。
+  // 目标只通过指令设定（如 /目标），定好之后这条才出现，可勾选、可改。
+  if (!sessionFile || (!goal && !editing)) return null
 
   const editor = (
     <form

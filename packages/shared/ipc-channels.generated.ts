@@ -273,6 +273,8 @@ export const IPC_INVOKE_CHANNELS = [
   'ipc:teamBoard.abortRun',
   'ipc:teamBoard.activeRuns',
   'ipc:teamBoard.approval',
+  'ipc:teamBoard.autoMode.get',
+  'ipc:teamBoard.autoMode.set',
   'ipc:teamBoard.dispatch',
   'ipc:teamBoard.init',
   'ipc:teamBoard.intervene',

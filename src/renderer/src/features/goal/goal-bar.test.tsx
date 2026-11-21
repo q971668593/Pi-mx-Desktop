@@ -68,27 +68,14 @@ describe('GoalBar', () => {
     expect(mocks.invoke).toHaveBeenCalledWith('sessionGoal.toggleCriterion', { sessionFile, index: 0 })
   })
 
-  it('creates a goal from the placeholder entry, one criterion per line', async () => {
+  it('stays hidden until a goal is set elsewhere (e.g. the goal command)', async () => {
     mocks.invoke.mockImplementation(async (channel: string) => {
       if (channel === 'sessionGoal.get') return { goal: null }
-      if (channel === 'sessionGoal.set') return { goal: storedGoal({ goal: '完成登录页', criteria: [] }) }
       return {}
     })
-    render(<GoalBar />)
-    fireEvent.click(await screen.findByText('这个会话要达成什么？（一句话）'))
-    fireEvent.change(screen.getByLabelText('这个会话要达成什么？（一句话）'), { target: { value: ' 完成登录页 ' } })
-    fireEvent.change(screen.getByLabelText('验收项（每行一条，事后可勾选）'), {
-      target: { value: '表单校验\n\n记住我\n表单校验' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '设定目标' }))
-    await waitFor(() =>
-      expect(mocks.invoke).toHaveBeenCalledWith('sessionGoal.set', {
-        sessionFile,
-        goal: '完成登录页',
-        criteria: ['表单校验', '记住我'],
-      }),
-    )
-    expect(await screen.findByText('完成登录页')).toBeInTheDocument()
+    const { container } = render(<GoalBar />)
+    await act(async () => {})
+    expect(container.querySelector('[data-goal-bar]')).toBeNull()
   })
 
   it('copies the goal and its ticked state, and clears it again', async () => {
@@ -113,7 +100,8 @@ describe('GoalBar', () => {
       fireEvent.click(screen.getByRole('button', { name: '确认清除' }))
     })
     expect(mocks.invoke).toHaveBeenCalledWith('sessionGoal.clear', { sessionFile })
-    await waitFor(() => expect(screen.getByText('这个会话要达成什么？（一句话）')).toBeInTheDocument())
+    // 清掉之后整条收起，不占位（不再回落到占位按钮）。
+    await waitFor(() => expect(screen.queryByText('首页 banner 抽成组件')).toBeNull())
   })
 
   it('renders nothing without a bound session', async () => {

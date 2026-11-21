@@ -4,7 +4,7 @@
 > 事实源：`src/main/**/*.ts` 中的 `registerHandler` / `registerHandlerWithSchema` 调用。
 > 手写文档在 `doc/IPC-CONTRACTS.md`；本文件保证「代码里注册了什么」与「文档里写了什么」不会漂移。
 
-- invoke 通道：**317** 个（唯一）
+- invoke 通道：**319** 个（唯一）
 - main → renderer 事件通道：**12** 个（唯一）
 - 非字面量注册：**0** 处
 - 动态事件通道（通道名非常量，未收录）：**7** 处
@@ -20,8 +20,8 @@
 | `gitBoard` | 31 |
 | `session` | 23 |
 | `workspace` | 21 |
+| `teamBoard` | 16 |
 | `extensions` | 14 |
-| `teamBoard` | 14 |
 | `remote` | 12 |
 | `desktop` | 11 |
 | `mcp` | 9 |
@@ -202,6 +202,27 @@
 | `ipc:workspace.tasks.get` | registerHandlerWithSchema | `src/main/ipc/handlers/workspace-tasks.ts` |
 | `ipc:workspace.tasks.save` | registerHandlerWithSchema | `src/main/ipc/handlers/workspace-tasks.ts` |
 
+### teamBoard（16）
+
+| 通道 | 注册方式 | 注册位置 |
+| --- | --- | --- |
+| `ipc:teamBoard.abortRun` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
+| `ipc:teamBoard.activeRuns` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
+| `ipc:teamBoard.approval` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
+| `ipc:teamBoard.autoMode.get` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
+| `ipc:teamBoard.autoMode.set` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
+| `ipc:teamBoard.dispatch` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
+| `ipc:teamBoard.init` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
+| `ipc:teamBoard.intervene` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
+| `ipc:teamBoard.prompt` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
+| `ipc:teamBoard.roleSession` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
+| `ipc:teamBoard.roles.save` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
+| `ipc:teamBoard.settleRun` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
+| `ipc:teamBoard.snapshot` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
+| `ipc:teamBoard.sweep` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
+| `ipc:teamBoard.task.create` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
+| `ipc:teamBoard.taskStatus` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
+
 ### extensions（14）
 
 | 通道 | 注册方式 | 注册位置 |
@@ -220,25 +241,6 @@
 | `ipc:extensions.syncGitPackages` | registerHandler | `src/main/ipc/handlers/extensions.ts` |
 | `ipc:extensions.translate` | registerHandler | `src/main/ipc/handlers/extensions.ts` |
 | `ipc:extensions.updatePackage` | registerHandler | `src/main/ipc/handlers/extensions.ts` |
-
-### teamBoard（14）
-
-| 通道 | 注册方式 | 注册位置 |
-| --- | --- | --- |
-| `ipc:teamBoard.abortRun` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
-| `ipc:teamBoard.activeRuns` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
-| `ipc:teamBoard.approval` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
-| `ipc:teamBoard.dispatch` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
-| `ipc:teamBoard.init` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
-| `ipc:teamBoard.intervene` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
-| `ipc:teamBoard.prompt` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
-| `ipc:teamBoard.roleSession` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
-| `ipc:teamBoard.roles.save` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
-| `ipc:teamBoard.settleRun` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
-| `ipc:teamBoard.snapshot` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
-| `ipc:teamBoard.sweep` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
-| `ipc:teamBoard.task.create` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
-| `ipc:teamBoard.taskStatus` | registerHandlerWithSchema | `src/main/ipc/handlers/team-board.ts` |
 
 ### remote（12）
 
