@@ -375,6 +375,11 @@ jobs:
         run: |
           find release-assets -type f \( -name 'latest.yml' -o -name 'latest-mac.yml' -o -name 'latest-linux.yml' \) -delete
           find release-assets -type f | sort
+          # 空 Release 比红流水线更难发现（发版页只剩源码压缩包）。这里硬性拦住。
+          if [ -z "$(find release-assets -type f)" ]; then
+            echo "::error::No artifacts downloaded — refuse to publish an empty release."
+            exit 1
+          fi
 
       - name: Generate SBOM
         run: node scripts/generate-release-sbom.mjs release-assets/sbom.cdx.json
