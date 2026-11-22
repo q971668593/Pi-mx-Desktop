@@ -35,7 +35,7 @@
   "realtimeMetrics": "Metrics",
   "elapsed": "Elapsed",
   "genSpeed": "Generation speed (estimate)",
-  "genSpeedHint": "Estimated from visible reply characters; actual token speed may differ.",
+  "genSpeedHint": "During a run, estimated from visible reply characters. Afterward, average output tokens over total run duration.",
   "firstOutputWait": "Wait for first reply",
   "waitingOutput": "Waiting for reply",
   "approxCharsPerSec": "~{{count}} chars/s",

@@ -2,7 +2,7 @@ import { StrictMode } from 'react'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { AppUpdateCheckResult } from '@shared/app-update'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { GeneralSettings } from './settings-general-appearance'
+import { AppearanceSettings, GeneralSettings } from './settings-general-appearance'
 
 type Deferred<T> = {
   promise: Promise<T>
@@ -39,6 +39,7 @@ vi.mock('@renderer/features/settings/settings-draft-context', () => ({
       includePrereleaseUpdates: false,
       alertSoundEnabled: false,
       alertSoundPreset: 'chime',
+      alertSoundVolume: 100,
       alertNotificationEnabled: false,
       alertOnExtensionUi: false,
       alertOnRunIdle: false,
@@ -53,6 +54,10 @@ vi.mock('@renderer/features/settings/settings-draft-context', () => ({
       maxSessionWorkers: 2,
       sessionWorkerIdleTimeoutMinutes: 10,
       language: 'en',
+      theme: 'system',
+      iconTheme: 'phosphor',
+      timelineVisibleTurns: 10,
+      timelineMaxAutoExpandedTools: 4,
     },
     setAutoOpenLastProject: vi.fn(),
     setAutoCheckRegistryUpdates: vi.fn(),
@@ -60,6 +65,7 @@ vi.mock('@renderer/features/settings/settings-draft-context', () => ({
     setLanguage: vi.fn(),
     setAlertSoundEnabled: vi.fn(),
     setAlertSoundPreset: vi.fn(),
+    setAlertSoundVolume: vi.fn(),
     setAlertNotificationEnabled: vi.fn(),
     setAlertOnExtensionUi: vi.fn(),
     setAlertOnRunIdle: vi.fn(),
@@ -72,11 +78,18 @@ vi.mock('@renderer/features/settings/settings-draft-context', () => ({
     setCompletionNotificationDelivery: vi.fn(),
     setMaxSessionWorkers: vi.fn(),
     setSessionWorkerIdleTimeoutMinutes: vi.fn(),
+    setTheme: vi.fn(),
+    setIconTheme: vi.fn(),
+    setCustomTheme: vi.fn(),
+    setBackground: vi.fn(),
+    setTimelineVisibleTurns: vi.fn(),
+    setTimelineMaxAutoExpandedTools: vi.fn(),
   }),
 }))
 
 vi.mock('@renderer/features/settings/pi-settings-panel', () => ({ PiSettingsPanel: () => null }))
 vi.mock('@renderer/features/settings/appearance-theme-editor', () => ({ AppearanceThemeEditor: () => null }))
+vi.mock('@renderer/features/settings/appearance-background', () => ({ AppearanceBackground: () => null }))
 vi.mock('@renderer/features/settings/runtime-settings-panel', () => ({ RuntimeSettingsPanel: () => null }))
 
 function deferred<T>(): Deferred<T> {
@@ -103,45 +116,13 @@ beforeEach(() => {
   mocks.showAppUpdateDialog.mockReset()
   mocks.invoke.mockImplementation((method: string) => {
     if (method === 'settings.get') return Promise.resolve({ settings: {} })
+    if (method === 'desktop.appName') return Promise.resolve({ name: 'Pi mx Desktop', version: '0.1.0' })
+    if (method === 'model.list') return Promise.resolve({ models: [] })
     return Promise.resolve({ status: 'error' })
   })
 })
 
 describe('GeneralSettings manual update feedback', () => {
-  it('exposes selected semantics for completion notification segments', () => {
-    render(<GeneralSettings />)
-
-    expect(screen.getByRole('button', { name: 'settings:general.alertPreview.response' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    )
-    expect(screen.getByRole('button', { name: 'settings:general.alertPreview.fixed' })).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    )
-    expect(screen.getByRole('button', { name: 'settings:general.alertDelivery.auto' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    )
-    expect(screen.getByRole('button', { name: 'settings:general.alertDnd.off' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    )
-  })
-
-  it('shows feedback for a test completion notification', async () => {
-    mocks.invoke.mockImplementation((method: string) => {
-      if (method === 'settings.get') return Promise.resolve({ settings: {} })
-      if (method === 'alerts.test') return Promise.resolve({ ok: true })
-      return Promise.resolve({ status: 'error' })
-    })
-    render(<GeneralSettings />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'settings:general.alertTestAction' }))
-
-    expect(await screen.findByRole('status')).toHaveTextContent('settings:general.alertTestSent')
-  })
-
   it('consumes a terminal result after the StrictMode effect remount', async () => {
     mocks.invoke.mockImplementation((method: string) => {
       if (method === 'settings.get') return Promise.resolve({ settings: {} })
@@ -223,8 +204,12 @@ describe('GeneralSettings manual update feedback', () => {
     let checkCount = 0
     mocks.invoke.mockImplementation((method: string) => {
       if (method === 'settings.get') return Promise.resolve({ settings: {} })
-      checkCount += 1
-      return checkCount === 1 ? first.promise : second.promise
+      if (method === 'desktop.appName') return Promise.resolve({ name: 'Pi mx Desktop', version: '0.1.0' })
+      if (method === 'app.checkUpdate') {
+        checkCount += 1
+        return checkCount === 1 ? first.promise : second.promise
+      }
+      return Promise.resolve({})
     })
     render(<GeneralSettings />)
 
@@ -249,6 +234,8 @@ describe('GeneralSettings manual update feedback', () => {
     const pending = deferred<AppUpdateCheckResult>()
     mocks.invoke.mockImplementation((method: string) => {
       if (method === 'settings.get') return Promise.resolve({ settings: {} })
+      if (method === 'desktop.appName') return Promise.resolve({ name: 'Pi mx Desktop', version: '0.1.0' })
+      if (method === 'model.list') return Promise.resolve({ models: [] })
       return pending.promise
     })
     const view = render(<GeneralSettings />)
@@ -315,5 +302,24 @@ describe('GeneralSettings sidebar section', () => {
         value: false,
       }),
     )
+  })
+
+  it('displays the current app version badge next to the app version row', async () => {
+    mocks.invoke.mockImplementation((method: string) => {
+      if (method === 'settings.get') return Promise.resolve({ settings: {} })
+      if (method === 'desktop.appName') return Promise.resolve({ name: 'Pi mx Desktop', version: '0.5.9' })
+      if (method === 'model.list') return Promise.resolve({ models: [] })
+      return Promise.resolve({ status: 'error' })
+    })
+    render(<GeneralSettings />)
+
+    expect(await screen.findByText('v0.5.9')).toBeInTheDocument()
+    expect(screen.getByLabelText('settings:readiness.title')).toBeInTheDocument()
+  })
+
+  it('exposes reset defaults action on AppearanceSettings with confirmation dialog', () => {
+    render(<AppearanceSettings />)
+    fireEvent.click(screen.getByRole('button', { name: 'settings:appearance.resetDefaults' }))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 })

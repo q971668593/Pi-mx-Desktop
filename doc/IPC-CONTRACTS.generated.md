@@ -4,7 +4,7 @@
 > 事实源：`src/main/**/*.ts` 中的 `registerHandler` / `registerHandlerWithSchema` 调用。
 > 手写文档在 `doc/IPC-CONTRACTS.md`；本文件保证「代码里注册了什么」与「文档里写了什么」不会漂移。
 
-- invoke 通道：**317** 个（唯一）
+- invoke 通道：**322** 个（唯一）
 - main → renderer 事件通道：**12** 个（唯一）
 - 非字面量注册：**0** 处
 - 动态事件通道（通道名非常量，未收录）：**7** 处
@@ -25,6 +25,7 @@
 | `remote` | 12 |
 | `desktop` | 11 |
 | `mcp` | 9 |
+| `model` | 8 |
 | `app` | 7 |
 | `sessionGoal` | 7 |
 | `asr` | 6 |
@@ -47,7 +48,6 @@
 | `shell` | 4 |
 | `clipboard` | 3 |
 | `dialog` | 3 |
-| `model` | 3 |
 | `notifications` | 3 |
 | `review` | 3 |
 | `routers` | 3 |
@@ -287,6 +287,19 @@
 | `ipc:mcp.server.save` | registerHandler | `src/main/ipc/handlers/mcp.ts` |
 | `ipc:mcp.status` | registerHandler | `src/main/ipc/handlers/mcp.ts` |
 
+### model（8）
+
+| 通道 | 注册方式 | 注册位置 |
+| --- | --- | --- |
+| `ipc:model.auth.answer` | registerHandlerWithSchema | `src/main/ipc/handlers/model-auth.ts` |
+| `ipc:model.auth.cancel` | registerHandlerWithSchema | `src/main/ipc/handlers/model-auth.ts` |
+| `ipc:model.auth.login` | registerHandlerWithSchema | `src/main/ipc/handlers/model-auth.ts` |
+| `ipc:model.auth.logout` | registerHandlerWithSchema | `src/main/ipc/handlers/model-auth.ts` |
+| `ipc:model.auth.providers` | registerHandlerWithSchema | `src/main/ipc/handlers/model-auth.ts` |
+| `ipc:model.cycle` | registerHandler | `src/main/ipc/handlers/model-runtime.ts` |
+| `ipc:model.list` | registerHandlerWithSchema | `src/main/ipc/handlers/model-runtime.ts` |
+| `ipc:model.set` | registerHandlerWithSchema | `src/main/ipc/handlers/model-runtime.ts` |
+
 ### app（7）
 
 | 通道 | 注册方式 | 注册位置 |
@@ -504,14 +517,6 @@
 | `ipc:dialog:openFiles` | registerHandler | `src/main/ipc/handlers/dialog.ts` |
 | `ipc:dialog:saveImage` | registerHandlerWithSchema | `src/main/ipc/handlers/dialog.ts` |
 
-### model（3）
-
-| 通道 | 注册方式 | 注册位置 |
-| --- | --- | --- |
-| `ipc:model.cycle` | registerHandler | `src/main/ipc/handlers/model-runtime.ts` |
-| `ipc:model.list` | registerHandlerWithSchema | `src/main/ipc/handlers/model-runtime.ts` |
-| `ipc:model.set` | registerHandlerWithSchema | `src/main/ipc/handlers/model-runtime.ts` |
-
 ### notifications（3）
 
 | 通道 | 注册方式 | 注册位置 |
@@ -663,7 +668,7 @@
 | `ipc:extension-ui-dismiss` | `src/main/worker-manager-pool.ts` |
 | `ipc:extension-ui-request` | `src/main/worker-manager-pool.ts` |
 | `ipc:git-workspace-changed` | `src/main/git-workspace-watch.ts`<br>`src/main/ipc/handlers/git-branches.ts` |
-| `ipc:model-catalog-changed` | `src/main/index.ts`<br>`src/main/worker-manager.ts` |
+| `ipc:model-catalog-changed` | `src/main/index.ts`<br>`src/main/ipc/handlers/model-auth.ts`<br>`src/main/worker-manager.ts` |
 | `ipc:notification-open-session` | `src/main/completion-notification-delivery.ts` |
 | `ipc:worker-exit` | `src/main/worker-manager.ts` |
 | `ipc:worker-fatal` | `src/main/worker-manager.ts` |

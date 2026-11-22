@@ -15,7 +15,14 @@ import { selectActiveSubagentSessionChildren } from '@renderer/lib/subagent-sess
 import type { SubagentSessionChild } from '@renderer/lib/subagent-session-types'
 import { useToolCardCatalogReady } from '@renderer/features/timeline/tool-card-registry'
 import { SessionAttentionDot } from './session-attention-dot'
-import { selectSessionAttention } from '@renderer/lib/session-attention'
+import { selectSessionAttention, type SessionAttention } from '@renderer/lib/session-attention'
+import { PinGlyph } from './pin-glyph'
+import {
+  filterNodesByStatus,
+  isSessionPinned,
+  usePinnedSessions,
+  type SidebarSessionFilter,
+} from './pinned-sessions'
 import type { SandboxEntry, SessionItem } from './project-sidebar-types'
 import type { SessionMenuFork, SessionMenuTarget } from './session-context-menu-types'
 
@@ -52,6 +59,7 @@ export function ProjectSessionTree({
   workspacePath,
   projectSessions,
   searchQuery = '',
+  statusFilter = 'all',
   loading,
   error,
   onRetry,
@@ -62,6 +70,7 @@ export function ProjectSessionTree({
   workspacePath: string
   projectSessions: SessionItem[]
   searchQuery?: string
+  statusFilter?: SidebarSessionFilter
   loading: boolean
   error?: string
   onRetry?: () => void
@@ -71,6 +80,7 @@ export function ProjectSessionTree({
 }) {
   const { t } = useTranslation()
   const sessionAttention = useUIStore((st) => st.sessionAttention)
+  const pinnedSessions = usePinnedSessions()
   const historySessionFile = useUIStore((st) => st.historySessionFile)
   const subagentSessionGroup = useUIStore((st) => st.subagentSessionGroup)
   const catalogReady = useToolCardCatalogReady()
@@ -101,8 +111,17 @@ export function ProjectSessionTree({
     }
     return buildSessionTree(projectSessions, groups)
   }, [currentWorkspace, historySessionFile, liveChildren, projectSessions, subagentSessionGroup, workspacePath])
-  const sortNodes = (nodes: SessionNode[]) => [...nodes].sort((a, b) => sessionActivityAt(b.session) - sessionActivityAt(a.session) || a.key.localeCompare(b.key))
-  const visibleRoots = useMemo(() => filterSessionTree(tree.roots, searchQuery), [tree, searchQuery])
+  const sortNodes = (nodes: SessionNode[]) =>
+    [...nodes].sort((a, b) => {
+      const pa = isSessionPinned(pinnedSessions, a.session.sessionFile) ? 1 : 0
+      const pb = isSessionPinned(pinnedSessions, b.session.sessionFile) ? 1 : 0
+      if (pa !== pb) return pb - pa
+      return sessionActivityAt(b.session) - sessionActivityAt(a.session) || a.key.localeCompare(b.key)
+    })
+  const visibleRoots = useMemo(() => {
+    const queried = filterSessionTree(tree.roots, searchQuery)
+    return filterNodesByStatus(queried, sessionAttention ?? {}, statusFilter)
+  }, [tree, searchQuery, sessionAttention, statusFilter])
   const { sessionsByFile, forksBySource } = useMemo(() => {
     const byFile = new Map<string, SessionItem>()
     const forks = new Map<string, SessionMenuFork[]>()
@@ -172,7 +191,7 @@ export function ProjectSessionTree({
     const { children, liveChildren: transientChildren } = node
     const childCount = children.length + transientChildren.length
     const childrenId = `session-children-${encodeURIComponent(node.key)}`
-    const expanded = !!searchQuery.trim() || expandedSessionFiles.has(node.key)
+    const expanded = !!searchQuery.trim() || statusFilter !== 'all' || expandedSessionFiles.has(node.key)
     const ownAttention = selectSessionAttention(sessionFile, sessionAttention)
     const attention = node.liveChild?.state === 'running' && ownAttention === 'idle' ? 'working' : ownAttention
     const forkSource = s.forkedFromSessionFile ? sessionsByFile.get(workspacePathKey(s.forkedFromSessionFile)) : undefined
@@ -251,7 +270,18 @@ export function ProjectSessionTree({
                     aria-label={t('common:sidebar.teamSession', { role: s.team.role })}
                   />
                 ) : null}
+                {isChild || !isSessionPinned(pinnedSessions, sessionFile) ? null : (
+                  <PinGlyph
+                    filled
+                    className="h-2.5 w-2.5 shrink-0 text-primary/70"
+                  />
+                )}
                 <span className="min-w-0 flex-1 truncate" title={s.title || s.sessionId.slice(0, 8)}>{s.title || s.sessionId.slice(0, 8)}</span>
+                {attention === 'needs-you' ? (
+                  <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300">
+                    {t('common:attention.needsYou')}
+                  </span>
+                ) : null}
                 {s.interruptedAt && attention !== 'working' ? (
                   <span className="shrink-0 text-[10px] text-amber-700 dark:text-amber-300"
                     title={new Date(s.interruptedAt).toLocaleString()}>
@@ -392,13 +422,12 @@ export function ProjectSessionTree({
         <p>{t('common:sidebar.sessionReadFailed')}</p>
         <button type="button" className="workbench-button mt-1" disabled={loading} onClick={onRetry}>{t('common:retry')}</button>
       </div>}
-      {pendingNew && !searchQuery.trim() ? (
+      {pendingNew && !searchQuery.trim() && statusFilter === 'all' ? (
         <div className="mb-0.5">
           <div className="nav-row nav-row-active sidebar-session-row sidebar-pending-row flex min-h-[38px] items-center gap-0.5 rounded-lg px-1 py-0.5" aria-current="page">
             <div className="flex min-h-11 min-w-0 flex-1 items-center gap-2 px-2 py-1.5">
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[13px] leading-[18px] text-foreground">{t('common:sidebar.newSessionDraft')}</div>
-                <div className="truncate text-[11px] leading-[16px] text-foreground-secondary/85">{t('common:sidebar.firstMsgIsTitle')}</div>
               </div>
             </div>
           </div>
@@ -420,6 +449,7 @@ export function ProjectDiskRow({
   worktree = false,
   active,
   open,
+  attention = 'idle',
   onToggleOpen,
   onOpenProject,
   onNewSession,
@@ -434,6 +464,7 @@ export function ProjectDiskRow({
   worktree?: boolean
   active: boolean
   open: boolean
+  attention?: SessionAttention
   onToggleOpen: () => void
   onOpenProject?: () => void
   onNewSession: () => void
@@ -472,6 +503,9 @@ export function ProjectDiskRow({
           <span className="sidebar-project-name truncate">{name}</span>
           {branchName && branchName !== name ? <span className="sidebar-project-branch truncate" title={branchName}>{branchName}</span> : null}
         </button>
+        {!open && attention !== 'idle' ? (
+          <SessionAttentionDot attention={attention} className="mr-0.5 shrink-0" />
+        ) : null}
         <button
           type="button"
           onClick={(e) => {

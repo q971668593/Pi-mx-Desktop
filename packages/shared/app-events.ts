@@ -152,6 +152,44 @@ export interface SdkRuntimeChangedEvent {
   type: 'sdk-runtime-changed'
 }
 
+/** One question the provider's login flow is waiting on. */
+export interface ModelAuthPrompt {
+  kind: 'text' | 'secret' | 'select' | 'manual_code'
+  message: string
+  placeholder?: string
+  options?: { id: string; label: string; description?: string }[]
+}
+
+/** What the login flow wants the user to see (URL to open, device code, progress). */
+export type ModelAuthNotice =
+  | { kind: 'info'; message: string; links?: { url: string; label?: string }[] }
+  | { kind: 'auth_url'; url: string; instructions?: string }
+  | {
+      kind: 'device_code'
+      userCode: string
+      verificationUri: string
+      intervalSeconds?: number
+      expiresInSeconds?: number
+    }
+  | { kind: 'progress'; message: string }
+
+/**
+ * Interactive subscription (OAuth) login for an SDK provider, streamed to the renderer.
+ *
+ * The flow lives in the main process so the token lands in auth.json via the SDK's own
+ * credential store; the renderer only renders notices and answers prompts.
+ */
+export interface ModelAuthEvent {
+  type: 'model-auth'
+  providerId: string
+  phase: 'prompt' | 'notice' | 'done' | 'error' | 'cancelled'
+  /** Set for `prompt`: echo it back with `ipc:model.auth.answer`. */
+  promptId?: string
+  prompt?: ModelAuthPrompt
+  notice?: ModelAuthNotice
+  error?: string
+}
+
 export interface AdapterCatalogChangedEvent {
   type: 'adapter-catalog-changed'
   workspaceId?: string
@@ -182,6 +220,7 @@ export type AppEvent =
   | ExtensionWidgetEvent
   | SdkInstallProgressEvent
   | SdkRuntimeChangedEvent
+  | ModelAuthEvent
   | AdapterCatalogChangedEvent
   | RemoteSettingsChangedEvent
 

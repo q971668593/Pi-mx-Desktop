@@ -386,6 +386,7 @@ const settingsValueSchemas: Record<string, z.ZodTypeAny> = {
   ignoredUpdateVersion: z.string(),
   alertSoundEnabled: z.boolean(),
   alertSoundPreset: z.enum(['chime', 'drop', 'double', 'rise', 'soft', 'none']),
+  alertSoundVolume: z.number().int().min(0).max(200),
   alertNotificationEnabled: z.boolean(),
   alertOnExtensionUi: z.boolean(),
   alertOnRunIdle: z.boolean(),
@@ -658,6 +659,25 @@ export const runtimeGetStateSchema = looseRequest({
 
 export const modelListSchema = looseRequest({
   scope: z.enum(['available', 'settings', 'catalog']).optional(),
+})
+
+/* 订阅（OAuth）登录：登录流程在主进程跑，界面只回答提问 / 取消 / 退出。 */
+export const modelAuthProvidersSchema = looseRequest({})
+
+export const modelAuthLoginSchema = z.object({
+  providerId: z.string().min(1),
+  type: z.enum(['oauth', 'api_key']).optional(),
+})
+
+export const modelAuthAnswerSchema = z.object({
+  providerId: z.string().min(1),
+  promptId: z.string().min(1),
+  value: z.string().optional(),
+  cancelled: z.boolean().optional(),
+})
+
+export const modelAuthCancelSchema = z.object({
+  providerId: z.string().min(1),
 })
 
 export const modelSetSchema = looseRequest({

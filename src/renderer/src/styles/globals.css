@@ -304,7 +304,7 @@
     --surface-sidebar: #141319;
     --sidebar-row-hover: #1e1c25;
     --sidebar-row-press: #25232e;
-    --sidebar-row-selected: #2d2b38;
+    --sidebar-row-selected: #363445;
     --list-row-selected: #272530;
 
     --text-secondary-hsl: 0 0% 67%;
@@ -2289,6 +2289,69 @@
   .settings-chip:active {
     transform: scale(0.97);
   }
+  .alert-volume-range {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 22px;
+    background: transparent;
+    cursor: pointer;
+  }
+  .alert-volume-range::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 999px;
+    background: linear-gradient(
+      to right,
+      hsl(var(--primary)) 0%,
+      hsl(var(--primary)) var(--alert-volume-filled, 50%),
+      hsl(var(--muted-foreground) / 0.22) var(--alert-volume-filled, 50%),
+      hsl(var(--muted-foreground) / 0.22) 100%
+    );
+  }
+  .alert-volume-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    margin-top: -4px;
+    border-radius: 999px;
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--background));
+    box-shadow: 0 1px 3px rgb(0 0 0 / 22%);
+    transition: transform var(--motion-fast) var(--motion-ease);
+  }
+  .alert-volume-range:hover::-webkit-slider-thumb {
+    transform: scale(1.08);
+  }
+  .alert-volume-range:active::-webkit-slider-thumb {
+    transform: scale(0.96);
+  }
+  .alert-volume-range:focus-visible {
+    outline: none;
+  }
+  .alert-volume-range:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 3px hsl(var(--ring) / 0.35);
+  }
+  .alert-volume-range:disabled {
+    cursor: not-allowed;
+  }
+  /* Gecko needs its own pseudo-elements; Electron is Chromium, this keeps dev-in-Firefox sane. */
+  .alert-volume-range::-moz-range-track {
+    height: 6px;
+    border-radius: 999px;
+    background: hsl(var(--muted-foreground) / 0.22);
+  }
+  .alert-volume-range::-moz-range-progress {
+    height: 6px;
+    border-radius: 999px;
+    background: hsl(var(--primary));
+  }
+  .alert-volume-range::-moz-range-thumb {
+    width: 13px;
+    height: 13px;
+    border-radius: 999px;
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--background));
+  }
   .settings-catalog-shell {
     transition: border-color var(--motion-fast) ease;
   }
@@ -3578,9 +3641,25 @@
 .code-surface { background: var(--code-bg); }
 
 /* Settings → Appearance: preset cards */
-.theme-preset-card { border: 1px solid transparent; transition: border-color var(--motion-fast) ease, background-color var(--motion-fast) ease; }
-.theme-preset-card:hover { background: var(--bg-hover); }
-.theme-preset-card--selected { border-color: color-mix(in srgb, var(--brand) 55%, transparent); background: color-mix(in srgb, var(--brand) 6%, transparent); }
+.theme-preset-card {
+  border: 1px solid transparent;
+  transition:
+    border-color var(--motion-fast) ease,
+    background-color var(--motion-fast) ease,
+    transform var(--motion-press) var(--ease-move),
+    box-shadow var(--motion-fast) ease;
+}
+.theme-preset-card:hover {
+  background: var(--bg-hover);
+  transform: translateY(-1px);
+}
+.theme-preset-card:active {
+  transform: scale(0.98);
+}
+.theme-preset-card--selected {
+  border-color: color-mix(in srgb, var(--brand) 55%, transparent);
+  background: color-mix(in srgb, var(--brand) 6%, transparent);
+}
 .theme-preset-card:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
 
 /*
@@ -3736,9 +3815,84 @@ html[data-bg='on'] .composer-dock-fade { right: 0; }
   to { opacity: 1; transform: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .motion-press, .motion-press:active, .motion-lift, .motion-lift:hover, .motion-lift:active, .motion-enter {
+  .motion-press, .motion-press:active, .motion-lift, .motion-lift:hover, .motion-lift:active, .motion-enter,
+  .theme-preset-card, .theme-preset-card:hover, .theme-preset-card:active,
+  .settings-subtab:active, .settings-save-bar-enter, .settings-autosave-pill {
     transition: none !important;
     animation: none !important;
     transform: none !important;
   }
+}
+
+/* ── Smooth theme flip, settings sub-tabs, auto-save feedback & settled timeline perf ── */
+@media (prefers-reduced-motion: no-preference) {
+  html.theme-transitioning,
+  html.theme-transitioning * {
+    transition:
+      background-color 180ms ease,
+      color 180ms ease,
+      border-color 180ms ease !important;
+  }
+}
+
+.settings-subtab:active {
+  transform: scale(0.97);
+}
+
+.settings-save-bar-enter {
+  animation: settings-save-bar-in var(--motion-enter) var(--ease-enter) both;
+}
+@keyframes settings-save-bar-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+.settings-autosave-pill {
+  animation: settings-autosave-in 180ms var(--ease-enter) both;
+}
+@keyframes settings-autosave-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+
+.timeline-settled-item {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 120px;
+}
+
+/* Pause GPU animations and backdrop compositing when window is hidden/minimized. */
+html[data-window-hidden='true'] *,
+html[data-window-hidden='true'] *::before,
+html[data-window-hidden='true'] *::after {
+  animation-play-state: paused !important;
+  backdrop-filter: none !important;
+}
+
+/* On blur (e.g. fullscreen game or another app), pause only decorative infinite animations; keep live streaming text legible. */
+html[data-window-blurred='true'] .adapter-widget-pulse,
+html[data-window-blurred='true'] .animate-breathe,
+html[data-window-blurred='true'] .animate-stop-breathe,
+html[data-window-blurred='true'] .animate-tool-live-pulse,
+html[data-window-blurred='true'] .timeline-activity-label--live,
+html[data-window-blurred='true'] .animate-thinking-pulse,
+html[data-window-blurred='true'] .thinking-shimmer-ltr,
+html[data-window-blurred='true'] .panel-status-dot[data-status='thinking']::after,
+html[data-window-blurred='true'] .reply-placeholder-skeleton > span::after,
+html[data-window-blurred='true'] .pixel-wave > i,
+html[data-window-blurred='true'] .chat-image-generating-card,
+html[data-window-blurred='true'] .chat-image-generating-sweep,
+html[data-window-blurred='true'] [class*='animate-spin'],
+html[data-window-blurred='true'] [class*='animate-pulse'] {
+  animation-play-state: paused !important;
+}
+
+/* Subtle ring highlight for in-session timeline search (Ctrl/Cmd+F). */
+[data-timeline-search-hit='true'] {
+  border-radius: 0.5rem;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand) 28%, transparent);
+}
+[data-timeline-search-active='true'] {
+  border-radius: 0.5rem;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 58%, transparent);
+  background: color-mix(in srgb, var(--brand) 6%, transparent);
 }

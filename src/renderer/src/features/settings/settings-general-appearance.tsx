@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { cn } from '@renderer/lib/utils'
 import { ipcClient } from '@renderer/lib/ipc-client'
 import { showAppUpdateDialog } from '@renderer/lib/app-update-notify'
@@ -8,13 +9,12 @@ import { useSettingsDraft } from '@renderer/features/settings/settings-draft-con
 import { PiSettingsPanel } from '@renderer/features/settings/pi-settings-panel'
 import { AppearanceThemeEditor } from '@renderer/features/settings/appearance-theme-editor'
 import { AppearanceBackground } from '@renderer/features/settings/appearance-background'
-import { RuntimeSettingsPanel } from '@renderer/features/settings/runtime-settings-panel'
 import { SettingsPageHeader } from '@renderer/features/settings/settings-shell'
 import { SettingRow, SettingsSection } from '@renderer/features/settings/settings-page-shared'
+import { SettingsReadinessBanner } from '@renderer/features/settings/settings-readiness-banner'
+import { ConfirmDialog } from '@renderer/features/settings/confirm-dialog'
 import { btnOutline, numberInputCls } from '@renderer/features/settings/settings-controls'
-import { previewAlertSound } from '@renderer/lib/alert-sound'
 import { setTitleFollowsLatest } from '@renderer/lib/session-title-follow'
-import { ALERT_SOUND_PRESETS } from '@shared/alert-sound'
 import { Switch } from '@renderer/components/ui/switch'
 import {
   Folder,
@@ -25,7 +25,10 @@ import {
   ThemedIcon,
   type AppIconComponent,
 } from '@renderer/components/icons'
-import { ICON_THEMES, type IconTheme } from '@shared/icon-theme'
+import { ICON_THEMES, normalizeIconTheme, type IconTheme } from '@shared/icon-theme'
+import { normalizeBackground } from '@shared/background'
+import { normalizeCustomTheme } from '@shared/custom-theme'
+import { normalizeTimelineMaxAutoExpandedTools, normalizeTimelineVisibleTurns } from '@shared/timeline-settings'
 import { applyUiZoom, readUiZoom } from '@renderer/lib/ui-zoom'
 import {
   formatShortcut,
@@ -91,19 +94,6 @@ export function GeneralSettings() {
     setAutoCheckRegistryUpdates,
     setIncludePrereleaseUpdates,
     setLanguage,
-    setAlertSoundEnabled,
-    setAlertSoundPreset,
-    setAlertNotificationEnabled,
-    setAlertOnExtensionUi,
-    setAlertOnRunIdle,
-    setAlertOnBackgroundRunIdle,
-    setAlertOnRunFailed,
-    setAiActivityGlowEnabled,
-    setCompletionNotificationTimeoutSeconds,
-    setCompletionNotificationPreview,
-    setCompletionNotificationOnlyWhenUnfocused,
-    setCompletionNotificationDndMinutes,
-    setCompletionNotificationDelivery,
     setMaxSessionWorkers,
     setSessionWorkerIdleTimeoutMinutes,
   } = useSettingsDraft()
@@ -111,29 +101,12 @@ export function GeneralSettings() {
   const [fixedOrder, setFixedOrder] = useState(false)
   /** 侧栏：对话名跟随最新消息（键 sessionTitleFollowsLatest，侧栏不再直接提供开关）。 */
   const [titleFollowsLatest, setTitleFollowsLatestState] = useState(false)
+  const [appVersion, setAppVersion] = useState('')
   const [updateCheck, setUpdateCheck] = useState<string | null>(null)
   const [checkingUpdate, setCheckingUpdate] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
-  const [testingAlert, setTestingAlert] = useState(false)
-  const [previewingGlow, setPreviewingGlow] = useState(false)
-  const [glowPreviewFailed, setGlowPreviewFailed] = useState(false)
-  const [alertTestFeedback, setAlertTestFeedback] = useState<'sent' | 'failed' | null>(null)
   const updateCheckAttemptRef = useRef(0)
   const mountedRef = useRef(true)
-
-  /** One control instead of two switches: "popup + sound", "sound only", "popup only" or nothing. */
-  const alertMode: 'both' | 'sound' | 'popup' | 'off' =
-    draft.alertNotificationEnabled && draft.alertSoundEnabled
-      ? 'both'
-      : draft.alertNotificationEnabled
-        ? 'popup'
-        : draft.alertSoundEnabled
-          ? 'sound'
-          : 'off'
-  const setAlertMode = (mode: 'both' | 'sound' | 'popup' | 'off'): void => {
-    setAlertNotificationEnabled(mode === 'both' || mode === 'popup')
-    setAlertSoundEnabled(mode === 'both' || mode === 'sound')
-  }
 
   useEffect(() => {
     mountedRef.current = true
@@ -156,6 +129,9 @@ export function GeneralSettings() {
     ipcClient.invoke('settings.get', { key: 'sessionTitleFollowsLatest' }).then((res) => {
       if (mountedRef.current) setTitleFollowsLatestState(res?.settings?.sessionTitleFollowsLatest === true)
     })
+    ipcClient.invoke('desktop.appName').then((res) => {
+      if (mountedRef.current && res?.version) setAppVersion(res.version)
+    }).catch(() => {})
   }, [])
 
   const toggleTitleFollowsLatest = (next: boolean) => {
@@ -208,35 +184,11 @@ export function GeneralSettings() {
     }
   }
 
-  const handleTestAlert = async () => {
-    setTestingAlert(true)
-    setAlertTestFeedback(null)
-    try {
-      const result = await ipcClient.invoke('alerts.test', {})
-      setAlertTestFeedback(result?.ok === false ? 'failed' : 'sent')
-    } catch {
-      setAlertTestFeedback('failed')
-    } finally {
-      setTestingAlert(false)
-    }
-  }
-
-  const handlePreviewGlow = async () => {
-    setPreviewingGlow(true)
-    setGlowPreviewFailed(false)
-    try {
-      const result = await ipcClient.invoke('aiActivityGlow.preview', {})
-      if (result?.ok === false) setGlowPreviewFailed(true)
-    } catch {
-      setGlowPreviewFailed(true)
-    } finally {
-      setPreviewingGlow(false)
-    }
-  }
-
   return (
     <div className="space-y-8">
       <SettingsPageHeader title={t('settings:general.title')} description={t('settings:general.description')} />
+
+      <SettingsReadinessBanner />
 
       <SettingsSection title={t('settings:general.startup')}>
         <SettingRow label={t('settings:general.openLastProject')} description={t('settings:general.openLastProjectDesc')}>
@@ -254,7 +206,17 @@ export function GeneralSettings() {
         >
           <Switch checked={draft.includePrereleaseUpdates} onCheckedChange={setIncludePrereleaseUpdates} />
         </SettingRow>
-        <SettingRow label={t('settings:general.appVersion')} description={t('settings:general.appVersionDesc')}>
+        <SettingRow
+          label={t('settings:general.appVersion')}
+          description={t('settings:general.appVersionDesc')}
+          badge={
+            appVersion ? (
+              <span className="settings-key font-mono">
+                {appVersion.startsWith('v') ? appVersion : `v${appVersion}`}
+              </span>
+            ) : undefined
+          }
+        >
           <div className="flex flex-col items-start gap-1 sm:items-end">
             <div className="flex items-center gap-2">
               <button
@@ -283,239 +245,72 @@ export function GeneralSettings() {
         </SettingRow>
       </SettingsSection>
 
-      <SettingsSection
-        title={t('settings:general.alert')}
-        description={t('settings:general.alertSectionDesc')}
-      >
-        <SettingRow label={t('settings:general.alertMode')} description={t('settings:general.alertModeDesc')}>
-          <div className="flex flex-wrap gap-1.5">
-            {(['both', 'sound', 'popup', 'off'] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                aria-pressed={alertMode === mode}
-                onClick={() => setAlertMode(mode)}
-                className={cn(
-                  'settings-chip min-h-11 rounded-md border px-3 text-sm',
-                  alertMode === mode
-                    ? 'border-primary bg-primary/5 text-foreground'
-                    : 'border-border text-muted-foreground hover:bg-accent/50',
-                )}
-              >
-                {t(`settings:general.alertModeOptions.${mode}`)}
-              </button>
-            ))}
-          </div>
-        </SettingRow>
-        <SettingRow label={t('settings:general.alertSoundPreset')} description={t('settings:general.alertSoundPresetDesc')}>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {ALERT_SOUND_PRESETS.map((preset) => (
-              <button
-                key={preset}
-                type="button"
-                disabled={!draft.alertSoundEnabled}
-                aria-pressed={draft.alertSoundPreset === preset}
-                onClick={() => {
-                  setAlertSoundPreset(preset)
-                  previewAlertSound(preset)
-                }}
-                className={cn(
-                  'settings-chip min-h-11 rounded-md border px-3 text-sm disabled:opacity-50',
-                  draft.alertSoundPreset === preset
-                    ? 'border-primary bg-primary/5 text-foreground'
-                    : 'border-border text-muted-foreground hover:bg-accent/50',
-                )}
-              >
-                {t(`settings:general.alertSounds.${preset}`)}
-              </button>
-            ))}
-            <button
-              type="button"
-              disabled={!draft.alertSoundEnabled || draft.alertSoundPreset === 'none'}
-              onClick={() => previewAlertSound(draft.alertSoundPreset)}
-              className={cn(btnOutline, 'min-h-11')}
-            >
-              {t('settings:general.alertSoundPreview')}
-            </button>
-          </div>
-        </SettingRow>
-        {typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform) ? (
-          <p className="px-1 pb-2 text-[11px] text-muted-foreground">{t('settings:general.macNotifyHint')}</p>
-        ) : null}
-        <SettingRow
-          label={t('settings:general.alertOnExtensionUi')}
-          description={t('settings:general.alertOnExtensionUiDesc')}
-        >
-          <Switch checked={draft.alertOnExtensionUi} onCheckedChange={setAlertOnExtensionUi} />
-        </SettingRow>
-      </SettingsSection>
-
-      <SettingsSection
-        title={t('settings:general.aiGlow')}
-        description={t('settings:general.aiGlowDesc')}
-      >
-        <SettingRow label={t('settings:general.aiGlowEnabled')} description={t('settings:general.aiGlowEnabledDesc')}>
-          <Switch checked={draft.aiActivityGlowEnabled} onCheckedChange={setAiActivityGlowEnabled} />
-        </SettingRow>
-        <SettingRow label={t('settings:general.aiGlowPreview')} description={t('settings:general.aiGlowPreviewDesc')}>
-          <div className="flex flex-col items-start gap-1.5 sm:items-end">
-            <button
-              type="button"
-              className={cn(btnOutline, 'min-h-11')}
-              aria-busy={previewingGlow}
-              disabled={previewingGlow}
-              onClick={() => void handlePreviewGlow()}
-            >
-              {previewingGlow ? t('settings:general.aiGlowPreviewing') : t('settings:general.aiGlowPreviewAction')}
-            </button>
-            {glowPreviewFailed ? (
-              <span role="status" className="text-xs text-destructive">
-                {t('settings:general.aiGlowPreviewFailed')}
-              </span>
-            ) : null}
-          </div>
-        </SettingRow>
-      </SettingsSection>
-
-      <SettingsSection
-        title={t('settings:general.completionAlert')}
-        description={t('settings:general.completionAlertDesc')}
-      >
-        <SettingRow label={t('settings:general.alertOnRunIdle')} description={t('settings:general.alertOnRunIdleDesc')}>
-          <Switch checked={draft.alertOnRunIdle} onCheckedChange={setAlertOnRunIdle} />
-        </SettingRow>
-        <SettingRow
-          label={t('settings:general.alertOnBackgroundRunIdle')}
-          description={t('settings:general.alertOnBackgroundRunIdleDesc')}
-        >
-          <Switch checked={draft.alertOnBackgroundRunIdle} onCheckedChange={setAlertOnBackgroundRunIdle} />
-        </SettingRow>
-        <SettingRow label={t('settings:general.alertOnRunFailed')} description={t('settings:general.alertOnRunFailedDesc')}>
-          <Switch checked={draft.alertOnRunFailed} onCheckedChange={setAlertOnRunFailed} />
-        </SettingRow>
-        <SettingRow
-          label={t('settings:general.alertOnlyUnfocused')}
-          description={t('settings:general.alertOnlyUnfocusedDesc')}
-        >
-          <Switch
-            checked={draft.completionNotificationOnlyWhenUnfocused}
-            onCheckedChange={setCompletionNotificationOnlyWhenUnfocused}
-          />
-        </SettingRow>
-        <SettingRow label={t('settings:general.alertPreview.label')} description={t('settings:general.alertPreviewDesc')}>
+      <SettingsSection title={t('settings:general.language')}>
+        <SettingRow label={t('settings:general.language')} description={t('settings:general.languageDesc')}>
           <div className="flex gap-1.5">
-            {(['response', 'fixed'] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                aria-pressed={draft.completionNotificationPreview === mode}
-                onClick={() => setCompletionNotificationPreview(mode)}
-                className={cn(
-                  'settings-chip min-h-11 rounded-md border px-3 text-sm',
-                  draft.completionNotificationPreview === mode
-                    ? 'border-primary bg-primary/5 text-foreground'
-                    : 'border-border text-muted-foreground hover:bg-accent/50',
-                )}
-              >
-                {t(`settings:general.alertPreview.${mode}`)}
-              </button>
-            ))}
-          </div>
-        </SettingRow>
-        <SettingRow label={t('settings:general.alertDelivery.label')} description={t('settings:general.alertDeliveryDesc')}>
-          <div className="flex flex-wrap gap-1.5">
-            {(['auto', 'custom', 'system'] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                aria-pressed={draft.completionNotificationDelivery === mode}
-                onClick={() => setCompletionNotificationDelivery(mode)}
-                className={cn(
-                  'settings-chip min-h-11 rounded-md border px-3 text-sm',
-                  draft.completionNotificationDelivery === mode
-                    ? 'border-primary bg-primary/5 text-foreground'
-                    : 'border-border text-muted-foreground hover:bg-accent/50',
-                )}
-              >
-                {t(`settings:general.alertDelivery.${mode}`)}
-              </button>
-            ))}
-          </div>
-        </SettingRow>
-        <SettingRow label={t('settings:general.alertTimeout')} description={t('settings:general.alertTimeoutDesc')}>
-          <input
-            type="number"
-            min={5}
-            max={60}
-            step={1}
-            value={draft.completionNotificationTimeoutSeconds}
-            onChange={(e) => {
-              const n = Number(e.target.value)
-              if (!Number.isFinite(n)) return
-              setCompletionNotificationTimeoutSeconds(n)
-            }}
-            className={numberInputCls}
-          />
-        </SettingRow>
-        <SettingRow label={t('settings:general.alertDnd.label')} description={t('settings:general.alertDndDesc')}>
-          <div className="flex flex-wrap gap-1.5">
             {[
-              { minutes: null as number | null, key: 'off' },
-              { minutes: 3, key: '3m' },
-              { minutes: 30, key: '30m' },
-              { minutes: 60, key: '1h' },
-            ].map((opt) => {
-              const selected = opt.minutes == null
-                ? !draft.completionNotificationDndUntil
-                : draft.completionNotificationDndUntil != null &&
-                  Math.abs(
-                    draft.completionNotificationDndUntil - Date.now() - opt.minutes * 60_000,
-                  ) < 5_000
-              return (
-                <button
-                  key={opt.key}
-                  type="button"
-                  aria-pressed={selected}
-                  onClick={() => setCompletionNotificationDndMinutes(opt.minutes)}
-                  className={cn(
-                    'settings-chip min-h-11 rounded-md border px-3 text-sm',
-                    selected
-                      ? 'border-primary bg-primary/5 text-foreground'
-                      : 'border-border text-muted-foreground hover:bg-accent/50',
-                  )}
-                >
-                  {t(`settings:general.alertDnd.${opt.key}`)}
-                </button>
-              )
-            })}
-          </div>
-        </SettingRow>
-        <SettingRow label={t('settings:general.alertTest')} description={t('settings:general.alertTestDesc')}>
-          <div className="flex flex-col items-start gap-1.5 sm:items-end">
-            <button
-              type="button"
-              className={cn(btnOutline, 'min-h-11')}
-              aria-busy={testingAlert}
-              disabled={testingAlert}
-              onClick={() => void handleTestAlert()}
-            >
-              {testingAlert ? t('settings:general.alertTesting') : t('settings:general.alertTestAction')}
-            </button>
-            {alertTestFeedback ? (
-              <span
-                role="status"
+              { key: 'zh' as const, label: t('settings:general.langZh') },
+              { key: 'en' as const, label: t('settings:general.langEn') },
+            ].map((l) => (
+              <button
+                key={l.key}
+                type="button"
+                onClick={() => setLanguage(l.key)}
                 className={cn(
-                  'text-xs',
-                  alertTestFeedback === 'sent' ? 'text-[var(--success-semantic)]' : 'text-destructive',
+                  'settings-chip rounded-md border px-2.5 py-1.5 text-sm transition-all duration-motion-fast ease-motion-ease',
+                  draft.language === l.key
+                    ? 'border-primary bg-primary/5 text-foreground'
+                    : 'border-border text-muted-foreground hover:bg-accent/50',
                 )}
               >
-                {alertTestFeedback === 'sent'
-                  ? t('settings:general.alertTestSent')
-                  : t('settings:general.alertTestFailed')}
-              </span>
-            ) : null}
+                {l.label}
+              </button>
+            ))}
           </div>
         </SettingRow>
+      </SettingsSection>
+
+      <SettingsSection title={t('common:shortcuts.title')}>
+        <ShortcutBindingsRow />
+      </SettingsSection>
+
+      <SettingsSection
+        title={t('settings:general.sidebarSection')}
+        description={t('settings:general.sidebarSectionDesc')}
+      >
+        <SettingRow
+          label={t('settings:general.titleFollowsLatest')}
+          description={t('settings:general.titleFollowsLatestDesc')}
+          settingKey="sessionTitleFollowsLatest"
+        >
+          <Switch checked={titleFollowsLatest} onCheckedChange={toggleTitleFollowsLatest} />
+        </SettingRow>
+        <SettingRow
+          label={t('settings:general.fixedOrder')}
+          description={t('settings:general.fixedOrderDesc')}
+          settingKey="recentProjectsFixedOrder"
+        >
+          <Switch checked={fixedOrder} onCheckedChange={toggleFixedOrder} />
+        </SettingRow>
+      </SettingsSection>
+
+      <SettingsSection title={t('settings:general.recentProjects')}>
+        {recentProjects.length > 0 ? (
+          <div className="space-y-1 py-3">
+            {recentProjects.map((p, i) => (
+              <div key={i} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-[var(--bg-hover)]">
+                <Folder className="h-3 w-3 shrink-0 text-muted-foreground/50" strokeWidth={2} />
+                <span className="truncate font-mono text-muted-foreground">{p}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center py-6 text-center">
+            <Sparkles className="h-4 w-4 text-muted-foreground/50" strokeWidth={1.5} />
+            <p className="mt-2 text-sm text-muted-foreground/70">{t('settings:general.noRecentProjects')}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground/50">{t('settings:general.noRecentProjectsHint')}</p>
+          </div>
+        )}
       </SettingsSection>
 
       <SettingsSection
@@ -570,84 +365,36 @@ export function GeneralSettings() {
           </>
         ) : null}
       </SettingsSection>
-
-      <SettingsSection title={t('settings:general.language')}>
-        <SettingRow label={t('settings:general.language')} description={t('settings:general.languageDesc')}>
-          <div className="flex gap-1.5">
-            {[
-              { key: 'zh' as const, label: t('settings:general.langZh') },
-              { key: 'en' as const, label: t('settings:general.langEn') },
-            ].map((l) => (
-              <button
-                key={l.key}
-                type="button"
-                onClick={() => setLanguage(l.key)}
-                className={cn(
-                  'settings-chip rounded-md border px-2.5 py-1.5 text-sm transition-all duration-motion-fast ease-motion-ease',
-                  draft.language === l.key
-                    ? 'border-primary bg-primary/5 text-foreground'
-                    : 'border-border text-muted-foreground hover:bg-accent/50',
-                )}
-              >
-                {l.label}
-              </button>
-            ))}
-          </div>
-        </SettingRow>
-      </SettingsSection>
-
-      <SettingsSection title={t('common:shortcuts.title')}>
-        <ShortcutBindingsRow />
-      </SettingsSection>
-
-      <RuntimeSettingsPanel />
-
-      <SettingsSection
-        title={t('settings:general.sidebarSection')}
-        description={t('settings:general.sidebarSectionDesc')}
-      >
-        <SettingRow
-          label={t('settings:general.titleFollowsLatest')}
-          description={t('settings:general.titleFollowsLatestDesc')}
-          settingKey="sessionTitleFollowsLatest"
-        >
-          <Switch checked={titleFollowsLatest} onCheckedChange={toggleTitleFollowsLatest} />
-        </SettingRow>
-        <SettingRow
-          label={t('settings:general.fixedOrder')}
-          description={t('settings:general.fixedOrderDesc')}
-          settingKey="recentProjectsFixedOrder"
-        >
-          <Switch checked={fixedOrder} onCheckedChange={toggleFixedOrder} />
-        </SettingRow>
-      </SettingsSection>
-
-      <SettingsSection title={t('settings:general.recentProjects')}>
-        {recentProjects.length > 0 ? (
-          <div className="space-y-1 py-3">
-            {recentProjects.map((p, i) => (
-              <div key={i} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-[var(--bg-hover)]">
-                <Folder className="h-3 w-3 shrink-0 text-muted-foreground/50" strokeWidth={2} />
-                <span className="truncate font-mono text-muted-foreground">{p}</span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center py-6 text-center">
-            <Sparkles className="h-4 w-4 text-muted-foreground/50" strokeWidth={1.5} />
-            <p className="mt-2 text-sm text-muted-foreground/70">{t('settings:general.noRecentProjects')}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground/50">{t('settings:general.noRecentProjectsHint')}</p>
-          </div>
-        )}
-      </SettingsSection>
     </div>
   )
 }
 
 export function AppearanceSettings() {
   const { t } = useTranslation()
-  const { draft, setTheme, setIconTheme, setTimelineMaxAutoExpandedTools, setTimelineVisibleTurns } = useSettingsDraft()
+  const {
+    draft,
+    setTheme,
+    setIconTheme,
+    setCustomTheme,
+    setBackground,
+    setTimelineMaxAutoExpandedTools,
+    setTimelineVisibleTurns,
+  } = useSettingsDraft()
   const [zoom, setZoom] = useState(readUiZoom)
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false)
+
+  const handleResetAppearance = () => {
+    setTheme('system')
+    setIconTheme(normalizeIconTheme(null))
+    setCustomTheme(normalizeCustomTheme(null))
+    setBackground(normalizeBackground(null))
+    setTimelineVisibleTurns(normalizeTimelineVisibleTurns(undefined))
+    setTimelineMaxAutoExpandedTools(normalizeTimelineMaxAutoExpandedTools(undefined))
+    setZoom(1)
+    applyUiZoom(1)
+    setConfirmResetOpen(false)
+    toast.success(t('settings:appearance.resetDefaultsDone'))
+  }
 
   const themes: { key: 'light' | 'dark' | 'system'; icon: AppIconComponent }[] = [
     { key: 'light', icon: Sun },
@@ -657,7 +404,28 @@ export function AppearanceSettings() {
 
   return (
     <div className="flex flex-col gap-8">
-      <SettingsPageHeader title={t('settings:appearance.title')} description={t('settings:appearance.description')} />
+      <SettingsPageHeader
+        title={t('settings:appearance.title')}
+        description={t('settings:appearance.description')}
+        action={
+          <button
+            type="button"
+            onClick={() => setConfirmResetOpen(true)}
+            className={btnOutline}
+          >
+            {t('settings:appearance.resetDefaults')}
+          </button>
+        }
+      />
+
+      <ConfirmDialog
+        open={confirmResetOpen}
+        title={t('settings:appearance.resetDefaultsConfirmTitle')}
+        message={t('settings:appearance.resetDefaultsConfirmBody')}
+        confirmLabel={t('settings:appearance.resetDefaults')}
+        onConfirm={handleResetAppearance}
+        onCancel={() => setConfirmResetOpen(false)}
+      />
 
       <SettingsSection title={t('settings:appearance.themeTitle')}>
         <SettingRow label={t('settings:appearance.themeLabel')} description={t('settings:appearance.themeDesc')}>

@@ -1,9 +1,16 @@
-import { useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Check, Loader2, XCircle } from '@renderer/components/icons'
+import { Check, KeyRound, Loader2, ShieldCheck, XCircle } from '@renderer/components/icons'
 import { ipcClient } from '@renderer/lib/ipc-client'
 import { cn } from '@renderer/lib/utils'
+import { openSettingsPage } from '@renderer/lib/settings-navigation'
+import { invalidateAvailableModels, prefetchAvailableModels } from '@renderer/lib/available-models-cache'
+import type { ModelInfo } from '@shared/ipc-contract'
+
+const LazyModelAuthDialog = lazy(() =>
+  import('@renderer/features/settings/model-auth-dialog').then((m) => ({ default: m.ModelAuthDialog })),
+)
 
 type Probe = {
   node: boolean
@@ -18,27 +25,63 @@ type Probe = {
 
 type Onboarding = { done: boolean; mode: 'builtin' | 'global' | null }
 
+type AuthProviderInfo = {
+  providerId: string
+  name: string
+  oauth: { supported: boolean; loginLabel?: string; subscription?: boolean; methodName?: string }
+  apiKey: { supported: boolean; methodName?: string }
+}
+
+const POPULAR_PROVIDER_ORDER = [
+  'openai-codex',
+  'openai',
+  'anthropic',
+  'github-copilot',
+  'deepseek',
+  'google',
+  'openrouter',
+  'xai',
+  'kimi-coding',
+]
+
 /**
- * 第一次启动的运行环境引导。
- *
- * 以前新用户要先自己装 node/npm，再在设置里切全局，失败时只看到「目标失败：预期 global，实际
- * builtin」这种黑话。这里把两条路摊开：内置（开箱即用）或全局（推荐，和终端共用一份 pi），
- * 选全局就当场体检 node/npm/pi，缺什么一键装，装完立刻校验。
+ * 第一次启动的两步式引导：
+ * 1) 运行环境（自动静默体检本机环境；已有全局 pi 则一键接管，否则内置 pi 开箱即用）
+ * 2) 若尚未配置任何可用模型，直接展示 OAuth / API Key 一键登录；已有模型则自动跳过。
  */
 export function RuntimeOnboardingDialog() {
   const { t } = useTranslation()
   const [state, setState] = useState<Onboarding | null>(null)
-  const [step, setStep] = useState<'choose' | 'env'>('choose')
+  const [step, setStep] = useState<'choose' | 'env' | 'model'>('choose')
+  const [chosenMode, setChosenMode] = useState<'builtin' | 'global'>('builtin')
   const [probe, setProbe] = useState<Probe | null>(null)
   const [probing, setProbing] = useState(false)
   const [installing, setInstalling] = useState(false)
+  const [checkingModels, setCheckingModels] = useState(false)
+  const [authProviders, setAuthProviders] = useState<AuthProviderInfo[]>([])
+  const [loadingAuthProviders, setLoadingAuthProviders] = useState(false)
+  const [authTarget, setAuthTarget] = useState<{ providerId: string; type: 'oauth' | 'api_key'; label: string } | null>(
+    null,
+  )
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let alive = true
     void ipcClient
       .invoke('runtime.onboarding.get')
-      .then((s) => alive && setState(s as Onboarding))
+      .then((s) => {
+        if (!alive) return
+        const ob = s as Onboarding
+        setState(ob)
+        if (ob && !ob.done) {
+          void ipcClient
+            .invoke('runtime.probe')
+            .then((p) => {
+              if (alive && p && typeof (p as Probe).pi === 'boolean') setProbe(p as Probe)
+            })
+            .catch(() => {})
+        }
+      })
       .catch(() => {})
     return () => {
       alive = false
@@ -62,21 +105,64 @@ export function RuntimeOnboardingDialog() {
     setState({ done: true, mode })
   }, [])
 
-  const useGlobal = useCallback(async () => {
+  const loadCuratedAuthProviders = useCallback(async () => {
+    setLoadingAuthProviders(true)
+    try {
+      const res = (await ipcClient.invoke('model.auth.providers')) as { providers?: AuthProviderInfo[] } | undefined
+      const all = (res?.providers ?? []).filter((p) => p.oauth?.supported || p.apiKey?.supported)
+      const rank = new Map(POPULAR_PROVIDER_ORDER.map((id, i) => [id, i]))
+      const curated = all
+        .filter((p) => rank.has(p.providerId))
+        .sort((a, b) => (rank.get(a.providerId) ?? 99) - (rank.get(b.providerId) ?? 99))
+      setAuthProviders((curated.length > 0 ? curated : all).slice(0, 6))
+    } catch {
+      setAuthProviders([])
+    } finally {
+      setLoadingAuthProviders(false)
+    }
+  }, [])
+
+  const proceedToModelStep = useCallback(
+    async (mode: 'builtin' | 'global', readyToast?: string) => {
+      setChosenMode(mode)
+      setCheckingModels(true)
+      try {
+        const res = (await ipcClient.invoke('model.list', { scope: 'available' })) as
+          | { models?: ModelInfo[] }
+          | undefined
+        const available = (res?.models ?? []).filter((m) => m.available)
+        if (available.length > 0) {
+          await finish(mode)
+          toast.success(readyToast || t('onboarding:readyToChat'))
+          return
+        }
+        setStep('model')
+        void loadCuratedAuthProviders()
+      } catch {
+        await finish(mode)
+        if (readyToast) toast.success(readyToast)
+      } finally {
+        setCheckingModels(false)
+      }
+    },
+    [finish, loadCuratedAuthProviders, t],
+  )
+
+  const switchToGlobal = useCallback(async () => {
     setInstalling(true)
     setError(null)
     try {
       const r = (await ipcClient.invoke('sdk.switch', { target: 'global' })) as { ok?: boolean; error?: string }
       if (!r?.ok) throw new Error(r?.error || t('onboarding:globalFail'))
-      await finish('global')
-      toast.success(t('onboarding:globalReady'))
+      await proceedToModelStep('global', t('onboarding:globalReady'))
     } catch (e) {
       setError(String((e as Error)?.message ?? e))
+      setStep('env')
       void runProbe()
     } finally {
       setInstalling(false)
     }
-  }, [finish, runProbe, t])
+  }, [proceedToModelStep, runProbe, t])
 
   const installGlobal = useCallback(async () => {
     setInstalling(true)
@@ -84,15 +170,22 @@ export function RuntimeOnboardingDialog() {
     try {
       const r = (await ipcClient.invoke('sdk.installGlobalCli', {})) as { ok?: boolean; error?: string }
       if (!r?.ok) throw new Error(r?.error || t('onboarding:installFail'))
-      await finish('global')
-      toast.success(t('onboarding:globalReady'))
+      await proceedToModelStep('global', t('onboarding:globalReady'))
     } catch (e) {
       setError(String((e as Error)?.message ?? e))
       void runProbe()
     } finally {
       setInstalling(false)
     }
-  }, [finish, runProbe, t])
+  }, [proceedToModelStep, runProbe, t])
+
+  const handleAuthDone = useCallback(async () => {
+    setAuthTarget(null)
+    invalidateAvailableModels()
+    prefetchAvailableModels()
+    await finish(chosenMode)
+    toast.success(t('onboarding:modelReady'))
+  }, [chosenMode, finish, t])
 
   if (!state || state.done) return null
 
@@ -110,6 +203,9 @@ export function RuntimeOnboardingDialog() {
     </div>
   )
 
+  const globalInstalled = probe?.pi === true
+  const preferBuiltin = probe !== null && !globalInstalled
+
   return (
     <div className="overlay-backdrop fixed inset-0 z-[120] flex items-center justify-center bg-black/55 p-4" role="presentation">
       <div
@@ -119,38 +215,69 @@ export function RuntimeOnboardingDialog() {
         aria-labelledby="onboarding-title"
       >
         <h2 id="onboarding-title" className="text-[15px] font-medium">
-          {t(step === 'choose' ? 'onboarding:title' : 'onboarding:envTitle')}
+          {t(step === 'choose' ? 'onboarding:title' : step === 'env' ? 'onboarding:envTitle' : 'onboarding:modelTitle')}
         </h2>
         <p className="mt-1.5 text-[12.5px] leading-relaxed text-foreground-secondary">
-          {t(step === 'choose' ? 'onboarding:intro' : 'onboarding:envIntro')}
+          {t(step === 'choose' ? 'onboarding:intro' : step === 'env' ? 'onboarding:envIntro' : 'onboarding:modelIntro')}
         </p>
 
         {step === 'choose' ? (
           <div className="mt-4 grid gap-2">
             <button
               type="button"
+              disabled={installing || checkingModels}
               onClick={() => {
-                setStep('env')
-                void runProbe()
+                if (globalInstalled) {
+                  void switchToGlobal()
+                } else {
+                  setStep('env')
+                  void runProbe()
+                }
               }}
-              className="motion-lift rounded-lg border border-primary/40 bg-primary/[0.06] p-3 text-left"
+              className={cn(
+                'rounded-lg border p-3 text-left transition-colors disabled:opacity-60',
+                !preferBuiltin
+                  ? 'motion-lift border-primary/40 bg-primary/[0.06]'
+                  : 'motion-press border-border hover:bg-muted/40',
+              )}
             >
               <div className="flex items-center gap-2 text-[13px] font-medium">
                 {t('onboarding:globalTitle')}
-                <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] text-primary">{t('onboarding:recommended')}</span>
+                {globalInstalled && probe?.piVersion ? (
+                  <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:text-emerald-300">
+                    {t('onboarding:detectedVersion', { version: probe.piVersion })}
+                  </span>
+                ) : !preferBuiltin ? (
+                  <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] text-primary">
+                    {t('onboarding:recommended')}
+                  </span>
+                ) : null}
               </div>
               <p className="mt-1 text-[12px] leading-relaxed text-foreground-secondary">{t('onboarding:globalDesc')}</p>
             </button>
             <button
               type="button"
-              onClick={() => void finish('builtin')}
-              className="motion-press rounded-lg border border-border p-3 text-left hover:bg-muted/40"
+              disabled={installing || checkingModels}
+              onClick={() => void proceedToModelStep('builtin')}
+              className={cn(
+                'rounded-lg border p-3 text-left transition-colors disabled:opacity-60',
+                preferBuiltin
+                  ? 'motion-lift border-primary/40 bg-primary/[0.06]'
+                  : 'motion-press border-border hover:bg-muted/40',
+              )}
             >
-              <div className="text-[13px] font-medium">{t('onboarding:builtinTitle')}</div>
+              <div className="flex items-center gap-2 text-[13px] font-medium">
+                {t('onboarding:builtinTitle')}
+                {preferBuiltin ? (
+                  <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] text-primary">
+                    {t('onboarding:outOfBox')}
+                  </span>
+                ) : null}
+              </div>
               <p className="mt-1 text-[12px] leading-relaxed text-foreground-secondary">{t('onboarding:builtinDesc')}</p>
             </button>
           </div>
-        ) : (
+        ) : step === 'env' ? (
           <div className="mt-4 space-y-2">
             <div className="space-y-2 rounded-lg border border-border/60 p-3">
               {row(probe?.node === true, t('onboarding:node'), probe?.nodeVersion)}
@@ -180,7 +307,7 @@ export function RuntimeOnboardingDialog() {
               {probe?.node && probe.npm && !probe.pi ? (
                 <button
                   type="button"
-                  disabled={installing}
+                  disabled={installing || checkingModels}
                   onClick={() => void installGlobal()}
                   className={cn(
                     'inline-flex items-center gap-1.5 rounded-md bg-primary px-3.5 py-1.5 text-[12.5px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60',
@@ -193,8 +320,8 @@ export function RuntimeOnboardingDialog() {
               {probe?.pi ? (
                 <button
                   type="button"
-                  disabled={installing}
-                  onClick={() => void useGlobal()}
+                  disabled={installing || checkingModels}
+                  onClick={() => void switchToGlobal()}
                   className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3.5 py-1.5 text-[12.5px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
                 >
                   {installing ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : null}
@@ -208,12 +335,114 @@ export function RuntimeOnboardingDialog() {
                 {t('onboarding:back')}
               </button>
             </div>
-            <button type="button" onClick={() => void finish('builtin')} className="text-[12px] text-foreground-secondary underline-offset-2 hover:underline">
+            <button
+              type="button"
+              disabled={checkingModels}
+              onClick={() => void proceedToModelStep('builtin')}
+              className="text-[12px] text-foreground-secondary underline-offset-2 hover:underline"
+            >
               {t('onboarding:skipToBuiltin')}
             </button>
           </div>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {loadingAuthProviders ? (
+              <div className="flex items-center gap-2 rounded-lg border border-border/60 p-4 text-[12.5px] text-foreground-secondary">
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                <span>{t('onboarding:modelLoading')}</span>
+              </div>
+            ) : authProviders.length === 0 ? (
+              <p className="rounded-lg border border-border/60 p-3 text-[12px] leading-relaxed text-foreground-secondary">
+                {t('onboarding:modelEmpty')}
+              </p>
+            ) : (
+              <div className="max-h-[260px] divide-y divide-border/50 overflow-y-auto rounded-lg border border-border/60">
+                {authProviders.map((provider) => (
+                  <div key={provider.providerId} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 text-[13px] font-medium text-foreground">
+                        <span className="truncate">{provider.name || provider.providerId}</span>
+                        {provider.oauth.subscription ? (
+                          <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-normal text-primary">
+                            {t('onboarding:subscriptionTag')}
+                          </span>
+                        ) : null}
+                      </div>
+                      <span className="font-mono text-[11px] text-foreground-secondary/80">{provider.providerId}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {provider.oauth.supported ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAuthTarget({
+                              providerId: provider.providerId,
+                              type: 'oauth',
+                              label: provider.name || provider.providerId,
+                            })
+                          }
+                          className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-[12px] font-medium text-primary-foreground hover:bg-primary/90"
+                        >
+                          <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+                          {provider.oauth.loginLabel || t('onboarding:signInOAuth')}
+                        </button>
+                      ) : null}
+                      {provider.apiKey.supported ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAuthTarget({
+                              providerId: provider.providerId,
+                              type: 'api_key',
+                              label: provider.name || provider.providerId,
+                            })
+                          }
+                          className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-[12px] text-foreground hover:bg-muted"
+                        >
+                          <KeyRound className="h-3.5 w-3.5" aria-hidden />
+                          {t('onboarding:signInApiKey')}
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  void finish(chosenMode)
+                  openSettingsPage({ page: 'models' })
+                }}
+                className="rounded-md border border-border px-3 py-1.5 text-[12px] text-foreground hover:bg-muted"
+              >
+                {t('onboarding:openModelSettings')}
+              </button>
+              <button
+                type="button"
+                onClick={() => void finish(chosenMode)}
+                className="rounded-md px-2.5 py-1.5 text-[12px] text-foreground-secondary hover:text-foreground"
+              >
+                {t('onboarding:skipModel')}
+              </button>
+            </div>
+          </div>
         )}
       </div>
+
+      {authTarget ? (
+        <Suspense fallback={null}>
+          <LazyModelAuthDialog
+            providerId={authTarget.providerId}
+            authType={authTarget.type}
+            providerLabel={authTarget.label}
+            onClose={() => setAuthTarget(null)}
+            onDone={() => void handleAuthDone()}
+          />
+        </Suspense>
+      ) : null}
     </div>
   )
 }

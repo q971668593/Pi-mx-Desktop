@@ -127,7 +127,7 @@ export function createShellSlice(set: StoreSet, get: StoreGet): ShellSlice {
       set({ timelineMaxAutoExpandedTools: normalizeTimelineMaxAutoExpandedTools(count) }),
     timelineVisibleTurns: DEFAULT_TIMELINE_VISIBLE_TURNS,
     setTimelineVisibleTurns: (count) => set({ timelineVisibleTurns: normalizeTimelineVisibleTurns(count) }),
-    sidebarWidth: 260,
+    sidebarWidth: 276,
     setSidebarWidth: (width) => set({ sidebarWidth: Math.min(Math.max(width, 200), 360) }),
     sidebarCollapsed: false,
     toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),

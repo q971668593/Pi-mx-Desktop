@@ -64,7 +64,11 @@ export function handleRun(event: RunEvent, api: StoreApi): boolean {
       status: 'running',
       activeRunId: event.runId,
       startTime: isNewRun || state.runState.startTime == null ? event.timestamp : state.runState.startTime,
-      ...(isNewRun ? { firstOutputDelayMs: undefined, usage: undefined, toolCount: 0, errorCount: 0 } : {}),
+      ...(isNewRun ? { firstOutputDelayMs: undefined, usage: undefined, runOutputTokens: 0, toolCount: 0, errorCount: 0 } : {}),
+      ...(event.usage ? {
+        usage: event.usage,
+        runOutputTokens: (isNewRun ? 0 : state.runState.runOutputTokens ?? 0) + event.usage.output,
+      } : {}),
     }
     if (event.model != null && String(event.model).trim()) runPatch.model = event.model
     if (event.thinkingLevel != null && String(event.thinkingLevel).trim()) {

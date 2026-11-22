@@ -44,7 +44,8 @@ test.describe('MCP and codemode', () => {
       writeAgentFiles(agent.home, {}, { echo: { command: process.execPath, args: [echoServer] }, broken: { command: '/nonexistent-mcp-bin' } })
       await agent.newSession()
       await win.locator('button:has-text("Settings")').first().click()
-      await win.getByText('MCP', { exact: true }).first().click()
+      await win.getByText('Resources & Extensions', { exact: true }).first().click()
+      await win.getByRole('tab', { name: 'MCP', exact: true }).click()
 
       const echo = win.locator('[data-mcp-server="echo"]')
       await expect(echo).toHaveAttribute('data-state', 'connected', { timeout: 60_000 })

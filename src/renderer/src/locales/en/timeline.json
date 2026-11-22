@@ -13,6 +13,7 @@
   "mermaidRendering": "Rendering diagram…",
   "mermaidError": "Couldn't render this diagram: {{error}}",
   "copy": "Copy",
+  "copyThinking": "Copy thinking",
   "path": {
     "openInFiles": "Open in the Files panel",
     "openFailed": "Could not open this file",
@@ -166,7 +167,7 @@
     "showFewerFiles": "Show less",
     "filesReviewLink": "{{count}} files → Review",
     "review": "Review",
-    "openFileHint": "{{path}}\nClick Files · Right-click Review",
+    "openFileHint": "{{path}}\nClick to review this turn · Right-click to open file",
     "verbRead": "Read {{detail}}",
     "skillContext": "Loaded Skill context · {{name}}",
     "verbEdit": "Edited {{detail}}",
@@ -345,6 +346,19 @@
     "hideDetail": "Hide",
     "copy": "Copy error",
     "copied": "Error copied",
-    "copyFailed": "Copy failed"
-  }
+    "copyFailed": "Copy failed",
+    "retry": "Retry turn"
+  },
+  "search": {
+    "placeholder": "Search this chat…",
+    "noMatches": "No matches",
+    "prev": "Previous (Shift+Enter)",
+    "next": "Next (Enter)",
+    "close": "Close search (Esc)"
+  },
+  "quote": "Quote reply",
+  "editResend": "Edit & resend",
+  "sendToTerminal": "Send to terminal",
+  "sentToTerminal": "Inserted into terminal — press Enter to run",
+  "sendToTerminalFailed": "Could not open terminal"
 }

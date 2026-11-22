@@ -55,7 +55,7 @@ export function handleMessage(event: MessageEvent, api: StoreApi): void {
   if (event.phase === 'start' && event.role === 'user') {
     // A queued message delivered just as the user hit Stop must not re-light the run.
     if (state.runState.status !== 'running' && !isAbortUiHoldActive(event.sessionFile)) {
-      state.setRunState({ status: 'running', startTime: event.timestamp, firstOutputDelayMs: undefined, usage: undefined, toolCount: 0, errorCount: 0 })
+      state.setRunState({ status: 'running', startTime: event.timestamp, firstOutputDelayMs: undefined, usage: undefined, runOutputTokens: 0, toolCount: 0, errorCount: 0 })
     }
     const opt = state.optimisticPendingUserText
     if (opt || event.text) {

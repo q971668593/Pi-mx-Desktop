@@ -31,6 +31,10 @@ import { resolveProjectDisplayName, uniqueWorkspacePaths, workspacePathKey, work
 import { capRecentProjects } from '@shared/recent-projects'
 import type { GitWorktree } from '@shared/git-worktree'
 import { toast } from 'sonner'
+import { cn } from '@renderer/lib/utils'
+import { countAttention, selectSessionAttention } from '@renderer/lib/session-attention'
+import { SessionAttentionDot } from './session-attention-dot'
+import { aggregateSessionsAttention, matchesAttentionFilter, type SidebarSessionFilter } from './pinned-sessions'
 
 import { HiddenProjectsDialog } from './hidden-projects-dialog'
 import { moveSidebarItem, useSidebarReorder } from './sidebar-reorder'
@@ -139,8 +143,16 @@ export function ProjectSidebar({
   const [sessionQuery, setSessionQuery] = useState('')
   const searchInputRef = useRef<HTMLInputElement>(null)
   const [sessionScope, setSessionScope] = useState<'project' | 'all'>('project')
+  const [statusFilter, setStatusFilter] = useState<SidebarSessionFilter>('all')
+  const sessionAttention = useUIStore((s) => s.sessionAttention) ?? {}
+  const { working: runningCount, needsYou, done } = useMemo(
+    () => countAttention(sessionAttention),
+    [sessionAttention],
+  )
+  const attentionCount = needsYou + done
   const scopeLabel = t(sessionScope === 'project' ? 'common:sidebar.thisProject' : 'common:sidebar.allProjects')
   const searchActive = sessionQuery.trim().length > 0
+  const filterActive = searchActive || statusFilter !== 'all'
   /** 当前工作区默认不被隐藏/读不到过滤掉，除非用户刚刚亲手隐藏了它。 */
   const keepVisibleWhileActive = useCallback(
     (path: string) =>
@@ -624,19 +636,36 @@ export function ProjectSidebar({
     }
   }, [diskPaths, expandedPaths, sessionsByWorkspace, loadingSessionPaths, loadWorkspaceSessions, searchActive])
 
-  const visiblePaths = searchActive
-    ? diskPaths.filter((path) => (sessionScope === 'all' || workspacePathsEqual(path, currentWorkspace))
-      && (mergedSessionsByWorkspace[workspacePathKey(path)]?.some((session) => matchesSessionQuery(session, sessionQuery)) || loadingSessionPaths.has(workspacePathKey(path)) || sessionErrors[workspacePathKey(path)]))
+  const visiblePaths = filterActive
+    ? diskPaths.filter((path) => {
+      if (sessionScope !== 'all' && searchActive && !workspacePathsEqual(path, currentWorkspace)) return false
+      const key = workspacePathKey(path)
+      const list = mergedSessionsByWorkspace[key]
+      if (!list) {
+        return !searchActive || loadingSessionPaths.has(key) || !!sessionErrors[key]
+          ? (statusFilter === 'all' && (loadingSessionPaths.has(key) || !!sessionErrors[key]))
+          : false
+      }
+      return list.some((session) => {
+        if (searchActive && !matchesSessionQuery(session, sessionQuery)) return false
+        if (statusFilter !== 'all' && !matchesAttentionFilter(selectSessionAttention(session.sessionFile, sessionAttention), statusFilter)) {
+          return false
+        }
+        return true
+      })
+    })
     : diskPaths
   const visibleSandboxes = searchActive
-    ? sandboxes.filter((box) => (sessionScope === 'all' || box.path === currentWorkspace)
-      && box.label.toLowerCase().includes(sessionQuery.trim().toLowerCase()))
-    : sandboxes
+    ? (statusFilter === 'all'
+      ? sandboxes.filter((box) => (sessionScope === 'all' || box.path === currentWorkspace)
+        && box.label.toLowerCase().includes(sessionQuery.trim().toLowerCase()))
+      : [])
+    : (statusFilter === 'all' ? sandboxes : [])
 
   const renderProject = (project: GitWorktree, grouped: boolean, repositoryPath?: string | null, siblingPaths?: string[], sortKey?: string) => {
     const { path } = project
     const key = workspacePathKey(path)
-    const open = searchActive || expandedPaths.has(key)
+    const open = filterActive || expandedPaths.has(key)
     const rows = mergedSessionsByWorkspace[key] || []
     const fallbackName = grouped && project.isMain ? t('common:sidebar.mainWorktree') : diskProjectName(path)
     const displayName = resolveProjectDisplayName(projectDisplayNames, path, fallbackName, { grouped })
@@ -648,6 +677,7 @@ export function ProjectSidebar({
       worktree={grouped}
       active={workspacePathsEqual(path, currentWorkspace)}
       open={open}
+      attention={aggregateSessionsAttention(rows, sessionAttention)}
       onOpenProject={() => {
         setExpandedPaths((previous) => new Set(previous).add(key))
         void switchDiskProject(path)
@@ -664,8 +694,8 @@ export function ProjectSidebar({
         if (willExpand && !mergedSessionsByWorkspace[key]?.length) void loadWorkspaceSessions(path)
       }}
       onNewSession={() => void handleNewSessionInProject(path)}
-      dragSource={!searchActive && sortKey ? { draggable: true, onDragStart: (event) => projectDrag.start(event, sortKey, 'projects'), onDragEnd: projectDrag.end } : undefined}
-      dropTarget={!searchActive && sortKey ? projectDrag.target(sortKey, 'projects') : undefined}
+      dragSource={!filterActive && sortKey ? { draggable: true, onDragStart: (event) => projectDrag.start(event, sortKey, 'projects'), onDragEnd: projectDrag.end } : undefined}
+      dropTarget={!filterActive && sortKey ? projectDrag.target(sortKey, 'projects') : undefined}
       onProjectContextMenu={(event) =>
         projectMenu.open(event, path, displayName, {
           repositoryPath: repositoryPath || path,
@@ -677,6 +707,7 @@ export function ProjectSidebar({
         workspacePath={path}
         projectSessions={rows}
         searchQuery={sessionQuery}
+        statusFilter={statusFilter}
         loading={loadingSessionPaths.has(key) && rows.length === 0}
         error={sessionErrors[key]}
         onRetry={() => void loadWorkspaceSessions(path)}
@@ -741,10 +772,56 @@ export function ProjectSidebar({
             <span className="sidebar-search-scope-track" aria-hidden />
           </button>
         </div>
+        <div className="mt-2 flex items-center gap-1" role="group" aria-label={t('common:sidebar.filterAll')}>
+          {(
+            [
+              { id: 'all' as const, label: t('common:sidebar.filterAll'), count: 0 },
+              { id: 'running' as const, label: t('common:sidebar.filterRunning'), count: runningCount },
+              { id: 'attention' as const, label: t('common:sidebar.filterAttention'), count: attentionCount },
+            ]
+          ).map((item) => {
+            const active = statusFilter === item.id
+            return (
+              <button
+                key={item.id}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setStatusFilter(item.id)}
+                className={cn(
+                  'flex flex-1 items-center justify-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium transition-colors',
+                  active
+                    ? 'bg-[var(--bg-active)] text-foreground shadow-[0_0_0_0.5px_var(--border)]'
+                    : 'text-foreground-secondary hover:bg-[var(--bg-hover)] hover:text-foreground',
+                )}
+              >
+                <span className="truncate">{item.label}</span>
+                {item.count > 0 ? (
+                  <span className="shrink-0 rounded-full bg-primary/12 px-1 text-[10px] leading-tight tabular-nums text-primary">
+                    {item.count}
+                  </span>
+                ) : null}
+              </button>
+            )
+          })}
+        </div>
       </div>
-      {searchActive && !visiblePaths.length && !visibleSandboxes.length && <div className="px-4 py-6 text-center text-xs text-foreground-secondary"><p>{t('common:sidebar.noResults')}</p><button type="button" className="workbench-button mt-2" onClick={() => setSessionQuery('')}>{t('common:sidebar.clearSearch')}</button></div>}
+      {filterActive && !visiblePaths.length && !visibleSandboxes.length && (
+        <div className="px-4 py-6 text-center text-xs text-foreground-secondary">
+          <p>{searchActive ? t('common:sidebar.noResults') : t('common:sidebar.filterEmpty')}</p>
+          <button
+            type="button"
+            className="workbench-button mt-2"
+            onClick={() => {
+              setSessionQuery('')
+              setStatusFilter('all')
+            }}
+          >
+            {searchActive ? t('common:sidebar.clearSearch') : t('common:sidebar.clearFilter')}
+          </button>
+        </div>
+      )}
 
-      <div className="px-3 pt-2" hidden={searchActive && visibleSandboxes.length === 0}>
+      <div className="px-3 pt-2" hidden={filterActive && visibleSandboxes.length === 0}>
         <div className="sidebar-section-head">
           <button
             type="button"
@@ -777,7 +854,6 @@ export function ProjectSidebar({
               <div className="nav-row nav-row-active relative mb-0.5 flex min-h-[36px] items-center gap-2 rounded-lg px-3 py-1.5">
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[13px] text-foreground">{t('sidebar.newChat')}</div>
-                  <div className="text-[11px] text-foreground-secondary/80">{t('common:sidebar.firstMsgIsTitle')}</div>
                 </div>
               </div>
             )}
@@ -813,7 +889,7 @@ export function ProjectSidebar({
         onHide={hideProjects}
       />
 
-      <div className="mt-3 px-3" hidden={searchActive && visiblePaths.length === 0}>
+      <div className="mt-3 px-3" hidden={filterActive && visiblePaths.length === 0}>
         <div className="sidebar-section-head">
           <span className="sidebar-section-title flex-1 px-1">{t('common:sidebar.projects')}</span>
           {/* 项目排序 / 对话名跟随最新消息两个开关已经搬到 设置 → 侧栏：
@@ -858,11 +934,15 @@ export function ProjectSidebar({
               diskProjectName(group.repositoryPath),
               { isRepositoryGroup: true },
             )
-            const open = searchActive || (repositoryOpen[group.key] ?? group.key === activeRepository)
+            const open = filterActive || (repositoryOpen[group.key] ?? group.key === activeRepository)
             const groupPaths = group.projects.map((p) => p.path)
+            const groupAttention = aggregateSessionsAttention(
+              group.projects.flatMap((p) => mergedSessionsByWorkspace[workspacePathKey(p.path)] || []),
+              sessionAttention,
+            )
             return <div key={group.key} className="sidebar-repository-group sidebar-project-card" role="group" aria-label={name} data-repository={group.repositoryPath}>
-              <div className="sidebar-project-header sidebar-drop-target" {...(!searchActive ? projectDrag.target(projectKey(group), 'projects') : {})}
-                draggable={!searchActive} onDragStart={(event) => projectDrag.start(event, projectKey(group), 'projects')} onDragEnd={projectDrag.end}>
+              <div className="sidebar-project-header sidebar-drop-target" {...(!filterActive ? projectDrag.target(projectKey(group), 'projects') : {})}
+                draggable={!filterActive} onDragStart={(event) => projectDrag.start(event, projectKey(group), 'projects')} onDragEnd={projectDrag.end}>
               <button
                 type="button"
                 className="sidebar-repository-hit flex min-h-[36px] w-full min-w-0 items-center gap-1 rounded-md pr-1 text-left hover:bg-[var(--bg-hover)]"
@@ -881,6 +961,9 @@ export function ProjectSidebar({
                   <ChevronRight className="chevron-expand h-3.5 w-3.5 shrink-0 text-foreground-secondary/80" data-open={open ? 'true' : 'false'} />
                 </span>
                 <span className="sidebar-project-name flex-1 truncate">{name}</span>
+                {!open && groupAttention !== 'idle' ? (
+                  <SessionAttentionDot attention={groupAttention} className="mr-0.5 shrink-0" />
+                ) : null}
                 <span
                   className="ml-0.5 inline-flex h-[26px] w-[26px] shrink-0 items-center justify-center text-[11px] tabular-nums text-foreground-secondary"
                   title={t('common:sidebar.worktreeCount', { count: group.projects.length })}

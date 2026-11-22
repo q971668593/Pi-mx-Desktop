@@ -21,6 +21,8 @@ import { RenamePromptDialog } from './rename-prompt-dialog'
 import { ConfirmDialog } from '@renderer/features/settings/confirm-dialog'
 import type { SessionMenuTarget } from './session-context-menu-types'
 import { SessionForkSubmenu } from './session-fork-submenu'
+import { PinGlyph } from './pin-glyph'
+import { isSessionPinned, togglePinSession, usePinnedSessions } from './pinned-sessions'
 
 export type { SessionMenuTarget } from './session-context-menu-types'
 
@@ -49,6 +51,7 @@ export function SessionContextMenuPortal({
   const [renameTarget, setRenameTarget] = useState<SessionMenuTarget | null>(null)
   // In-app confirm: a native window.confirm leaves Windows Electron pages untypable (#94).
   const [deleteTarget, setDeleteTarget] = useState<SessionMenuTarget | null>(null)
+  const pinnedSessions = usePinnedSessions()
 
   // Row box of the "Fork" item while its submenu is open.
   const [forkAnchor, setForkAnchor] = useState<DOMRect | null>(null)
@@ -187,6 +190,26 @@ export function SessionContextMenuPortal({
                   {t('common:sidebar.continue')}
                 </button>
               ) : null}
+              {menu.target.sessionFile ? (() => {
+                const file = menu.target.sessionFile
+                const pinned = isSessionPinned(pinnedSessions, file)
+                return (
+                  <button
+                    type="button"
+                    className={itemClass}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      const nextPinned = togglePinSession(file)
+                      toast.success(t(nextPinned ? 'common:sidebar.pinned' : 'common:sidebar.unpinned'))
+                      onClose()
+                    }}
+                  >
+                    <PinGlyph filled={pinned} className="h-3 w-3 shrink-0" />
+                    {t(pinned ? 'common:sidebar.unpinSession' : 'common:sidebar.pinSession')}
+                  </button>
+                )
+              })() : null}
               {menu.target.sessionFile ? (
                 <button
                   type="button"

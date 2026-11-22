@@ -136,7 +136,8 @@ function ToolGroupSummaryImpl({
           {activityLabel}
         </span>
         {hasError ? (
-          <span className="shrink-0 pl-1.5 text-[11px] text-destructive/70">
+          <span className="inline-flex shrink-0 items-center gap-1 pl-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden />
             {t('timeline:activity.failedTools', { count: failedCount })}
           </span>
         ) : null}

@@ -1,17 +1,20 @@
 // Markdown renderer for assistant messages (参考桌面客户端-inspired).
 // react-markdown + remark-gfm + remark-math/rehype-katex + 自定义 code/img/table 组件。
-import { memo, useMemo, useRef, useEffect, useState, type ComponentPropsWithoutRef } from 'react'
+import { lazy, memo, Suspense, useMemo, useRef, useEffect, useState, type ComponentPropsWithoutRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import ReactMarkdown, { defaultUrlTransform, type Components, type ExtraProps, type UrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
-import remarkMath from 'remark-math'
-import rehypeKatex from 'rehype-katex'
 import type { Pluggable } from 'unified'
-import 'katex/dist/katex.min.css'
-import 'katex/contrib/mhchem/mhchem.js'
 import { cn } from '@renderer/lib/utils'
-import { preprocessMarkdownMath, KATEX_MACROS } from '@renderer/features/timeline/markdown-math-preprocess'
+import { preprocessMarkdownMath } from '@renderer/features/timeline/markdown-math-preprocess'
+import {
+  buildRehypePluginsWithMath,
+  getLoadedMathPlugins,
+  hasMathSyntax,
+  loadMathPlugins,
+  type LoadedMathPlugins,
+} from '@renderer/features/timeline/markdown-math-plugins'
 import { splitOpenUIFence, splitStreamingMarkdown } from '@renderer/features/timeline/markdown-stream-split'
 import {
   advanceMarkdownBlocks,
@@ -24,13 +27,17 @@ import { singleFilePath } from '@renderer/lib/file-path-text'
 import { ChatImageGallery } from '@renderer/features/timeline/chat-image'
 import { plainTextFromNode } from '@shared/chat-image-paths'
 import { MarkdownLink } from '@renderer/features/timeline/markdown-link'
-import { FencedMathBlock } from '@renderer/features/timeline/markdown-math'
 import { MermaidBlock } from '@renderer/features/timeline/mermaid-block'
 import { StreamLiveTailBlock } from '@renderer/features/timeline/stream-text-reveal'
-import { Check, ChevronDown, Copy } from '@renderer/components/icons'
+import { Check, ChevronDown, Copy, Terminal } from '@renderer/components/icons'
+import { isShellLanguage, sendCommandToTerminal } from '@renderer/features/terminal/send-to-terminal'
 import { uiBlockLanguageFromClassName } from '@renderer/features/ui-blocks/protocol'
 import { UIBlockHost } from '@renderer/features/ui-blocks/host'
 import { localFilePathFromHref } from '@renderer/lib/open-workspace-path'
+
+const LazyFencedMathBlock = lazy(() =>
+  import('@renderer/features/timeline/markdown-math').then((m) => ({ default: m.FencedMathBlock })),
+)
 
 const markdownUrlTransform: UrlTransform = (url, key) =>
   key === 'href' && localFilePathFromHref(url) ? url : defaultUrlTransform(url)
@@ -57,7 +64,7 @@ function CodeBlock({
   const [copied, setCopied] = useState(false)
   const lang = /language-([\w-]+)/.exec(className || '')?.[1] || ''
   const code = String(children ?? '').replace(/\n$/, '')
-  const PREVIEW_LINES = 3
+  const PREVIEW_LINES = 12
   const lineCount = code.split('\n').length
   const needsFold = lineCount > PREVIEW_LINES
 
@@ -103,15 +110,28 @@ function CodeBlock({
         <span className="font-mono text-[10px] uppercase tracking-wide text-foreground-secondary/55">
           {lang || 'code'}
         </span>
-        <button
-          type="button"
-          onClick={copy}
-          aria-label={copied ? t('timeline:copied') : t('timeline:copy')}
-          title={copied ? t('timeline:copied') : t('timeline:copy')}
-          className="flex h-5 w-5 items-center justify-center rounded text-foreground-secondary/50 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 hover:text-foreground"
-        >
-          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-        </button>
+        <div className="flex items-center gap-0.5">
+          {isShellLanguage(lang) && code.trim() ? (
+            <button
+              type="button"
+              onClick={() => void sendCommandToTerminal(code)}
+              aria-label={t('timeline:sendToTerminal')}
+              title={t('timeline:sendToTerminal')}
+              className="flex h-5 w-5 items-center justify-center rounded text-foreground-secondary/50 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 hover:text-foreground"
+            >
+              <Terminal className="h-3 w-3" />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={copy}
+            aria-label={copied ? t('timeline:copied') : t('timeline:copy')}
+            title={copied ? t('timeline:copied') : t('timeline:copy')}
+            className="flex h-5 w-5 items-center justify-center rounded text-foreground-secondary/50 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 hover:text-foreground"
+          >
+            {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+          </button>
+        </div>
       </div>
       <pre
         data-independent-scroll={scrollActive ? '' : undefined}
@@ -119,7 +139,7 @@ function CodeBlock({
         className={cn(
           'px-2.5 py-2 text-[12.5px] leading-[1.5] font-mono',
           scrollActive ? 'overflow-auto overscroll-contain' : 'overflow-hidden',
-          !expanded && needsFold ? 'max-h-[4.5rem]' : 'max-h-80',
+          !expanded && needsFold ? 'max-h-[16rem]' : 'max-h-80',
         )}
         style={{ margin: 0, color: 'var(--text-primary)' }}
       >
@@ -140,42 +160,34 @@ function CodeBlock({
   )
 }
 
-function buildRemarkPlugins(streaming?: boolean): Pluggable[] {
+function buildRemarkPlugins(streaming: boolean, mathPlugins: LoadedMathPlugins | null): Pluggable[] {
+  if (!mathPlugins) return [remarkGfm, remarkBreaks]
   return [
     remarkGfm,
     remarkBreaks,
-    [remarkMath, { singleDollarTextMath: !streaming }],
+    [mathPlugins.remarkMath, { singleDollarTextMath: !streaming }],
   ]
 }
 
-const REHYPE_PLUGINS: Pluggable[] = [
-  [
-    rehypeKatex,
-    {
-      trust: false,
-      // 'warn' 只会刷控制台（中文进公式等），渲染结果不变
-      strict: 'ignore',
-      macros: KATEX_MACROS,
-      output: 'htmlAndMathml',
-    },
-  ],
-]
-
 const STREAM_PLAIN_ONLY_MAX = 96
-
-const SETTLED_REMARK_PLUGINS = buildRemarkPlugins(false)
+const BASE_REMARK_PLUGINS: Pluggable[] = [remarkGfm, remarkBreaks]
+const EMPTY_REHYPE_PLUGINS: Pluggable[] = []
 
 /** One top-level block of a streaming answer; unchanged blocks skip Markdown/KaTeX re-parsing. */
 const MarkdownBlock = memo(function MarkdownBlock({
   source,
   components,
+  remarkPlugins,
+  rehypePlugins,
 }: {
   source: string
   components: Components
+  remarkPlugins: Pluggable[]
+  rehypePlugins: Pluggable[]
 }) {
   const markdown = useMemo(() => preprocessMarkdownMath(source, { streaming: false }), [source])
   return (
-    <ReactMarkdown remarkPlugins={SETTLED_REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={components} urlTransform={markdownUrlTransform}>
+    <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components} urlTransform={markdownUrlTransform}>
       {markdown}
     </ReactMarkdown>
   )
@@ -185,7 +197,17 @@ const MarkdownBlock = memo(function MarkdownBlock({
  * Committed streaming prefix rendered block by block: each frame re-parses only the growing tail
  * blocks instead of the whole answer (streaming cost no longer grows with answer length).
  */
-function StreamingMarkdownBlocks({ source, components }: { source: string; components: Components }) {
+function StreamingMarkdownBlocks({
+  source,
+  components,
+  remarkPlugins,
+  rehypePlugins,
+}: {
+  source: string
+  components: Components
+  remarkPlugins: Pluggable[]
+  rehypePlugins: Pluggable[]
+}) {
   const cacheRef = useRef<MarkdownBlockCache>(EMPTY_MARKDOWN_BLOCK_CACHE)
   if (cacheRef.current.source !== source) {
     cacheRef.current = advanceMarkdownBlocks(cacheRef.current, source)
@@ -193,7 +215,13 @@ function StreamingMarkdownBlocks({ source, components }: { source: string; compo
   return (
     <>
       {cacheRef.current.blocks.map((block, index) => (
-        <MarkdownBlock key={index} source={block} components={components} />
+        <MarkdownBlock
+          key={index}
+          source={block}
+          components={components}
+          remarkPlugins={remarkPlugins}
+          rehypePlugins={rehypePlugins}
+        />
       ))}
     </>
   )
@@ -228,6 +256,21 @@ const MarkdownView = memo(function MarkdownView({
   baseDirectory?: string
 }) {
   const committedStableRef = useRef('')
+  const [mathPlugins, setMathPlugins] = useState<LoadedMathPlugins | null>(() => getLoadedMathPlugins())
+  const needsMath = useMemo(() => hasMathSyntax(children), [children])
+
+  useEffect(() => {
+    if (!needsMath || mathPlugins) return
+    let alive = true
+    void loadMathPlugins()
+      .then((loaded) => {
+        if (alive) setMathPlugins(loaded)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [needsMath, mathPlugins])
 
   useEffect(() => {
     if (!streaming) committedStableRef.current = ''
@@ -260,8 +303,21 @@ const MarkdownView = memo(function MarkdownView({
   )
 
   const remarkPlugins = useMemo(
-    () => buildRemarkPlugins(!!streaming && (!usePlainStream || !!committedPrefix)),
-    [streaming, usePlainStream, committedPrefix],
+    () =>
+      mathPlugins
+        ? buildRemarkPlugins(!!streaming && (!usePlainStream || !!committedPrefix), mathPlugins)
+        : BASE_REMARK_PLUGINS,
+    [streaming, usePlainStream, committedPrefix, mathPlugins],
+  )
+
+  const settledRemarkPlugins = useMemo(
+    () => (mathPlugins ? buildRemarkPlugins(false, mathPlugins) : BASE_REMARK_PLUGINS),
+    [mathPlugins],
+  )
+
+  const rehypePlugins = useMemo(
+    () => (mathPlugins ? buildRehypePluginsWithMath(mathPlugins) : EMPTY_REHYPE_PLUGINS),
+    [mathPlugins],
   )
 
   const components = useMemo(
@@ -272,7 +328,17 @@ const MarkdownView = memo(function MarkdownView({
         const raw = rawText.replace(/\n$/, '')
         const isInline = !cn2 && !rawText.includes('\n')
         if (lang === 'math' || lang === 'latex' || lang === 'tex') {
-          return <FencedMathBlock code={raw} />
+          return (
+            <Suspense
+              fallback={
+                <pre className="math-display-shell my-2 overflow-x-auto rounded-md border border-border/30 px-3 py-2 font-mono text-xs">
+                  {raw}
+                </pre>
+              }
+            >
+              <LazyFencedMathBlock code={raw} />
+            </Suspense>
+          )
         }
         if (uiBlockLanguageFromClassName(cn2)) {
           return <UIBlockHost raw={raw} streaming={!!streaming} />
@@ -385,13 +451,18 @@ const MarkdownView = memo(function MarkdownView({
     return (
       <div className={cn('prose-chat prose-chat-streaming prose-chat-streaming-split', className)}>
         {committedPrefix ? (
-          <StreamingMarkdownBlocks source={committedPrefix} components={components as Components} />
+          <StreamingMarkdownBlocks
+            source={committedPrefix}
+            components={components as Components}
+            remarkPlugins={settledRemarkPlugins}
+            rehypePlugins={rehypePlugins}
+          />
         ) : null}
         {tailMarkdown ? (
           tailHasBlockSyntax(tailMarkdown) ? (
             <ReactMarkdown
-              remarkPlugins={SETTLED_REMARK_PLUGINS}
-              rehypePlugins={REHYPE_PLUGINS}
+              remarkPlugins={settledRemarkPlugins}
+              rehypePlugins={rehypePlugins}
               components={components}
               urlTransform={markdownUrlTransform}
             >
@@ -409,7 +480,7 @@ const MarkdownView = memo(function MarkdownView({
 
   return (
     <div className={cn('prose-chat', streaming && 'prose-chat-streaming', className)}>
-      <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={REHYPE_PLUGINS} components={components} urlTransform={markdownUrlTransform}>
+      <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components} urlTransform={markdownUrlTransform}>
         {markdown}
       </ReactMarkdown>
     </div>

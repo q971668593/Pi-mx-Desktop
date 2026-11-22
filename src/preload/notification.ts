@@ -20,9 +20,15 @@ const api = {
     ipcRenderer.on('notification:update', handler)
     return () => ipcRenderer.off('notification:update', handler)
   },
-  /** Play one alert sound; used both for "sound only" mode and together with a card. */
-  onSound(callback: (preset: string) => void): () => void {
-    const handler = (_event: unknown, payload: { preset?: string }): void => callback(String(payload?.preset || ''))
+  /**
+   * Play one alert sound; used both for "sound only" mode and together with a card.
+   * `volume` is a percent (0–200); undefined means the designed level.
+   */
+  onSound(callback: (preset: string, volume?: number) => void): () => void {
+    const handler = (_event: unknown, payload: { preset?: string; volume?: number }): void => {
+      const volume = typeof payload?.volume === 'number' ? payload.volume : undefined
+      callback(String(payload?.preset || ''), volume)
+    }
     ipcRenderer.on('notification:sound', handler)
     return () => ipcRenderer.off('notification:sound', handler)
   },

@@ -112,7 +112,9 @@
   "cacheStats": "缓存 {{pct}}% · 读 {{read}}",
   "cacheWrite": " · 写 {{write}}",
   "steering": "转向 · ",
+  "steeringHint": "将在下一个工具调用后立即插入本轮执行",
   "queued": "排队 · ",
+  "queuedHint": "将在当前回合完成后自动发送",
   "queueHint": "Alt+↑ 拉回输入框 · Ctrl/⌘+Enter 立即发送 · 运行中 Esc 拉回并停止",
   "queueFlush": "立即发送",
   "queueFlushing": "发送中…",
@@ -159,7 +161,8 @@
   "selectModelTitle": "选择模型",
   "current": "当前：",
   "searchModelPlaceholder": "搜索模型",
-  "noModels": "无可用模型（检查 ~/.pi/agent/auth.json）",
+  "noModels": "还没有可用的模型",
+  "configureModels": "去配置 / 登录模型",
   "loadingModels": "正在加载模型…",
   "noMatch": "无匹配",
   "unavailable": "不可用",
@@ -202,6 +205,7 @@
   "modelPickerKeys": "↑↓ 选择 · Enter 切换 · Esc 关闭",
   "thinkingChip": "思考：{{level}}（Shift+Tab 切换）",
   "contextRing": "上下文 {{used}} / {{total}}（{{pct}}%）",
+  "contextRingClickHint": "点击查看上下文详情",
   "tools": {
     "button": "工具",
     "title": "本会话启用",
@@ -274,5 +278,26 @@
     }
   },
   "thinkingShort": "思考 {{level}}",
-  "thinkingPrefix": "思考"
+  "thinkingPrefix": "思考",
+  "snippets": {
+    "button": "常用提示词",
+    "title": "快捷提示词模板",
+    "add": "新增",
+    "cancel": "取消",
+    "save": "保存",
+    "delete": "删除模板",
+    "titlePlaceholder": "模板名称（如：代码审查）",
+    "contentPlaceholder": "输入要插入对话的内容…",
+    "empty": "还没有提示词模板，点右上角新增",
+    "defaults": {
+      "reviewTitle": "代码审查（Bugs / 边界 / 回归）",
+      "reviewContent": "请仔细审查当前改动中的潜在 Bug、边界条件、类型安全及回归风险，列出具体问题和改进建议。",
+      "rootCauseTitle": "仅分析根因（先不改代码）",
+      "rootCauseContent": "请先只做根因分析，列出相关文件与代码行证据，暂时不要修改任何文件。",
+      "commitTitle": "生成 Commit 提交信息",
+      "commitContent": "请根据当前 Git diff 生成一条清晰简洁的 Conventional Commits 提交信息。",
+      "testsTitle": "补充边界单元测试",
+      "testsContent": "请为当前修改的模块补充覆盖正常流程与异常边界条件的单元测试，并实际运行验证。"
+    }
+  }
 }

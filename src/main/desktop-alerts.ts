@@ -2,7 +2,7 @@ import { app, BrowserWindow } from 'electron'
 import { configStore } from './config-store'
 import { traceAudio } from './audio-trace'
 import { playAlertSound, presentCompletionCard } from './completion-notification-delivery'
-import { normalizeAlertSoundPreset } from '@shared/alert-sound'
+import { normalizeAlertSoundPreset, normalizeAlertSoundVolume } from '@shared/alert-sound'
 import { buildCompletionNotificationCopy } from '@shared/completion-preview'
 
 export type DesktopAlertKind = 'extension_ui' | 'run_idle'
@@ -64,9 +64,10 @@ export function deliverDesktopAlert(win: BrowserWindow | null, payload: DesktopA
   ensureNotificationIdentity()
   const language = configStore.get('language') === 'en' ? 'en' : 'zh'
   const soundPreset = normalizeAlertSoundPreset(configStore.get('alertSoundPreset'))
+  const soundVolume = normalizeAlertSoundVolume(configStore.get('alertSoundVolume'))
   if (!doNotify) {
     // Popups off: the alert is only a sound (and the taskbar flash below).
-    if (doSound) void playAlertSound(soundPreset)
+    if (doSound) void playAlertSound(soundPreset, soundVolume)
     if (win && !win.isDestroyed()) {
       win.flashFrame(true)
       setTimeout(() => {
@@ -90,6 +91,7 @@ export function deliverDesktopAlert(win: BrowserWindow | null, payload: DesktopA
       timeoutMs: 15_000,
       sound: doSound,
       soundPreset,
+      soundVolume,
       copy: {
         ...copy,
         title: payload.title || copy.title,

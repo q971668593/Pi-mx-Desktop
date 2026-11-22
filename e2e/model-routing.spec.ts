@@ -23,7 +23,8 @@ test.describe('model routing', () => {
 
       await agent.newSession()
       await win.locator('button:has-text("Settings")').first().click()
-      await win.getByText('Model routing', { exact: true }).first().click()
+      await win.getByText('Models & Capabilities', { exact: true }).first().click()
+      await win.getByRole('tab', { name: 'Model routing', exact: true }).click()
       await win.getByRole('button', { name: 'New router' }).click()
       const canvas = win.locator('[data-routing-canvas]')
       // classifiers come from the runtime's catalog (no TypeSafe key in tests, so marked)

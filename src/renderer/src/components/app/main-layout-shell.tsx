@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { cn } from '@renderer/lib/utils'
 import { useUIStore } from '@renderer/stores/ui-store'
+import { DEFAULT_RIGHT_PANEL_WIDTH } from '@renderer/stores/ui-store-shell-slice'
 import { PanelResizeEdge } from '@renderer/components/app/panel-resize-edge'
 import { RightPanelCollapsedRail } from '@renderer/components/app/right-panel-collapsed-rail'
 import { isRightPanelHidden } from '@renderer/lib/right-panel-visibility'
+
+const DEFAULT_SIDEBAR_PX = 260
 
 /** Collapsed right rail width — keep in sync with RightPanelCollapsedRail (w-10 = 40px) */
 const RIGHT_COLLAPSED_RAIL_PX = 40
@@ -169,7 +172,12 @@ export function MainLayoutShell({
           {left}
         </div>
         {!leftCollapsed && (
-          <PanelResizeEdge side="left" dragging={leftDragging} onMouseDown={startLeftDrag} />
+          <PanelResizeEdge
+            side="left"
+            dragging={leftDragging}
+            onMouseDown={startLeftDrag}
+            onDoubleClick={() => setLeftWidth(DEFAULT_SIDEBAR_PX)}
+          />
         )}
       </div>
 
@@ -196,6 +204,7 @@ export function MainLayoutShell({
             side="right"
             dragging={rightDragging}
             onMouseDown={startRightDrag}
+            onDoubleClick={() => setRightWidth(DEFAULT_RIGHT_PANEL_WIDTH)}
           />
         ) : null}
         {rightCollapsed && !filesChatPreview ? (

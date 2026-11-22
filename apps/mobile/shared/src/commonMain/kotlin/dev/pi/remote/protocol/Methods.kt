@@ -118,6 +118,26 @@ data class OpenResult(
 @Serializable data class ForkResult(val sessionKey: String, val editorText: String? = null)
 @Serializable data class CommandInfo(val name: String, val description: String? = null, val category: String)
 @Serializable data class CommandListResult(val commands: List<CommandInfo>)
+@Serializable data class TeamAcceptance(val text: String, val done: Boolean)
+
+@Serializable
+data class TeamBoardTask(
+    val id: String,
+    val title: String,
+    val role: String,
+    val status: String,
+    val input: String,
+    val output: String,
+    val note: String,
+    val blockType: String,
+    val approval: String,
+    val dependsOn: List<String>,
+    val acceptance: List<TeamAcceptance>,
+    val dispatch: String? = null,
+)
+
+@Serializable data class TeamBoardResult(val batch: String, val goal: String, val tasks: List<TeamBoardTask>)
+
 @Serializable data class FileReadParams(val sessionKey: String, val path: String)
 
 @Serializable
@@ -343,6 +363,7 @@ object RemoteMethods {
         "file.list" to (FileListParams.serializer() to FileListResult.serializer()),
         "review.diff" to (ReviewDiffParams.serializer() to ReviewDiffResult.serializer()),
         "file.search" to (FileSearchParams.serializer() to FileSearchResult.serializer()),
+        "team.board" to (SessionKeyParams.serializer() to TeamBoardResult.serializer()),
         "file.read" to (FileReadParams.serializer() to FileReadResult.serializer()),
         "file.write" to (FileWriteParams.serializer() to FileWriteResult.serializer()),
         "project.setHidden" to (ProjectSetHiddenParams.serializer() to Empty.serializer()),

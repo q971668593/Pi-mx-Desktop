@@ -33,6 +33,9 @@ import { Settings as SettingsIcon } from '@renderer/components/icons'
 import { buildRightPanelTabs } from '@renderer/lib/right-panel-catalog'
 import { useRightPanelHidden } from '@renderer/lib/use-right-panel-hidden'
 import { RightPanelTabs } from '@renderer/features/shell/right-panel-tabs'
+import { computeRightPanelBadges, countWorkspaceLiveTerminals } from '@renderer/features/shell/right-panel-badges'
+import { useTerminalStore } from '@renderer/features/terminal/terminal-store'
+import { useSessionContextPreview } from '@renderer/features/context/use-session-context-preview'
 import { loadNormalizedRightPanelPrefs } from '@renderer/lib/right-panel-runtime'
 import { normalizeTimelineMaxAutoExpandedTools, normalizeTimelineVisibleTurns } from '@shared/timeline-settings'
 import { SidePanelHost } from '@renderer/features/side-panels/side-panel-host'
@@ -66,6 +69,7 @@ import { matchShortcut, readShortcutBindings } from '@renderer/lib/shortcut-bind
 import { useTerminalShortcut } from '@renderer/features/terminal/terminal-drawer'
 import { useBrowserHelpAttention } from '@renderer/features/browser/use-help-attention'
 import { HelpBar } from '@renderer/features/browser/help-bar'
+import { OPEN_SETTINGS_PAGE_EVENT } from '@renderer/lib/settings-navigation'
 import type { ForkSource } from '@renderer/lib/session-fork'
 
 type View = 'main' | 'settings'
@@ -107,6 +111,9 @@ export default function App() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const activePanel = useUIStore((s) => s.activePanel)
   const rightPanelHidden = useRightPanelHidden()
+  const toggleRightPanel = useUIStore((s) => s.toggleRightPanel)
+  const runStatus = useUIStore((s) => s.runState.status)
+  const historySessionFile = useUIStore((s) => s.historySessionFile)
   const modelPickerOpen = useUIStore((s) => s.modelPickerOpen)
   const thinkingPickerOpen = useUIStore((s) => s.thinkingPickerOpen)
   const setActivePanel = useUIStore((s) => s.setActivePanel)
@@ -248,10 +255,58 @@ export default function App() {
   }, [currentWorkspace, applyRightPanelRuntime])
 
   useEffect(() => {
-    const check = () => { if (document.visibilityState === 'visible') void revalidateActiveAdapterCatalog().catch(() => {}) }
+    const check = () => {
+      if (document.visibilityState === 'visible' && (typeof document.hasFocus !== 'function' || document.hasFocus())) {
+        void revalidateActiveAdapterCatalog().catch(() => {})
+      }
+    }
     window.addEventListener('focus', check)
     const timer = window.setInterval(check, 5000)
     return () => { window.removeEventListener('focus', check); window.clearInterval(timer) }
+  }, [])
+
+  useEffect(() => {
+    const root = document.documentElement
+    let blurTimer: number | null = null
+    const clearBlurTimer = () => {
+      if (blurTimer !== null) {
+        window.clearTimeout(blurTimer)
+        blurTimer = null
+      }
+    }
+    const syncHidden = () => {
+      if (document.hidden) root.dataset.windowHidden = 'true'
+      else delete root.dataset.windowHidden
+    }
+    const onFocus = () => {
+      clearBlurTimer()
+      delete root.dataset.windowBlurred
+    }
+    const onBlur = () => {
+      clearBlurTimer()
+      blurTimer = window.setTimeout(() => {
+        blurTimer = null
+        if (typeof document.hasFocus !== 'function' || !document.hasFocus()) {
+          root.dataset.windowBlurred = 'true'
+        }
+      }, 1500)
+    }
+
+    syncHidden()
+    if (typeof document.hasFocus === 'function' && !document.hasFocus()) {
+      root.dataset.windowBlurred = 'true'
+    }
+    document.addEventListener('visibilitychange', syncHidden)
+    window.addEventListener('focus', onFocus)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      clearBlurTimer()
+      document.removeEventListener('visibilitychange', syncHidden)
+      window.removeEventListener('focus', onFocus)
+      window.removeEventListener('blur', onBlur)
+      delete root.dataset.windowHidden
+      delete root.dataset.windowBlurred
+    }
   }, [])
 
   useEffect(() => {
@@ -319,8 +374,11 @@ export default function App() {
       void handleNotificationOpenSession({ ok: true, workspaceId: d?.workspaceId, sessionFile: d?.sessionFile })
     }
     window.addEventListener('pi-desktop:open-session', onOpenSession)
+    const onOpenSettingsPage = () => setView('settings')
+    window.addEventListener(OPEN_SETTINGS_PAGE_EVENT, onOpenSettingsPage)
     return () => {
       window.removeEventListener('pi-desktop:open-session', onOpenSession)
+      window.removeEventListener(OPEN_SETTINGS_PAGE_EVENT, onOpenSettingsPage)
       goalLoop.dispose()
       unsubEvents()
       unsubExit()
@@ -360,6 +418,10 @@ export default function App() {
     (path) => !hiddenProjects.some((hidden) => workspacePathsEqual(hidden, path)),
   )
   const fileChanges = useUIStore((s) => s.fileChanges)
+  const terminalTabs = useTerminalStore((s) => s.tabs)
+  const { preview: contextPreview } = useSessionContextPreview({
+    enabled: !!currentWorkspace && !!historySessionFile,
+  })
   const { gitData } = useReviewGitData({
     enabled: !!currentWorkspace,
     workspace: currentWorkspace,
@@ -369,6 +431,12 @@ export default function App() {
     gitData?.isRepo === false ? { ...rightPanelPrefs, review: false } : rightPanelPrefs
   const PANELS = buildRightPanelTabs(rightPanelCatalog, panelPrefs, t, rightPanelOrder)
   const activeCatalogItem = rightPanelCatalog.find((c) => c.id === activePanel)
+  const rightPanelBadges = computeRightPanelBadges({
+    fileChangeCount: gitData?.isRepo === false ? 0 : (gitData?.files?.length ?? fileChanges.length),
+    activeTerminalCount: countWorkspaceLiveTerminals(terminalTabs, currentWorkspace),
+    runStatus,
+    contextPct: contextPreview?.contextUsage?.percent ?? null,
+  })
 
   const isHomeMode =
     !currentSessionId && timelineItemCount === 0 && !ephemeralSandboxDraft && !historyLoading
@@ -458,9 +526,6 @@ export default function App() {
                 <Suspense fallback={<ShellSuspenseFallback label={t('common:loading')} />}>
                   <ProjectHomeView
                     projectName={ephemeralSandboxDraft ? t('common:home.newChat') : projectName}
-                    subtitle={
-                      ephemeralSandboxDraft ? t('common:home.firstMsgIsTitle') : undefined
-                    }
                     recentProjects={visibleRecentProjects}
                     currentWorkspace={currentWorkspace}
                     ephemeralSandboxDraft={ephemeralSandboxDraft}
@@ -493,6 +558,9 @@ export default function App() {
                 panels={PANELS}
                 activePanel={activePanel}
                 setActivePanel={setActivePanel}
+                badges={rightPanelBadges}
+                onCollapse={!rightPanelHidden ? toggleRightPanel : undefined}
+                collapseLabel={t('common:app.collapseRightPanel')}
               />
               {!rightPanelHidden ? (
                 <div className="flex-1 overflow-hidden">

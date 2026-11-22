@@ -312,6 +312,14 @@ const methodSamples: Samples = {
       truncated: false,
     },
   },
+  'team.board': {
+    params: { sessionKey },
+    result: {
+      batch: '移动端', goal: '检查同步',
+      tasks: [{ id: 'T-1', title: '优化看板', role: '前端', status: '进行中', input: '', output: '', note: '', blockType: '', approval: '',
+        dependsOn: ['T-0'], acceptance: [{ text: '显示任务卡片', done: false }], dispatch: 'running' }],
+    },
+  },
   'file.read': {
     params: { sessionKey, path: 'src/auth.ts' },
     result: { path: 'src/auth.ts', size: 24, truncated: false, kind: 'text', text: 'export const ok = true' },

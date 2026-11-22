@@ -184,7 +184,7 @@ fun ReviewScreen(
                     Column(Modifier.weight(1f)) {
                         val p = path
                         Text(p?.substringAfterLast('/') ?: stringResource(R.string.review_title), style = Pi.t.bodyMedium.copy(color = Pi.c.fg), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        val sub = if (p != null) p.substringBeforeLast('/', "") else list?.getOrNull()?.branch.orEmpty()
+                        val sub = if (p != null) listOf(stringResource(if (scope == "turn") R.string.review_scope_turn else R.string.review_scope_git), p.substringBeforeLast('/', "")).filter { it.isNotEmpty() }.joinToString(" · ") else list?.getOrNull()?.branch.orEmpty()
                         if (sub.isNotEmpty()) Text(sub, style = Pi.t.meta.copy(color = Pi.c.fg3), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     if (target.turnId != null && target.path == null) {

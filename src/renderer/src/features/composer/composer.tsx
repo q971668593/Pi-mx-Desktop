@@ -18,6 +18,7 @@ import { rememberImagePreviewDataUrl } from '@renderer/features/timeline/clipboa
 import type { StagedImage } from './attachments'
 import { ComposerModelStrip } from './composer-model-strip'
 import { ComposerToolsMenu } from './composer-tools-menu'
+import { PromptSnippetsMenu } from './prompt-snippets-menu'
 import { ComposerMetricsInline } from './composer-metrics-inline'
 import { ComposerPendingQueue } from './composer-pending-queue'
 import { ComposerAdapterWidgetHost } from './composer-adapter-widget-host'
@@ -319,6 +320,26 @@ export function Composer() {
   }, [composerPrefill, composerPrefillMode, setComposerPrefill, setContent])
 
   useEffect(() => {
+    const onRetry = (e: Event) => {
+      const prompt = (e as CustomEvent<{ text?: string }>).detail?.text?.trim()
+      if (!prompt) return
+      if (!canSendMessages || isRunning || showComposerStop) {
+        useUIStore.setState({
+          browserChatExpand: false,
+          filesPreviewChatExpand: false,
+          composerPrefill: prompt,
+          composerPrefillMode: 'replace',
+        })
+        return
+      }
+      setContent(prompt)
+      void sendCurrent()
+    }
+    window.addEventListener('pi-desktop:composer-retry', onRetry)
+    return () => window.removeEventListener('pi-desktop:composer-retry', onRetry)
+  }, [canSendMessages, isRunning, showComposerStop, setContent, sendCurrent])
+
+  useEffect(() => {
     if (!historySessionFile) return
     let cancelled = false
     let tick: number | null = null
@@ -558,6 +579,7 @@ export function Composer() {
               <Plus className="h-[15px] w-[15px]" strokeWidth={2} />
             </button>
             {canSendMessages && <ComposerToolsMenu running={isRunning} />}
+            {canSendMessages && <PromptSnippetsMenu disabled={!canSendMessages} />}
             <div className="min-w-0 flex-1">
               {canSendMessages && (
                 <ComposerModelStrip

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { ChevronRight } from '@renderer/components/icons'
+import { Check, ChevronRight, Copy } from '@renderer/components/icons'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@renderer/lib/utils'
 
@@ -59,8 +59,17 @@ export function ThinkingChainBlock({
   const open = userOpen && !placeholder
   const startedAtRef = useRef<number | null>(startedAt ?? null)
   const [elapsedMs, setElapsedMs] = useState(0)
+  const [copied, setCopied] = useState(false)
   const body = text.trim()
   const isLive = !!streaming || placeholder
+
+  const copyThinking = () => {
+    if (!body) return
+    void navigator.clipboard.writeText(body).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    })
+  }
 
   useEffect(() => {
     if (startedAt != null && startedAtRef.current == null) {
@@ -148,10 +157,19 @@ export function ThinkingChainBlock({
         <div
           data-independent-scroll
           className={cn(
-            'thinking-chain-body max-h-40 overflow-y-auto overscroll-contain border-l border-border/35 pl-2 text-[13px] leading-[1.6] whitespace-pre-wrap break-words',
+            'thinking-chain-body group/think relative max-h-40 overflow-y-auto overscroll-contain border-l border-border/35 pl-2 pr-7 text-[13px] leading-[1.6] whitespace-pre-wrap break-words',
             nested ? 'ml-3' : 'ml-3.5',
           )}
         >
+          <button
+            type="button"
+            onClick={copyThinking}
+            title={copied ? t('timeline:copied') : t('timeline:copyThinking')}
+            aria-label={copied ? t('timeline:copied') : t('timeline:copyThinking')}
+            className="chrome-icon-btn absolute right-1 top-0.5 flex h-5 w-5 items-center justify-center rounded text-foreground-secondary/50 opacity-0 transition-opacity group-hover/think:opacity-100 focus-visible:opacity-100 hover:text-foreground"
+          >
+            {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+          </button>
           {body}
         </div>
       ) : null}

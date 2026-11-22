@@ -163,23 +163,29 @@ fun StepDetailSheet(
 }
 
 @Composable
-fun ToolsSheet(caps: List<CapabilityRow>, cacheMode: String?, canWrite: Boolean, onCapability: (String, Boolean) -> Unit, onCache: (String) -> Unit, onDismiss: () -> Unit) {
+fun ToolsSheet(caps: List<CapabilityRow>, cacheMode: String?, canWrite: Boolean, pendingCapability: String?, capabilityError: String?, onCapability: (String, Boolean) -> Unit, onCache: (String) -> Unit, onDismiss: () -> Unit) {
     PiSheet(onDismiss) {
         Column(Modifier.padding(bottom = 18.dp)) {
             Text(stringResource(R.string.tools), style = Pi.t.bodyMedium.copy(color = Pi.c.fg), modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
             Text(stringResource(R.string.tools_session), style = Pi.t.meta.copy(color = Pi.c.fg3), modifier = Modifier.padding(start = 20.dp, top = 14.dp, bottom = 6.dp))
-            caps.firstOrNull { it.id == "pi-ui" }?.let { c ->
+            for (c in caps.filter { it.id == "pi-ui" || it.id == "work-team" }) {
+                val team = c.id == "work-team"
+                val label = stringResource(if (team) R.string.panel_tab_team else R.string.tool_piui)
+                val description = stringResource(if (team) R.string.team_tool_desc else R.string.tool_piui_desc)
                 Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.Top) {
                     PiIcon(PiIcons.Sparkles, Pi.c.fg3, 18.dp, Modifier.padding(top = 1.dp))
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text(stringResource(R.string.tool_piui), style = Pi.t.body.copy(color = Pi.c.fg))
-                        Text(stringResource(R.string.tool_piui_desc), style = Pi.t.secondary.copy(color = Pi.c.fg3))
+                        Text(label, style = Pi.t.body.copy(color = Pi.c.fg))
+                        Text(description, style = Pi.t.secondary.copy(color = Pi.c.fg3))
                         Text(stringResource(R.string.tool_tokens, "%.1fk".format(c.promptTokens / 1000.0)), style = Pi.t.meta.copy(color = Pi.c.fg3))
                     }
                     Spacer(Modifier.width(10.dp))
-                    QuietSwitch(c.enabled, { onCapability(c.id, it) }, stringResource(R.string.tool_piui), enabled = canWrite && c.available)
+                    QuietSwitch(c.enabled, { onCapability(c.id, it) }, label, enabled = canWrite && c.available && pendingCapability == null)
                 }
+            }
+            if (capabilityError != null) {
+                Text(capabilityError, style = Pi.t.meta.copy(color = Pi.c.bad), modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp))
             }
             Hairline(Modifier.padding(horizontal = 20.dp))
             Text(stringResource(R.string.tools_global), style = Pi.t.meta.copy(color = Pi.c.fg3), modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 6.dp))

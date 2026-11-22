@@ -31,13 +31,40 @@ export function SubAgentStrip() {
 
   useEffect(() => {
     void refresh()
+    let timer: number | null = null
+    const stopTimer = () => {
+      if (timer !== null) {
+        window.clearInterval(timer)
+        timer = null
+      }
+    }
+    const syncPolling = (triggerNow: boolean) => {
+      stopTimer()
+      if (document.hidden) return
+      if (triggerNow) void refresh()
+      const focused = typeof document.hasFocus === 'function' ? document.hasFocus() : true
+      const intervalMs = focused ? 4000 : 15_000
+      timer = window.setInterval(() => {
+        if (!document.hidden) void refresh()
+      }, intervalMs)
+    }
+    const onVisibility = () => syncPolling(!document.hidden)
+    const onFocus = () => syncPolling(true)
+    const onBlur = () => syncPolling(false)
+
+    syncPolling(false)
     window.addEventListener(TEAM_BOARD_RUNS_CHANGED_EVENT, refresh)
     window.addEventListener(TEAM_BOARD_CHANGED_EVENT, refresh)
-    const timer = window.setInterval(refresh, 4000)
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('focus', onFocus)
+    window.addEventListener('blur', onBlur)
     return () => {
-      window.clearInterval(timer)
+      stopTimer()
       window.removeEventListener(TEAM_BOARD_RUNS_CHANGED_EVENT, refresh)
       window.removeEventListener(TEAM_BOARD_CHANGED_EVENT, refresh)
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('focus', onFocus)
+      window.removeEventListener('blur', onBlur)
     }
   }, [refresh])
 

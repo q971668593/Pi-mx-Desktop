@@ -1,6 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import MarkdownView from '../markdown-view'
+import { hasMathSyntax } from '../markdown-math-plugins'
 
 describe('MarkdownView code block', () => {
   it('scrolls globally by default, activates internal scroll on click, and exits on outside click', () => {
@@ -50,5 +51,22 @@ describe('MarkdownView pi-ui blocks', () => {
     expect(pre).not.toBeNull()
     fireEvent.click(pre)
     expect(pre).toHaveAttribute('data-independent-scroll')
+  })
+})
+
+describe('MarkdownView lazy math loading', () => {
+  it('detects math syntax without triggering on plain currency', () => {
+    expect(hasMathSyntax('hello world')).toBe(false)
+    expect(hasMathSyntax('price is $19.99 today')).toBe(false)
+    expect(hasMathSyntax('formula $a^2 + b^2 = c^2$')).toBe(true)
+    expect(hasMathSyntax('$$E = mc^2$$')).toBe(true)
+    expect(hasMathSyntax('\\[ x = 1 \\]')).toBe(true)
+  })
+
+  it('loads math plugins on demand and renders KaTeX', async () => {
+    const { container } = render(<MarkdownView>{'Equation: $x^2 + y^2 = z^2$'}</MarkdownView>)
+    await waitFor(() => {
+      expect(container.querySelector('.katex')).not.toBeNull()
+    })
   })
 })

@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { MODEL, PROJECT_FILES, fixTurnSteps, text } from './demo-script.mjs'
+import { seedTeamBoard } from './seed-board.mjs'
 
 /**
  * @param {{ root: string, lang: 'zh' | 'en', live?: boolean, mockPort: number }} options
@@ -21,6 +22,8 @@ export async function seedDemo({ root, lang, live = false, mockPort }) {
     mkdirSync(dirname(join(project, name)), { recursive: true })
     writeFileSync(join(project, name), content)
   }
+  // 工作团队看板与角色配置一起进初始提交，Git 面板里就不会出现一堆未跟踪文件。
+  seedTeamBoard(project, lang)
   const gitEnv = { ...process.env, GIT_AUTHOR_DATE: '2026-09-28T10:00:00', GIT_COMMITTER_DATE: '2026-09-28T10:00:00' }
   const git = (...args) => execFileSync('git', args, { cwd: project, stdio: 'pipe', env: gitEnv })
   git('init', '-q', '-b', 'main')

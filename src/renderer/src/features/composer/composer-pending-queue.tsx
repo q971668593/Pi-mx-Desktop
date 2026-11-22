@@ -55,13 +55,23 @@ export function ComposerPendingQueue() {
       <ul className="space-y-0.5">
         {steering.map((msg, index) => (
           <li key={`steer-${index}`} className="flex gap-1.5 truncate font-mono text-[11px]">
-            <span className="shrink-0 text-[color:var(--status-live)]/80">{t('composer:steering')}</span>
+            <span
+              className="shrink-0 text-[color:var(--status-live)]/80"
+              title={t('composer:steeringHint')}
+            >
+              {t('composer:steering')}
+            </span>
             <span className="min-w-0 truncate text-foreground-secondary/75">{truncateLine(msg)}</span>
           </li>
         ))}
         {followUp.map((msg, index) => (
           <li key={`fu-${index}`} className="flex gap-1.5 truncate font-mono text-[11px]">
-            <span className="shrink-0 text-foreground-secondary/50">{t('composer:queued')}</span>
+            <span
+              className="shrink-0 text-foreground-secondary/50"
+              title={t('composer:queuedHint')}
+            >
+              {t('composer:queued')}
+            </span>
             <span className="min-w-0 truncate text-foreground-secondary/75">{truncateLine(msg)}</span>
           </li>
         ))}

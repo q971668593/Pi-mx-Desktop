@@ -1,4 +1,4 @@
-import { Children, createContext, isValidElement, useContext, useId, type ReactNode } from 'react'
+import { Children, createContext, isValidElement, useContext, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { cn } from '@renderer/lib/utils'
 import { Switch } from '@renderer/components/ui/switch'
 
@@ -19,6 +19,20 @@ export function SettingsSection({
 }) {
   const query = useContext(SettingsSearchContext).trim().toLocaleLowerCase()
   const sectionMatches = !!query && `${title} ${description || ''}`.toLocaleLowerCase().includes(query)
+  const rowsRef = useRef<HTMLDivElement>(null)
+  const [measured, setMeasured] = useState<{ query: string; empty: boolean }>({ query: '', empty: false })
+
+  useLayoutEffect(() => {
+    if (!query || sectionMatches) return
+    const el = rowsRef.current
+    if (!el) return
+    const empty = el.childElementCount === 0
+    setMeasured((prev) => (prev.query === query && prev.empty === empty ? prev : { query, empty }))
+  }, [query, sectionMatches])
+
+  const isEmptyMatch = !!query && !sectionMatches && measured.query === query && measured.empty
+  if (isEmptyMatch) return null
+
   return (
     <SettingsSectionSearchContext.Provider value={sectionMatches}>
     <section className="settings-section">
@@ -29,7 +43,7 @@ export function SettingsSection({
         </div>
         {action}
       </div>
-      <div className="settings-section-rows settings-card">{children}</div>
+      <div ref={rowsRef} className="settings-section-rows settings-card">{children}</div>
     </section>
     </SettingsSectionSearchContext.Provider>
   )

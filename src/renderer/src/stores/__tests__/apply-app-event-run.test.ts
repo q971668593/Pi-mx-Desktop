@@ -150,6 +150,17 @@ describe('handleRun idle (agent completion)', () => {
     expect((state.runState as RunState).activeRunId).toBe('run-b')
   })
 
+  it('accumulates output usage across model turns and resets for a new run', () => {
+    const { api, state } = makeApi()
+    const usage = { input: 1, output: 40, cacheRead: 0, cacheWrite: 0, cost: 0 }
+    const event = { type: 'run', phase: 'running', seq: 2, workspaceId: '/w', sessionFile: '/s.jsonl', runId: 'run-1', timestamp: Date.now(), usage }
+    handleRun(event as never, api)
+    handleRun({ ...event, seq: 3, usage: { ...usage, output: 60 } } as never, api)
+    expect((state.runState as RunState).runOutputTokens).toBe(100)
+    handleRun({ ...event, runId: 'run-2', usage: undefined } as never, api)
+    expect((state.runState as RunState).runOutputTokens).toBe(0)
+  })
+
   it('run.state applies runtime model and surfaces modelFallbackMessage', async () => {
     notifyModelFallback.mockClear()
     const { api, state } = makeApi()

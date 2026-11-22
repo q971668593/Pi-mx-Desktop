@@ -21,5 +21,18 @@
   "skipToBuiltin": "Skip and use the built-in",
   "globalReady": "Switched to the global pi",
   "globalFail": "Could not switch to global",
-  "installFail": "Installing pi failed"
+  "installFail": "Installing pi failed",
+  "detectedVersion": "Installed v{{version}}",
+  "outOfBox": "Ready out of the box",
+  "readyToChat": "Environment ready — start chatting!",
+  "modelTitle": "One last step: connect a model",
+  "modelIntro": "Sign in with an existing subscription or API key to start chatting right away, or skip and configure it later in Settings.",
+  "modelLoading": "Loading supported providers…",
+  "modelEmpty": "No built-in auth providers found right now. You can add a custom provider or relay in Settings.",
+  "signInOAuth": "Sign in",
+  "signInApiKey": "API Key",
+  "subscriptionTag": "Subscription",
+  "openModelSettings": "Add custom provider in Settings",
+  "skipModel": "Skip for now",
+  "modelReady": "Model connected — you are ready to chat!"
 }

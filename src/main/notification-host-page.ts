@@ -1,4 +1,4 @@
-import { ALERT_SOUND_TONES } from '@shared/alert-sound'
+import { ALERT_SOUND_BASE_GAIN, ALERT_SOUND_TONES } from '@shared/alert-sound'
 
 /** Sandboxed notification host. No nodeIntegration; talks only via preload action ids. */
 export function notificationHostPageHtml(): string {
@@ -137,10 +137,13 @@ export function notificationHostPageHtml(): string {
       return audioCtx
     }
     /** Same tones as the app (settings preview uses the identical table). */
-    function play(preset) {
+    function play(preset, volume) {
       const tones = TONES[preset]
       const ctx = context()
       if (!tones || !ctx) return
+      const level = typeof volume === 'number' && isFinite(volume) ? Math.min(200, Math.max(0, Math.round(volume))) : 100
+      const factor = (level / 100) * ${ALERT_SOUND_BASE_GAIN}
+      if (factor <= 0) return
       if (ctx.state === 'suspended') void ctx.resume()
       const start = ctx.currentTime
       for (const tone of tones) {
@@ -149,7 +152,7 @@ export function notificationHostPageHtml(): string {
         osc.type = tone.w || 'sine'
         osc.frequency.value = tone.f
         const t0 = start + tone.t
-        const peak = tone.g || 0.08
+        const peak = (tone.g || 0.08) * factor
         gain.gain.setValueAtTime(0.0001, t0)
         gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.012)
         gain.gain.exponentialRampToValueAtTime(0.0001, t0 + tone.d)
@@ -194,7 +197,7 @@ export function notificationHostPageHtml(): string {
       }
     }
     api.onFocus(() => stack.querySelector('.card:last-child .open')?.focus())
-    api.onSound((preset) => play(preset))
+    api.onSound((preset, volume) => play(preset, volume))
     api.onUpdate(render)
     api.ready()
   </script>

@@ -1,4 +1,4 @@
-import { FailedLine } from './failed-line'
+import { FailedLine, findRetryPromptBeforeItem } from './failed-line'
 import { useUIStore } from '@renderer/stores/ui-store'
 import type { TimelineItem, ToolTimelineItem } from '@renderer/stores/ui-store-types'
 import { cn } from '@renderer/lib/utils'
@@ -55,11 +55,17 @@ import { groupDisplayBlocksByTurn } from './timeline-turn-groups'
 import { TurnActivityBlock } from './turn-activity-block'
 import { shouldShowTimelineHonestyBanner } from '@renderer/lib/timeline-honesty'
 import { reloadCurrentSessionData } from '@renderer/lib/reload-current-session-data'
+import {
+  computeVisibleTurnsForItemIndex,
+  findTimelineSearchMatchIds,
+} from './timeline-search'
+import { TimelineSearchBar } from './timeline-search-bar'
 import { EmptyState } from '@renderer/components/ui/empty-state'
 import { UserMessageText } from './user-message-text'
 import { AttachmentChip } from '@renderer/features/composer/attachment-chip'
 import { ClipboardImageChip } from './clipboard-image-chip'
 import { type AttachmentMeta, type Segment } from '@renderer/features/composer/attachments'
+import { formatQuotedReply, insertTextIntoComposer } from '@renderer/features/composer/composer-insert'
 
 const MarkdownView = lazy(() => import('./markdown-view'))
 
@@ -103,6 +109,18 @@ const TimelineItemBase = memo(function TimelineItem({
                 align="right"
                 sessionEntryId={rewindTargetFor(item)}
                 onRewind={(id) => void navigateSessionToEntry(id)}
+                onEditResend={(id) => {
+                  const raw = String(item.text ?? '').trim()
+                  void navigateSessionToEntry(id).then((ok) => {
+                    if (ok && raw && !useUIStore.getState().composerPrefill) {
+                      insertTextIntoComposer(raw, 'replace')
+                    }
+                  })
+                }}
+                onQuote={() => {
+                  const quoted = formatQuotedReply(String(item.text ?? ''))
+                  if (quoted) insertTextIntoComposer(quoted, 'append')
+                }}
               />
             ) : null
           }
@@ -174,7 +192,21 @@ const TimelineItemBase = memo(function TimelineItem({
                 ) : null
               }
             >
-              <FailedLine error={typeof item.errorMessage === 'string' ? item.errorMessage : null} />
+              <FailedLine
+                error={typeof item.errorMessage === 'string' ? item.errorMessage : null}
+                onRetry={
+                  !agentRunning
+                    ? () => {
+                        const prompt = findRetryPromptBeforeItem(
+                          useUIStore.getState().timelineItems,
+                          String(item.id),
+                          t('timeline:continueAnswering'),
+                        )
+                        window.dispatchEvent(new CustomEvent('pi-desktop:composer-retry', { detail: { text: prompt } }))
+                      }
+                    : undefined
+                }
+              />
             </MessageHoverShell>
           </div>
         )
@@ -240,6 +272,10 @@ const TimelineItemBase = memo(function TimelineItem({
                 align="left"
                 sessionEntryId={isInterrupted && !hasText ? resolvedRewindEntryId : sessionEntryId}
                 onRewind={(id) => void navigateSessionToEntry(id)}
+                onQuote={() => {
+                  const quoted = formatQuotedReply(String(item.text ?? ''))
+                  if (quoted) insertTextIntoComposer(quoted, 'append')
+                }}
               />
             }
           >
@@ -386,6 +422,10 @@ export function Timeline() {
   const viewTailSnapshotRef = useRef<{ id?: string; type?: string } | null>(null)
   const viewLandedRef = useRef<{ entryId: string; seq: number } | null>(null)
   const [viewTarget, setViewTarget] = useState<string | null>(null)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchFocusSeq, setSearchFocusSeq] = useState(0)
+  const [searchActiveIdx, setSearchActiveIdx] = useState(0)
   const lastTailId = items[items.length - 1]?.id
   // contentEpoch intentionally ignores raw stream text length — height growth is observed.
   const contentEpoch = `${lastTailId ?? ''}:${renderCount}:${historySessionFile ?? ''}`
@@ -744,6 +784,8 @@ export function Timeline() {
       viewLoadRef.current = null
       viewLandedRef.current = null
       setViewTarget(null)
+      setSearchOpen(false)
+      setSearchQuery('')
     }
     followLiveRef.current = true
     requestAnimationFrame(() => {
@@ -800,6 +842,72 @@ export function Timeline() {
     const historyWindow = sliceHistoryForViewport(segments.history, renderCount)
     return [...historyWindow, ...segments.liveHead]
   }, [segments, renderCount])
+
+  const searchMatchIds = useMemo(
+    () => (searchOpen ? findTimelineSearchMatchIds(items as unknown as TimelineRawItem[], searchQuery) : []),
+    [searchOpen, items, searchQuery],
+  )
+  const clampedSearchIdx =
+    searchMatchIds.length > 0 ? Math.min(Math.max(0, searchActiveIdx), searchMatchIds.length - 1) : 0
+  const activeSearchMatchId = searchMatchIds.length > 0 ? searchMatchIds[clampedSearchIdx] : null
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.shiftKey || e.altKey) return
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'f') return
+      const target = e.target as HTMLElement | null
+      if (target?.closest('.terminal-host, [data-terminal-panel], [role="dialog"]')) return
+      const st = useUIStore.getState()
+      if (st.browserChatExpand || st.filesPreviewChatExpand) return
+      if (!scrollRef.current) return
+      e.preventDefault()
+      setSearchOpen(true)
+      setSearchFocusSeq((n) => n + 1)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
+  const lastScrolledMatchRef = useRef<string | null>(null)
+  useEffect(() => {
+    const root = contentRef.current
+    if (!root) return
+    root.querySelectorAll<HTMLElement>('[data-timeline-search-hit]').forEach((el) => {
+      delete el.dataset.timelineSearchHit
+    })
+    root.querySelectorAll<HTMLElement>('[data-timeline-search-active]').forEach((el) => {
+      delete el.dataset.timelineSearchActive
+    })
+    if (!searchOpen || searchMatchIds.length === 0) {
+      lastScrolledMatchRef.current = null
+      return
+    }
+    const queryIdSelector = (id: string): HTMLElement | null => {
+      const escaped = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(id) : id
+      return root.querySelector<HTMLElement>(`[data-item-id="${escaped}"], [data-search-ids~="${escaped}"]`)
+    }
+    for (const id of searchMatchIds) {
+      const el = queryIdSelector(id)
+      if (el) el.dataset.timelineSearchHit = 'true'
+    }
+    if (!activeSearchMatchId) return
+    const activeEl = queryIdSelector(activeSearchMatchId)
+    if (activeEl) {
+      activeEl.dataset.timelineSearchActive = 'true'
+      const scrollKey = `${activeSearchMatchId}:${clampedSearchIdx}:${searchQuery}`
+      if (lastScrolledMatchRef.current !== scrollKey) {
+        lastScrolledMatchRef.current = scrollKey
+        followLiveRef.current = false
+        activeEl.scrollIntoView({ block: 'center' })
+      }
+      return
+    }
+    const rawItems = items as unknown as TimelineRawItem[]
+    const idx = rawItems.findIndex((it) => String(it.id) === activeSearchMatchId)
+    if (idx >= 0) {
+      setWindowTurns((prev) => computeVisibleTurnsForItemIndex(rawItems, idx, prev))
+    }
+  }, [searchOpen, searchMatchIds, activeSearchMatchId, clampedSearchIdx, searchQuery, items, visibleItems.length, followLiveRef, setWindowTurns])
   const toolExpandSlots = useMemo(
     () =>
       visibleItems
@@ -918,15 +1026,19 @@ export function Timeline() {
   const renderDisplayBlock = (
     block: TimelineDisplayItem,
     blockKey: string,
-    opts?: { showMessageActions?: boolean },
+    opts?: { showMessageActions?: boolean; settled?: boolean },
   ) => {
     const showMessageActions = opts?.showMessageActions !== false
+    const settledCls = opts?.settled ? 'timeline-settled-item' : undefined
     if (block.kind === 'tool-group') {
       const groupThinking = block.thinkingText?.trim() || ''
       const stableGroupKey = block.groupId || `tg-${block.tools[0]?.id || blockKey}`
       return (
         <Fragment key={stableGroupKey}>
-          <div className="timeline-message-row timeline-activity-item">
+          <div
+            className={cn('timeline-message-row timeline-activity-item', settledCls)}
+            data-search-ids={block.tools.map((tool) => String(tool.id)).join(' ')}
+          >
             <ToolGroupSummary
               groupId={stableGroupKey}
               tools={block.tools as unknown as ToolTimelineItem[]}
@@ -943,7 +1055,7 @@ export function Timeline() {
     if (item.type === 'tool-call') {
       return (
         <Fragment key={item.id || blockKey}>
-          <div className="timeline-message-row timeline-activity-item">
+          <div className={cn('timeline-message-row timeline-activity-item', settledCls)} data-item-id={item.id}>
             <ToolCallRow
               item={item as unknown as ToolTimelineItem}
               autoExpandedInBudget={autoExpandedToolIds.has(item.id)}
@@ -965,11 +1077,11 @@ export function Timeline() {
       />
     )
     return rowEntryId ? (
-      <div key={item.id || blockKey} data-session-entry-id={rowEntryId} data-item-id={item.id}>
+      <div key={item.id || blockKey} data-session-entry-id={rowEntryId} data-item-id={item.id} className={settledCls}>
         {row}
       </div>
     ) : (
-      <div key={item.id || blockKey} data-item-id={item.id}>
+      <div key={item.id || blockKey} data-item-id={item.id} className={settledCls}>
         {row}
       </div>
     )
@@ -1013,6 +1125,31 @@ export function Timeline() {
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+    {searchOpen ? (
+      <TimelineSearchBar
+        query={searchQuery}
+        matchCount={searchMatchIds.length}
+        activeIndex={clampedSearchIdx}
+        focusSeq={searchFocusSeq}
+        onQueryChange={(next) => {
+          setSearchQuery(next)
+          const matches = findTimelineSearchMatchIds(items as unknown as TimelineRawItem[], next)
+          setSearchActiveIdx(matches.length > 0 ? matches.length - 1 : 0)
+        }}
+        onPrev={() => {
+          if (searchMatchIds.length === 0) return
+          setSearchActiveIdx((prev) => (prev - 1 + searchMatchIds.length) % searchMatchIds.length)
+        }}
+        onNext={() => {
+          if (searchMatchIds.length === 0) return
+          setSearchActiveIdx((prev) => (prev + 1) % searchMatchIds.length)
+        }}
+        onClose={() => {
+          setSearchOpen(false)
+          setSearchQuery('')
+        }}
+      />
+    ) : null}
     <OverlayScrollHost
       className="timeline-scroll-viewport timeline-scroll-with-dock min-h-0 flex-1 w-full"
       scrollClassName="timeline-scroll-with-dock-pane w-full"
@@ -1067,6 +1204,7 @@ export function Timeline() {
         const isLiveTurn =
           turnIndex === turnGroups.length - 1 &&
           (!!streamingAssistantId || agentRunning || sessionChrome.phase === 'waiting_ui')
+        const isSettledHistoryTurn = !isLiveTurn && turnIndex < turnGroups.length - 1
         const turnLastProseId = lastProseIdInTurn(turn.blocks)
         const claimBlockKey = createKeyClaimer()
         return (
@@ -1084,11 +1222,20 @@ export function Timeline() {
                 />
               )
               return userEntryId ? (
-                <div data-session-entry-id={userEntryId} data-item-id={turn.userItem.id}>
+                <div
+                  data-session-entry-id={userEntryId}
+                  data-item-id={turn.userItem.id}
+                  className={isSettledHistoryTurn ? 'timeline-settled-item' : undefined}
+                >
                   {userRow}
                 </div>
               ) : (
-                <div data-item-id={turn.userItem.id}>{userRow}</div>
+                <div
+                  data-item-id={turn.userItem.id}
+                  className={isSettledHistoryTurn ? 'timeline-settled-item' : undefined}
+                >
+                  {userRow}
+                </div>
               )
             })()}
             {turn.blocks.map((block, bi) => {
@@ -1106,7 +1253,7 @@ export function Timeline() {
                     : `${turn.turnId}-b${bi}`
               return (
                 <Fragment key={claimBlockKey(blockKey || `${turn.turnId}-b${bi}`)}>
-                  {renderDisplayBlock(block, blockKey, { showMessageActions: isLastProse })}
+                  {renderDisplayBlock(block, blockKey, { showMessageActions: isLastProse, settled: isSettledHistoryTurn })}
                 </Fragment>
               )
             })}

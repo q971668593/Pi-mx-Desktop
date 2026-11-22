@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ipcClient } from '@renderer/lib/ipc-client'
@@ -31,12 +31,14 @@ type Status = {
 }
 
 /**
- * 设置 → 模型 → 生图。
+ * 设置 → 生图模型配置。
  *
  * 把生图收进应用自己的设置：选 ChatGPT 订阅（复用本机 ~/.codex/auth.json）或任意
  * OpenAI 兼容中转。配好之后 agent 用内置的 `image_gen`，不必再挂 MCP 生图工具。
+ *
+ * 作为独立设置页时，标题由 `SettingsPageHeader` 负责，这里不再重复渲染 section 标题。
  */
-export function ImageGenSettings() {
+export function ImageGenSettings({ showHeading = true }: { showHeading?: boolean } = {}) {
   const { t } = useTranslation()
   const [config, setConfig] = useState<ImageGenConfig>(DEFAULT_IMAGE_GEN_CONFIG)
   const [status, setStatus] = useState<Status | null>(null)
@@ -114,7 +116,7 @@ export function ImageGenSettings() {
   const modelOptions = [...new Set([config.model, ...models].filter(Boolean))]
 
   return (
-    <SettingsSection title={t('settings:imageGen.title')} description={t('settings:imageGen.description')}>
+    <Section title={t('settings:imageGen.title')} description={t('settings:imageGen.description')} showHeading={showHeading}>
       <SettingRow label={t('settings:imageGen.provider')} description={t('settings:imageGen.providerHint')}>
         <select
           className={selectCls}
@@ -270,6 +272,26 @@ export function ImageGenSettings() {
           </SettingRow>
         </>
       ) : null}
-    </SettingsSection>
+    </Section>
+  )
+}
+
+/** Same rows, either under a section heading or bare inside the page's own card. */
+function Section({
+  title,
+  description,
+  showHeading,
+  children,
+}: {
+  title: string
+  description: string
+  showHeading: boolean
+  children: ReactNode
+}) {
+  if (showHeading) return <SettingsSection title={title} description={description}>{children}</SettingsSection>
+  return (
+    <section className="settings-section">
+      <div className="settings-section-rows settings-card">{children}</div>
+    </section>
   )
 }

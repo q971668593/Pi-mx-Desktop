@@ -2,13 +2,24 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Activity,
+  Boxes,
+  CloudDownload,
+  Copy,
   FileSearch,
+  Folder,
   FolderTree,
   GitBranch,
+  Inbox,
   Keyboard,
   ListTree,
+  Maximize2,
   MessageSquare,
+  Monitor,
+  Moon,
+  Palette,
+  Puzzle,
   Settings,
+  Sun,
   type AppIconComponent,
 } from '@renderer/components/icons'
 import { cn } from '@renderer/lib/utils'
@@ -18,6 +29,11 @@ import { listAttentionSessions } from '@renderer/lib/session-attention'
 import { activateWorkspace, switchSessionInPlace } from '@renderer/lib/activate-workspace'
 import { sessionFilesEqual } from '@renderer/lib/session-file-key'
 import { formatShortcut, readShortcutBindings } from '@renderer/lib/shortcut-bindings'
+import { ipcClient } from '@renderer/lib/ipc-client'
+import { applyThemeToDocument, type ThemeChoice } from '@renderer/features/settings/settings-draft'
+import { openSettingsPage } from '@renderer/lib/settings-navigation'
+import { exportCurrentSessionMarkdown } from '@renderer/lib/session-markdown-export'
+import { resolveProjectDisplayName, workspacePathsEqual } from '@shared/workspace-path'
 
 export type CommandPaletteAction = {
   id: string
@@ -66,6 +82,10 @@ export function CommandPalette({
   const sessionAttention = useUIStore((s) => s.sessionAttention)
   const sessions = useUIStore((s) => s.sessions)
   const currentWorkspace = useUIStore((s) => s.currentWorkspace)
+  const recentProjects = useUIStore((s) => s.recentProjects)
+  const hiddenProjects = useUIStore((s) => s.hiddenProjects)
+  const projectDisplayNames = useUIStore((s) => s.projectDisplayNames)
+  const hasTimelineItems = useUIStore((s) => s.timelineItems.length > 0)
 
   const openAttentionSession = useCallback(
     (sessionFile: string) => {
@@ -213,8 +233,158 @@ export function CommandPalette({
         },
       })
     }
+
+    const switchTheme = (theme: ThemeChoice) => {
+      applyThemeToDocument(theme)
+      useUIStore.getState().setTheme(theme)
+      void ipcClient.invoke('settings.set', { key: 'theme', value: theme }).catch(() => {})
+      onClose()
+    }
+
+    list.push(
+      {
+        id: 'focus-mode',
+        label: t('common:commandPalette.toggleFocusMode'),
+        icon: Maximize2,
+        keywords: 'focus zen sidebar collapse 专注 边栏 隐藏',
+        run: () => {
+          const state = useUIStore.getState()
+          const bothHidden = state.sidebarCollapsed && state.rightPanelCollapsed
+          if (bothHidden) {
+            state.toggleSidebar()
+          } else {
+            if (!state.sidebarCollapsed) state.toggleSidebar()
+            if (!state.rightPanelCollapsed) state.toggleRightPanel()
+          }
+          onClose()
+        },
+      },
+      {
+        id: 'theme-light',
+        label: t('common:commandPalette.themeLight'),
+        icon: Sun,
+        keywords: 'theme light appearance 浅色 主题 外观',
+        run: () => switchTheme('light'),
+      },
+      {
+        id: 'theme-dark',
+        label: t('common:commandPalette.themeDark'),
+        icon: Moon,
+        keywords: 'theme dark appearance 深色 暗黑 主题 外观',
+        run: () => switchTheme('dark'),
+      },
+      {
+        id: 'theme-system',
+        label: t('common:commandPalette.themeSystem'),
+        icon: Monitor,
+        keywords: 'theme system appearance 跟随系统 主题',
+        run: () => switchTheme('system'),
+      },
+      {
+        id: 'settings-models',
+        label: t('common:commandPalette.settingsSection', { section: t('settings:nav.models') }),
+        icon: Boxes,
+        keywords: 'settings models oauth api key voice routing 模型 供应商 语音 编排',
+        run: () => {
+          openSettingsPage({ page: 'models' })
+          onClose()
+        },
+      },
+      {
+        id: 'settings-appearance',
+        label: t('common:commandPalette.settingsSection', { section: t('settings:nav.appearance') }),
+        icon: Palette,
+        keywords: 'settings appearance theme font zoom background 外观 主题 字体 背景',
+        run: () => {
+          openSettingsPage({ page: 'appearance' })
+          onClose()
+        },
+      },
+      {
+        id: 'settings-notifications',
+        label: t('common:commandPalette.settingsSection', { section: t('settings:nav.notifications') }),
+        icon: Inbox,
+        keywords: 'settings notifications sound alert dnd 通知 提醒 声音 免打扰',
+        run: () => {
+          openSettingsPage({ page: 'notifications' })
+          onClose()
+        },
+      },
+      {
+        id: 'settings-resources',
+        label: t('common:commandPalette.settingsSection', { section: t('settings:nav.resources') }),
+        icon: Puzzle,
+        keywords: 'settings skills prompts extensions mcp adapters 扩展 技能 适配器',
+        run: () => {
+          openSettingsPage({ page: 'resources' })
+          onClose()
+        },
+      },
+    )
+    if (hasTimelineItems) {
+      list.push(
+        {
+          id: 'export-markdown-copy',
+          label: t('common:commandPalette.exportMarkdownCopy'),
+          icon: Copy,
+          keywords: 'export markdown copy share transcript 导出 复制 对话',
+          run: () => {
+            void exportCurrentSessionMarkdown('copy')
+            onClose()
+          },
+        },
+        {
+          id: 'export-markdown-download',
+          label: t('common:commandPalette.exportMarkdownDownload'),
+          icon: CloudDownload,
+          keywords: 'export markdown download save md file 导出 下载 保存 对话',
+          run: () => {
+            void exportCurrentSessionMarkdown('download')
+            onClose()
+          },
+        },
+      )
+    }
+
+    const otherProjects = recentProjects
+      .filter(
+        (p) =>
+          !workspacePathsEqual(p, currentWorkspace) &&
+          !hiddenProjects.some((hidden) => workspacePathsEqual(hidden, p)),
+      )
+      .slice(0, 5)
+    for (const proj of otherProjects) {
+      const fallback = proj.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || proj
+      const labelName = resolveProjectDisplayName(projectDisplayNames, proj, fallback)
+      list.push({
+        id: `project-${proj}`,
+        label: t('common:commandPalette.switchProject', { name: labelName }),
+        hint: fallback !== labelName ? fallback : undefined,
+        icon: Folder,
+        keywords: `project workspace switch 项目 切换 ${proj}`,
+        run: () => {
+          void activateWorkspace(proj, { preferHome: true })
+          onClose()
+        },
+      })
+    }
+
     return list
-  }, [t, onOpenSettings, onOpenSessionTree, onOpenShortcuts, onClose, sessionAttention, sessions, openAttentionSession])
+  }, [
+    t,
+    onOpenSettings,
+    onOpenSessionTree,
+    onOpenShortcuts,
+    onClose,
+    sessionAttention,
+    sessions,
+    openAttentionSession,
+    recentProjects,
+    hiddenProjects,
+    currentWorkspace,
+    projectDisplayNames,
+    hasTimelineItems,
+  ])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()

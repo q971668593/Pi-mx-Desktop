@@ -1,9 +1,9 @@
 import type { AppEvent } from './app-events'
 
-export type SessionScopedAppEvent = Exclude<AppEvent, { type: 'sdk-install-progress' | 'sdk-runtime-changed' | 'adapter-catalog-changed' | 'remote-settings-changed' }>
+export type SessionScopedAppEvent = Exclude<AppEvent, { type: 'sdk-install-progress' | 'sdk-runtime-changed' | 'adapter-catalog-changed' | 'remote-settings-changed' | 'model-auth' }>
 
 export function isSessionScopedAppEvent(event: AppEvent): event is SessionScopedAppEvent {
-  return event.type !== 'sdk-install-progress' && event.type !== 'sdk-runtime-changed' && event.type !== 'adapter-catalog-changed' && event.type !== 'remote-settings-changed'
+  return event.type !== 'sdk-install-progress' && event.type !== 'sdk-runtime-changed' && event.type !== 'adapter-catalog-changed' && event.type !== 'remote-settings-changed' && event.type !== 'model-auth'
 }
 
 export function appEventSessionId(event: AppEvent): string | undefined {

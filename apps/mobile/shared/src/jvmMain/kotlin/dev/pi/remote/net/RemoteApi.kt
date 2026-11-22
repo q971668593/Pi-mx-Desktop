@@ -27,6 +27,7 @@ import dev.pi.remote.protocol.ProjectAddResult
 import dev.pi.remote.protocol.ProjectSetHiddenParams
 import dev.pi.remote.protocol.FileReadParams
 import dev.pi.remote.protocol.FileReadResult
+import dev.pi.remote.protocol.TeamBoardResult
 import dev.pi.remote.protocol.GitLogParams
 import dev.pi.remote.protocol.GitLogResult
 import dev.pi.remote.protocol.GitCloneResult
@@ -95,6 +96,9 @@ class RemoteApi(private val c: HostConnection) {
         c.typedCall("file.list", FileListParams.serializer(), FileListParams(sessionKey, path, dotfiles.takeIf { it }), FileListResult.serializer())
     suspend fun searchFiles(sessionKey: String, query: String) =
         c.typedCall("file.search", FileSearchParams.serializer(), FileSearchParams(sessionKey, query), FileSearchResult.serializer()).entries
+    suspend fun teamBoard(sessionKey: String) =
+        c.typedCall("team.board", SessionKeyParams.serializer(), SessionKeyParams(sessionKey), TeamBoardResult.serializer())
+
     suspend fun readFile(sessionKey: String, path: String) =
         c.typedCall("file.read", FileReadParams.serializer(), FileReadParams(sessionKey, path), FileReadResult.serializer(), timeoutMs = 60_000)
     suspend fun writeFile(sessionKey: String, path: String, content: String, expectedRevision: String? = null) =

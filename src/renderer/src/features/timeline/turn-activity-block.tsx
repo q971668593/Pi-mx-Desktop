@@ -49,10 +49,10 @@ function FileChangeRow({ file, runId }: { file: TurnFileStat; runId?: string }) 
     <button
       type="button"
       className="group flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-[var(--bg-hover)]"
-      onClick={() => openWorkspaceRelativePath(file.path)}
+      onClick={() => openTurnReview({ path: file.path, runId })}
       onContextMenu={(event) => {
         event.preventDefault()
-        openTurnReview({ path: file.path, runId })
+        openWorkspaceRelativePath(file.path)
       }}
       title={t('timeline:activity.openFileHint', { path: file.path })}
     >

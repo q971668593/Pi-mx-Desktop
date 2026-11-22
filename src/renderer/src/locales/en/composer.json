@@ -112,7 +112,9 @@
   "cacheStats": "Cache {{pct}}% · read {{read}}",
   "cacheWrite": " · write {{write}}",
   "steering": "steer · ",
+  "steeringHint": "Injected immediately after the current tool completes",
   "queued": "queued · ",
+  "queuedHint": "Sent automatically after this turn settles",
   "queueHint": "Alt+↑ to pull back into the input · Ctrl/⌘+Enter sends the queue now · Esc while running pulls back and stops",
   "queueFlush": "Send now",
   "queueFlushing": "Sending…",
@@ -159,7 +161,8 @@
   "selectModelTitle": "Select Model",
   "current": "Current: ",
   "searchModelPlaceholder": "Search models",
-  "noModels": "No models available (check ~/.pi/agent/auth.json)",
+  "noModels": "No models configured yet",
+  "configureModels": "Configure or sign in",
   "loadingModels": "Loading models…",
   "noMatch": "No match",
   "unavailable": "Unavailable",
@@ -202,6 +205,7 @@
   "modelPickerKeys": "↑↓ select · Enter switch · Esc close",
   "thinkingChip": "Thinking: {{level}} (Shift+Tab to cycle)",
   "contextRing": "Context {{used}} / {{total}} ({{pct}}%)",
+  "contextRingClickHint": "Click to open Context panel",
   "tools": {
     "button": "Tools",
     "title": "On for this chat",
@@ -274,5 +278,26 @@
     }
   },
   "thinkingShort": "Thinking {{level}}",
-  "thinkingPrefix": "Thinking"
+  "thinkingPrefix": "Thinking",
+  "snippets": {
+    "button": "Prompt snippets",
+    "title": "Quick prompt snippets",
+    "add": "Add",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete snippet",
+    "titlePlaceholder": "Snippet title (e.g. Code review)",
+    "contentPlaceholder": "Prompt text to insert…",
+    "empty": "No snippets yet. Click Add to create one.",
+    "defaults": {
+      "reviewTitle": "Code review (bugs / edge cases)",
+      "reviewContent": "Review the current changes for bugs, edge cases, type safety, and regressions. Keep findings concise and actionable.",
+      "rootCauseTitle": "Root-cause analysis first",
+      "rootCauseContent": "Analyze the root cause and cite exact file/line evidence before making any edits.",
+      "commitTitle": "Write commit message",
+      "commitContent": "Summarize the current git diff into a concise Conventional Commits message.",
+      "testsTitle": "Add unit tests",
+      "testsContent": "Add focused unit tests covering happy paths and edge cases for the modified module, then run them."
+    }
+  }
 }

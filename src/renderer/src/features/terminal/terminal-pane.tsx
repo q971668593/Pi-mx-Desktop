@@ -17,7 +17,16 @@ import { TERMINAL_FONT, terminalTheme } from './terminal-theme'
 import { sendToComposer } from '@renderer/features/browser/browser-composer'
 import { toast } from 'sonner'
 
-type Instance = { term: Terminal; host: HTMLDivElement; fit: FitAddon; search: SearchAddon; syncSize: () => void; dispose: () => void }
+type Instance = {
+  term: Terminal
+  host: HTMLDivElement
+  fit: FitAddon
+  search: SearchAddon
+  syncSize: () => void
+  setWebglEnabled: (enabled: boolean) => void
+  setCursorBlink: (enabled: boolean) => void
+  dispose: () => void
+}
 
 /**
  * xterm instances outlive their React pane: a terminal cannot be re-opened into a new element,
@@ -35,7 +44,7 @@ function createInstance(pane: TerminalPaneState): Instance {
     fontSize: 12.5,
     lineHeight: 1.25,
     letterSpacing: 0,
-    cursorBlink: true,
+    cursorBlink: false,
     cursorStyle: 'bar',
     cursorWidth: 2,
     scrollback: 10000,
@@ -53,14 +62,41 @@ function createInstance(pane: TerminalPaneState): Instance {
   term.unicode.activeVersion = '11'
   term.loadAddon(new WebLinksAddon((_e, uri) => window.open(uri)))
   term.open(host)
-  // E2E reads the rows from the DOM, which the WebGL renderer does not produce.
-  if (!(window.piDesktop as { e2e?: boolean } | undefined)?.e2e) try {
-    const gl = new WebglAddon()
-    // GPU context loss (driver reset, sleep): fall back to the DOM renderer instead of a blank pane.
-    gl.onContextLoss(() => gl.dispose())
-    term.loadAddon(gl)
-  } catch {
-    /* no WebGL2: the DOM renderer still works */
+  let webgl: WebglAddon | null = null
+  const setWebglEnabled = (enabled: boolean) => {
+    // E2E reads the rows from the DOM, which the WebGL renderer does not produce.
+    if ((window.piDesktop as { e2e?: boolean } | undefined)?.e2e) return
+    if (!enabled) {
+      if (!webgl) return
+      const current = webgl
+      webgl = null
+      try {
+        current.dispose()
+      } catch {
+        /* already disposed */
+      }
+      return
+    }
+    if (webgl) return
+    try {
+      const gl = new WebglAddon()
+      // GPU context loss (driver reset, sleep): fall back to the DOM renderer instead of a blank pane.
+      gl.onContextLoss(() => {
+        if (webgl === gl) webgl = null
+        try {
+          gl.dispose()
+        } catch {
+          /* already disposed */
+        }
+      })
+      term.loadAddon(gl)
+      webgl = gl
+    } catch {
+      /* no WebGL2: the DOM renderer still works */
+    }
+  }
+  const setCursorBlink = (enabled: boolean) => {
+    if (term.options.cursorBlink !== enabled) term.options.cursorBlink = enabled
   }
 
   term.attachCustomKeyEventHandler((e) => {
@@ -131,7 +167,11 @@ function createInstance(pane: TerminalPaneState): Instance {
     fit,
     search,
     syncSize: () => { if (!initialSizeSent) { initialSizeSent = true; resizePty(pane.ptyId, term.cols, term.rows) } },
+    setWebglEnabled,
+    setCursorBlink,
     dispose: () => {
+      setCursorBlink(false)
+      setWebglEnabled(false)
       host.removeEventListener('paste', onPaste, true)
       offInput.dispose()
       offResize.dispose()
@@ -170,6 +210,26 @@ export function TerminalPane({ tabId, index, pane, active, visible, split, onClo
   const [searching, setSearching] = useState(false)
   const [query, setQuery] = useState('')
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const [windowVisible, setWindowVisible] = useState(() =>
+    typeof document === 'undefined' ? true : !document.hidden
+  )
+  const [windowFocused, setWindowFocused] = useState(() =>
+    typeof document === 'undefined' || typeof document.hasFocus !== 'function' ? true : document.hasFocus()
+  )
+
+  useEffect(() => {
+    const onVisibility = () => setWindowVisible(!document.hidden)
+    const onFocus = () => setWindowFocused(true)
+    const onBlur = () => setWindowFocused(false)
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('focus', onFocus)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('focus', onFocus)
+      window.removeEventListener('blur', onBlur)
+    }
+  }, [])
 
   useEffect(() => {
     if (!contextMenu) return
@@ -227,6 +287,21 @@ export function TerminalPane({ tabId, index, pane, active, visible, split, onClo
       if (active) inst.term.focus()
     })
   }, [visible, active, pane.ptyId])
+
+  useEffect(() => {
+    const inst = instances.get(pane.ptyId)
+    if (!inst) return
+    const gpuActive = visible && windowVisible && windowFocused
+    inst.setWebglEnabled(gpuActive)
+    inst.setCursorBlink(gpuActive && active)
+    if (visible && windowVisible) {
+      inst.term.refresh(0, inst.term.rows - 1)
+    }
+    return () => {
+      inst.setCursorBlink(false)
+      inst.setWebglEnabled(false)
+    }
+  }, [visible, active, windowVisible, windowFocused, pane.ptyId])
 
   useEffect(() => {
     const onSearch = (e: Event) => {

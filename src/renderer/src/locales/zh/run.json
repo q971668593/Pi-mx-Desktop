@@ -35,7 +35,7 @@
   "realtimeMetrics": "指标",
   "elapsed": "耗时",
   "genSpeed": "生成速度（估算）",
-  "genSpeedHint": "按正在显示的回复字符数估算，实际 token 速度可能不同。",
+  "genSpeedHint": "运行时按显示的回复字符数估算；完成后按本次输出 token 和任务总耗时计算平均值。",
   "firstOutputWait": "首个回复等待",
   "waitingOutput": "等待回复",
   "approxCharsPerSec": "~{{count}} 字/s",

@@ -1,5 +1,5 @@
 import Store from 'electron-store'
-import { DEFAULT_ALERT_SOUND_PRESET, type AlertSoundPreset } from '@shared/alert-sound'
+import { DEFAULT_ALERT_SOUND_PRESET, DEFAULT_ALERT_SOUND_VOLUME, type AlertSoundPreset } from '@shared/alert-sound'
 import { DEFAULT_IMAGE_GEN_CONFIG } from '@shared/image-gen'
 import type { AsrConfig } from '@shared/asr-types'
 import type { BackgroundSettings } from '@shared/background'
@@ -69,6 +69,8 @@ export interface StoreSchema {
   alertSoundEnabled: boolean
   /** 提示音预设（设置里可选，见 @shared/alert-sound） */
   alertSoundPreset: AlertSoundPreset
+  /** 提示音音量百分比：0 = 静音，100 = 设计音量，200 = 加倍（吵的房间） */
+  alertSoundVolume: number
   /** 全局：用户提醒是否使用系统通知 */
   alertNotificationEnabled: boolean
   /** 扩展弹窗需用户作答时提醒 */
@@ -170,6 +172,7 @@ const store = new Store<StoreSchema>({
     ignoredUpdateVersion: '',
     alertSoundEnabled: true,
     alertSoundPreset: DEFAULT_ALERT_SOUND_PRESET,
+    alertSoundVolume: DEFAULT_ALERT_SOUND_VOLUME,
     alertNotificationEnabled: true,
     alertOnExtensionUi: true,
     alertOnRunIdle: true,

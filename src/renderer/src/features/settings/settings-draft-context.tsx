@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import type { BackgroundSettings } from '@shared/background'
 import {
   createContext,
@@ -25,7 +26,7 @@ import {
   type LanguageChoice,
 } from '@renderer/features/settings/settings-draft'
 import type { AsrConfig } from '@shared/asr-types'
-import type { AlertSoundPreset } from '@shared/alert-sound'
+import { normalizeAlertSoundVolume, type AlertSoundPreset } from '@shared/alert-sound'
 import type { CompletionDeliveryMode, CompletionPreviewMode } from '@shared/completion-preview'
 import type { IconTheme } from '@shared/icon-theme'
 import type { CustomCssOverride, CustomTheme } from '@shared/custom-theme'
@@ -50,6 +51,8 @@ import {
 type SettingsDraftContextValue = {
   draft: SettingsDraft
   dirty: boolean
+  requiresManualSave: boolean
+  autoSaveStatus: 'idle' | 'saving' | 'saved'
   dirtySliceLabels: string[]
   loading: boolean
   saving: boolean
@@ -65,6 +68,7 @@ type SettingsDraftContextValue = {
   setIncludePrereleaseUpdates: (v: boolean) => void
   setAlertSoundEnabled: (v: boolean) => void
   setAlertSoundPreset: (v: AlertSoundPreset) => void
+  setAlertSoundVolume: (v: number) => void
   setAlertNotificationEnabled: (v: boolean) => void
   setAlertOnExtensionUi: (v: boolean) => void
   setAlertOnRunIdle: (v: boolean) => void
@@ -109,32 +113,57 @@ export function useSettingsDraft(): SettingsDraftContextValue {
   return ctx
 }
 
+function isAgentRuntimeChanged(
+  next: SettingsDraft | null,
+  baseline: SettingsDraft | null,
+): boolean {
+  if (!next || !baseline) return false
+  return (
+    next.agentRuntime.mode !== baseline.agentRuntime.mode ||
+    next.agentRuntime.distro !== baseline.agentRuntime.distro
+  )
+}
+
 export function SettingsDraftProvider({ children }: { children: ReactNode }) {
   const { t, i18n } = useTranslation()
   const [draft, setDraft] = useState<SettingsDraft | null>(null)
   const [baselineSig, setBaselineSig] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [autoSaveFailed, setAutoSaveFailed] = useState(false)
   const [sliceDirtyTick, setSliceDirtyTick] = useState(0)
   const draftDirtyRef = useRef(false)
   const draftRef = useRef<SettingsDraft | null>(null)
+  const baselineDraftRef = useRef<SettingsDraft | null>(null)
   const baselineSigRef = useRef('')
   const discardDraftRef = useRef<() => Promise<void>>(async () => {})
+  const autoSaveTimerRef = useRef<number | null>(null)
+  const autoSaveHideTimerRef = useRef<number | null>(null)
+  const autoSavingRef = useRef(false)
+  const i18nRef = useRef(i18n)
+  i18nRef.current = i18n
+  const tRef = useRef(t)
+  tRef.current = t
 
   const reload = useCallback(async () => {
     setLoading(true)
     try {
-      const d = await loadSettingsDraftFromDisk(i18n.language)
+      const d = await loadSettingsDraftFromDisk(i18nRef.current.language)
       setDraft(d)
-      setBaselineSig(draftSignature(d))
+      baselineDraftRef.current = d
+      const sig = draftSignature(d)
+      baselineSigRef.current = sig
+      setBaselineSig(sig)
+      setAutoSaveFailed(false)
       setAsrConfigPreview(d.asrConfig)
       // Re-apply disk theme so the selected option matches the document (preview only on patch/discard/save otherwise).
-      previewDraftUi(d, i18n)
+      previewDraftUi(d, i18nRef.current)
       useUIStore.getState().setTheme(d.theme)
     } finally {
       setLoading(false)
     }
-  }, [i18n])
+  }, [])
 
   useEffect(() => {
     void reload()
@@ -158,43 +187,63 @@ export function SettingsDraftProvider({ children }: { children: ReactNode }) {
         const d = draftRef.current
         if (!d) return
         if (draftSignature(d) === baselineSigRef.current) return
-        const savedAsr = await commitSettingsDraft(d, i18n)
+        const savedAsr = await commitSettingsDraft(d, i18nRef.current, baselineDraftRef.current)
+        const committed = { ...d, asrConfig: savedAsr }
+        baselineDraftRef.current = committed
         setDraft((prev) => (prev ? { ...prev, asrConfig: savedAsr } : prev))
         setAsrConfigPreview(savedAsr)
-        baselineSigRef.current = draftSignature(d)
-        setBaselineSig(baselineSigRef.current)
+        const sig = draftSignature(committed)
+        baselineSigRef.current = sig
+        setBaselineSig(sig)
+        setAutoSaveFailed(false)
       },
       discard: () => discardDraftRef.current(),
     })
-  }, [i18n])
+  }, [])
 
-  const sliceDirty = anySettingsSliceDirty()
-  const dirty = draftDirty || sliceDirty
-  const dirtySliceLabels = useMemo(() => {
+  const externalDirtySlices = useMemo(() => {
     void sliceDirtyTick
-    return getDirtySettingsSlices().map((s) => s.label || s.id)
-  }, [sliceDirtyTick, draftDirty])
+    return getDirtySettingsSlices().filter((s) => s.id !== 'app')
+  }, [sliceDirtyTick])
+  const agentRuntimeDirty = isAgentRuntimeChanged(draft, baselineDraftRef.current)
+  const dirty = draftDirty || externalDirtySlices.length > 0
+  const requiresManualSave = agentRuntimeDirty || externalDirtySlices.length > 0 || autoSaveFailed
+  const dirtySliceLabels = useMemo(() => {
+    const labels: string[] = []
+    if (agentRuntimeDirty) labels.push(tRef.current('settings:runtime.title', 'Runtime'))
+    for (const s of externalDirtySlices) labels.push(s.label || s.id)
+    if (autoSaveFailed && labels.length === 0) labels.push('App & Right Panels')
+    return labels
+  }, [agentRuntimeDirty, externalDirtySlices, autoSaveFailed])
 
   const patch = useCallback((fn: (d: SettingsDraft) => SettingsDraft) => {
+    setAutoSaveFailed(false)
     setDraft((prev) => {
       if (!prev) return prev
       const next = fn(prev)
-      previewDraftUi(next, i18n)
+      previewDraftUi(next, i18nRef.current)
       setAsrConfigPreview(next.asrConfig)
       window.dispatchEvent(new CustomEvent('pi-desktop:asr-config-preview', { detail: next.asrConfig }))
       return next
     })
     notifySettingsDirtyChanged()
-  }, [i18n])
+  }, [])
 
   const discard = useCallback(async () => {
-    const d = await loadSettingsDraftFromDisk(i18n.language)
+    if (autoSaveTimerRef.current !== null) {
+      window.clearTimeout(autoSaveTimerRef.current)
+      autoSaveTimerRef.current = null
+    }
+    const d = await loadSettingsDraftFromDisk(i18nRef.current.language)
     setDraft(d)
+    baselineDraftRef.current = d
     const sig = draftSignature(d)
     setBaselineSig(sig)
     baselineSigRef.current = sig
     draftDirtyRef.current = false
-    previewDraftUi(d, i18n)
+    setAutoSaveFailed(false)
+    setAutoSaveStatus('idle')
+    previewDraftUi(d, i18nRef.current)
     setAsrConfigPreview(d.asrConfig)
     window.dispatchEvent(new CustomEvent('pi-desktop:asr-config-preview', { detail: d.asrConfig }))
     useUIStore.getState().applyRightPanelRuntime(d.rightPanelCatalog, d.rightPanelPrefs, d.rightPanelOrder)
@@ -204,6 +253,10 @@ export function SettingsDraftProvider({ children }: { children: ReactNode }) {
   discardDraftRef.current = discard
 
   const save = useCallback(async (): Promise<boolean> => {
+    if (autoSaveTimerRef.current !== null) {
+      window.clearTimeout(autoSaveTimerRef.current)
+      autoSaveTimerRef.current = null
+    }
     // Recompute from refs so we never skip commit after a stale dirty closure.
     const appDirtyNow =
       !!draftRef.current && draftSignature(draftRef.current) !== baselineSigRef.current
@@ -215,6 +268,7 @@ export function SettingsDraftProvider({ children }: { children: ReactNode }) {
       const d = draftRef.current
       if (d) {
         // Prefer signature of the committed draft (commit mutates asrConfig in place).
+        baselineDraftRef.current = d
         const sig = draftSignature(d)
         baselineSigRef.current = sig
         draftDirtyRef.current = false
@@ -223,6 +277,7 @@ export function SettingsDraftProvider({ children }: { children: ReactNode }) {
         setAsrConfigPreview(d.asrConfig)
         window.dispatchEvent(new CustomEvent('pi-desktop:asr-config-preview', { detail: d.asrConfig }))
       }
+      setAutoSaveFailed(false)
       setSliceDirtyTick((n) => n + 1)
       notifySettingsDirtyChanged()
       return true
@@ -232,6 +287,92 @@ export function SettingsDraftProvider({ children }: { children: ReactNode }) {
       return false
     } finally {
       setSaving(false)
+    }
+  }, [])
+
+  // Debounced auto-save for regular app preferences (excluding agentRuntime which needs confirmation/restart).
+  useEffect(() => {
+    if (autoSaveTimerRef.current !== null) {
+      window.clearTimeout(autoSaveTimerRef.current)
+      autoSaveTimerRef.current = null
+    }
+    if (!draft || !draftDirty || agentRuntimeDirty || saving || autoSaveFailed || autoSavingRef.current) {
+      return
+    }
+    const targetDraft = draft
+    const targetSig = draftSignature(targetDraft)
+    const prevBaseline = baselineDraftRef.current
+    autoSaveTimerRef.current = window.setTimeout(() => {
+      autoSaveTimerRef.current = null
+      if (!draftRef.current || isAgentRuntimeChanged(draftRef.current, baselineDraftRef.current)) return
+      autoSavingRef.current = true
+      setAutoSaveStatus('saving')
+      void commitSettingsDraft(targetDraft, i18nRef.current, prevBaseline)
+        .then((savedAsr) => {
+          const asrChanged =
+            JSON.stringify(targetDraft.asrConfig) !== JSON.stringify(savedAsr)
+          const latest = draftRef.current
+          const unchangedDuringSave = latest && draftSignature(latest) === targetSig
+          const committedSnap = { ...targetDraft, asrConfig: savedAsr }
+          baselineDraftRef.current = committedSnap
+          const committedSig = draftSignature(committedSnap)
+          baselineSigRef.current = committedSig
+          setBaselineSig(committedSig)
+          if (unchangedDuringSave) {
+            if (asrChanged) {
+              setDraft((prev) => (prev ? { ...prev, asrConfig: savedAsr } : prev))
+            }
+            setAsrConfigPreview(savedAsr)
+            draftDirtyRef.current = false
+          }
+          window.dispatchEvent(new Event('pi-desktop:asr-config-saved'))
+          setAutoSaveStatus('saved')
+          if (autoSaveHideTimerRef.current !== null) {
+            window.clearTimeout(autoSaveHideTimerRef.current)
+          }
+          autoSaveHideTimerRef.current = window.setTimeout(() => {
+            autoSaveHideTimerRef.current = null
+            setAutoSaveStatus('idle')
+          }, 1800)
+          notifySettingsDirtyChanged()
+        })
+        .catch((err) => {
+          console.error('[settings] auto-save failed', err)
+          lastSaveError = err
+          setAutoSaveFailed(true)
+          setAutoSaveStatus('idle')
+          toast.error(tRef.current('common:saveFailed'))
+        })
+        .finally(() => {
+          autoSavingRef.current = false
+        })
+    }, 300)
+
+    return () => {
+      if (autoSaveTimerRef.current !== null) {
+        window.clearTimeout(autoSaveTimerRef.current)
+        autoSaveTimerRef.current = null
+      }
+    }
+  }, [draft, draftDirty, agentRuntimeDirty, saving, autoSaveFailed])
+
+  // Flush pending regular preference changes if the user closes Settings before the 300ms debounce fires.
+  useEffect(() => {
+    return () => {
+      if (autoSaveHideTimerRef.current !== null) {
+        window.clearTimeout(autoSaveHideTimerRef.current)
+      }
+      const latest = draftRef.current
+      const baseline = baselineDraftRef.current
+      if (
+        latest &&
+        baseline &&
+        draftSignature(latest) !== baselineSigRef.current &&
+        !isAgentRuntimeChanged(latest, baseline) &&
+        !autoSavingRef.current
+      ) {
+        void commitSettingsDraft(latest, i18nRef.current, baseline).catch(() => {})
+      }
     }
   }, [])
 
@@ -252,16 +393,18 @@ export function SettingsDraftProvider({ children }: { children: ReactNode }) {
         rightPanelPrefs: normalizeRightPanelPrefs(prev.rightPanelPrefs, cat),
         rightPanelOrder: normalizeRightPanelOrder(prev.rightPanelOrder, cat),
       }
-      previewDraftUi(next, i18n)
+      previewDraftUi(next, i18nRef.current)
       return next
     })
-  }, [i18n])
+  }, [])
 
   const value = useMemo((): SettingsDraftContextValue | null => {
     if (!draft) return null
     return {
       draft,
       dirty,
+      requiresManualSave,
+      autoSaveStatus,
       dirtySliceLabels,
       loading,
       saving,
@@ -277,6 +420,7 @@ export function SettingsDraftProvider({ children }: { children: ReactNode }) {
       setIncludePrereleaseUpdates: (v) => patch((d) => ({ ...d, includePrereleaseUpdates: v })),
       setAlertSoundEnabled: (v) => patch((d) => ({ ...d, alertSoundEnabled: v })),
   setAlertSoundPreset: (v) => patch((d) => ({ ...d, alertSoundPreset: v })),
+  setAlertSoundVolume: (v) => patch((d) => ({ ...d, alertSoundVolume: normalizeAlertSoundVolume(v) })),
       setAlertNotificationEnabled: (v) => patch((d) => ({ ...d, alertNotificationEnabled: v })),
       setAlertOnExtensionUi: (v) => patch((d) => ({ ...d, alertOnExtensionUi: v })),
       setAlertOnRunIdle: (v) => patch((d) => ({ ...d, alertOnRunIdle: v })),
@@ -343,7 +487,7 @@ export function SettingsDraftProvider({ children }: { children: ReactNode }) {
       discard: discardAll,
       save,
     }
-  }, [draft, dirty, dirtySliceLabels, loading, saving, patch, discardAll, save, refreshRightPanelCatalog])
+  }, [draft, dirty, requiresManualSave, autoSaveStatus, dirtySliceLabels, loading, saving, patch, discardAll, save, refreshRightPanelCatalog])
 
   if (!value) {
     return <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">{t('common:loadingSettings')}</div>

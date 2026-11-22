@@ -7,7 +7,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -25,7 +24,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -129,10 +127,9 @@ fun Composer(
                     },
                 )
             }
-            // 第一行：模型 + 思考程度（左边点模型、右边点思考，各占一半，谁也挤不掉谁）
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Pi.c.surface), verticalAlignment = Alignment.CenterVertically) {
                 Row(
-                    Modifier.weight(1f).heightIn(min = 34.dp).clip(RoundedCornerShape(8.dp))
+                    Modifier.weight(1f).heightIn(min = 44.dp).clip(RoundedCornerShape(8.dp))
                         .clickable(role = Role.Button, onClick = onModel).padding(horizontal = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -142,7 +139,7 @@ fun Composer(
                 }
                 if (thinkingLabel != null) {
                     Row(
-                        Modifier.weight(1f).heightIn(min = 34.dp).clip(RoundedCornerShape(8.dp))
+                        Modifier.weight(1f).heightIn(min = 44.dp).clip(RoundedCornerShape(8.dp))
                             .clickable(role = Role.Button, onClick = onThinking)
                             .semantics { contentDescription = thinkingLabel }.padding(horizontal = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -152,43 +149,40 @@ fun Composer(
                         Text(thinkingLabel, style = Pi.t.secondary.copy(color = Pi.c.fg2), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                     }
                 }
-            }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                // 第二行：附件 / 命令 / 文件 与 思考程度 / 工具
-                BoxWithConstraints(Modifier.weight(1f)) {
-                    val compact = maxWidth < 320.dp
-                    Row(Modifier.clipToBounds(), verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            Modifier.size(36.dp).clip(CircleShape).clickable(enabled = editable, role = Role.Button, onClick = onAttach),
-                            contentAlignment = Alignment.Center,
-                        ) { PiIcon(PiIcons.Plus, Pi.c.fg2, 18.dp, contentDescription = stringResource(R.string.attach)) }
-                        Box(
-                            Modifier.size(36.dp).clip(CircleShape).clickable(enabled = editable, role = Role.Button, onClick = onCommands),
-                            contentAlignment = Alignment.Center,
-                        ) { PiIcon(PiIcons.Slash, Pi.c.fg2, 17.dp, contentDescription = stringResource(R.string.slash_open)) }
-                        Box(
-                            Modifier.size(36.dp).clip(CircleShape).clickable(enabled = editable, role = Role.Button, onClick = onFiles),
-                            contentAlignment = Alignment.Center,
-                        ) { PiIcon(PiIcons.At, Pi.c.fg2, 17.dp, contentDescription = stringResource(R.string.files_open)) }
-                        val toolsDesc = stringResource(R.string.tools_count, toolsOn)
-                        Row(
-                            Modifier.heightIn(min = 36.dp).clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button, onClick = onTools).semantics { contentDescription = toolsDesc }.padding(horizontal = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            PiIcon(PiIcons.Sparkles, Pi.c.fg2, 16.dp)
-                            if (toolsOn > 0) {
-                                Spacer(Modifier.width(3.dp))
-                                Text("$toolsOn", style = Pi.t.meta.copy(color = Pi.c.fg2), maxLines = 1)
-                            }
-                        }
+                val toolsDesc = stringResource(R.string.tools_count, toolsOn)
+                Row(
+                    Modifier.widthIn(min = 44.dp).heightIn(min = 44.dp).clip(RoundedCornerShape(8.dp))
+                        .clickable(role = Role.Button, onClick = onTools).semantics { contentDescription = toolsDesc }.padding(horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    PiIcon(PiIcons.Sparkles, Pi.c.fg2, 16.dp)
+                    if (toolsOn > 0) {
+                        Spacer(Modifier.width(3.dp))
+                        Text("$toolsOn", style = Pi.t.meta.copy(color = Pi.c.fg2), maxLines = 1)
                     }
                 }
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.size(44.dp).clip(CircleShape).clickable(enabled = editable, role = Role.Button, onClick = onAttach),
+                    contentAlignment = Alignment.Center,
+                ) { PiIcon(PiIcons.Plus, Pi.c.fg2, 18.dp, contentDescription = stringResource(R.string.attach)) }
+                Box(
+                    Modifier.size(44.dp).clip(CircleShape).clickable(enabled = editable, role = Role.Button, onClick = onCommands),
+                    contentAlignment = Alignment.Center,
+                ) { PiIcon(PiIcons.Slash, Pi.c.fg2, 17.dp, contentDescription = stringResource(R.string.slash_open)) }
+                Box(
+                    Modifier.size(44.dp).clip(CircleShape).clickable(enabled = editable, role = Role.Button, onClick = onFiles),
+                    contentAlignment = Alignment.Center,
+                ) { PiIcon(PiIcons.At, Pi.c.fg2, 17.dp, contentDescription = stringResource(R.string.files_open)) }
+                Spacer(Modifier.weight(1f))
                 Spacer(Modifier.width(8.dp))
                 AnimatedVisibility(running, enter = fadeIn() + scaleIn(initialScale = 0.7f), exit = fadeOut() + scaleOut(targetScale = 0.7f)) {
                     Row {
                         val stopDesc = stringResource(if (stopping) R.string.stopping else R.string.stop)
                         Box(
-                            Modifier.size(36.dp).clip(CircleShape).border(1.dp, Pi.c.line, CircleShape)
+                            Modifier.size(44.dp).clip(CircleShape).border(1.dp, Pi.c.line, CircleShape)
                                 .clickable(enabled = enabled && !stopping, role = Role.Button) {
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                     onStop()
@@ -202,7 +196,7 @@ fun Composer(
                 val canSend = enabled && (text.text.isNotBlank() || attachments.any { it.status == Attachment.Status.Ready }) && attachments.none { it.status == Attachment.Status.Failed }
                 val sendDesc = stringResource(if (running) R.string.send_steer else R.string.send)
                 Box(
-                    Modifier.size(36.dp).clip(CircleShape).background(Pi.c.fg.copy(alpha = if (canSend) 1f else 0.35f))
+                    Modifier.size(44.dp).clip(CircleShape).background(Pi.c.fg.copy(alpha = if (canSend) 1f else 0.35f))
                         .combinedClickable(
                             enabled = canSend,
                             role = Role.Button,

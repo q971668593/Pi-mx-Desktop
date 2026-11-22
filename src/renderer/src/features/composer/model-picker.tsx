@@ -18,6 +18,7 @@ import {
 import { sessionFilesEqual } from '@renderer/lib/session-file-key'
 import { commitSessionDisplayMeta } from '@renderer/lib/session-display-meta'
 import { loadModelThinkingBindings } from '@renderer/lib/model-thinking-bindings'
+import { openSettingsPage } from '@renderer/lib/settings-navigation'
 import { draftModelThinking } from './thinking-level-actions'
 
 type ModelRow = { id: string; provider: string; name?: string; available?: boolean; availableThinkingLevels?: string[] }
@@ -309,16 +310,28 @@ export function ModelPicker() {
 
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto py-1">
         {filtered.length === 0 && (
-          <div className="flex items-center justify-center gap-1.5 px-4 py-6 text-center text-[12px] text-muted-foreground/50">
+          <div className="flex flex-col items-center justify-center gap-2.5 px-4 py-6 text-center text-[12px] text-muted-foreground/70">
             {models.length > 0 ? (
               t('composer:noMatch')
             ) : loading ? (
-              <>
+              <div className="flex items-center gap-1.5">
                 <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
                 {t('composer:loadingModels')}
-              </>
+              </div>
             ) : (
-              t('composer:noModels')
+              <>
+                <span>{t('composer:noModels')}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false)
+                    openSettingsPage({ page: 'models' })
+                  }}
+                  className="rounded-md bg-primary px-3 py-1.5 text-[11.5px] font-medium text-primary-foreground transition-opacity hover:opacity-90"
+                >
+                  {t('composer:configureModels')}
+                </button>
+              </>
             )}
           </div>
         )}

@@ -1,6 +1,10 @@
 import type { i18n as I18n } from 'i18next'
 import { normalizeBackground, type BackgroundSettings } from '@shared/background'
-import { normalizeAlertSoundPreset, type AlertSoundPreset } from '@shared/alert-sound'
+import {
+  normalizeAlertSoundPreset,
+  normalizeAlertSoundVolume,
+  type AlertSoundPreset,
+} from '@shared/alert-sound'
 import { applyBackground } from '@renderer/lib/theme/background-layer'
 import { ipcClient } from '@renderer/lib/ipc-client'
 import { applyIconTheme } from '@renderer/components/icons'
@@ -51,6 +55,8 @@ export type SettingsDraft = {
   includePrereleaseUpdates: boolean
   alertSoundEnabled: boolean
   alertSoundPreset: AlertSoundPreset
+  /** 提示音音量百分比：0 = 静音，100 = 设计音量，200 = 加倍 */
+  alertSoundVolume: number
   alertNotificationEnabled: boolean
   alertOnExtensionUi: boolean
   alertOnRunIdle: boolean
@@ -141,6 +147,7 @@ export function draftSignature(d: SettingsDraft): string {
     includePrereleaseUpdates: d.includePrereleaseUpdates,
     alertSoundEnabled: d.alertSoundEnabled,
     alertSoundPreset: d.alertSoundPreset,
+    alertSoundVolume: d.alertSoundVolume,
     alertNotificationEnabled: d.alertNotificationEnabled,
     alertOnExtensionUi: d.alertOnExtensionUi,
     alertOnRunIdle: d.alertOnRunIdle,
@@ -188,6 +195,7 @@ export async function loadSettingsDraftFromDisk(i18nLanguage: string): Promise<S
     includePrereleaseUpdates: s.includePrereleaseUpdates === true,
     alertSoundEnabled: s.alertSoundEnabled !== false,
     alertSoundPreset: normalizeAlertSoundPreset(s.alertSoundPreset),
+    alertSoundVolume: normalizeAlertSoundVolume(s.alertSoundVolume),
     alertNotificationEnabled: s.alertNotificationEnabled !== false,
     alertOnExtensionUi: s.alertOnExtensionUi !== false,
     alertOnRunIdle: s.alertOnRunIdle !== false,
@@ -214,15 +222,27 @@ export async function loadSettingsDraftFromDisk(i18nLanguage: string): Promise<S
 }
 
 let appliedThemeChoice: ThemeChoice = 'system'
+let themeTransitionTimer: number | null = null
 
 export function applyThemeToDocument(theme: ThemeChoice): void {
   appliedThemeChoice = theme
-  if (theme === 'dark') document.documentElement.classList.add('dark')
-  else if (theme === 'light') document.documentElement.classList.remove('dark')
-  else {
-    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-    document.documentElement.classList.toggle('dark', isDark)
+  const root = document.documentElement
+  const wasDark = root.classList.contains('dark')
+  const nextDark =
+    theme === 'dark'
+      ? true
+      : theme === 'light'
+        ? false
+        : window.matchMedia('(prefers-color-scheme: dark)').matches
+  if (wasDark !== nextDark) {
+    root.classList.add('theme-transitioning')
+    if (themeTransitionTimer !== null) window.clearTimeout(themeTransitionTimer)
+    themeTransitionTimer = window.setTimeout(() => {
+      themeTransitionTimer = null
+      root.classList.remove('theme-transitioning')
+    }, 200)
   }
+  root.classList.toggle('dark', nextDark)
 }
 
 function normalizeThemeChoice(raw: unknown): ThemeChoice {
@@ -295,79 +315,170 @@ export function previewDraftUi(draft: SettingsDraft, i18n: I18n): void {
   if (i18n.language !== draft.language) void i18n.changeLanguage(draft.language)
 }
 
-export async function commitSettingsDraft(draft: SettingsDraft, i18n: I18n): Promise<AsrConfig> {
-  await ipcClient.invoke('settings.set', { key: 'theme', value: draft.theme })
-  await ipcClient.invoke('settings.set', { key: 'iconTheme', value: draft.iconTheme })
-  await ipcClient.invoke('settings.set', {
-    key: 'customTheme',
-    value: draft.customTheme.light || draft.customTheme.dark ? draft.customTheme : null,
-  })
-  await ipcClient.invoke('settings.set', { key: 'customCssOverride', value: draft.customCssOverride })
-  await ipcClient.invoke('settings.set', { key: 'background', value: draft.background })
-  await ipcClient.invoke('settings.set', { key: 'language', value: draft.language })
-  await ipcClient.invoke('settings.set', { key: 'autoOpenLastProject', value: draft.autoOpenLastProject })
-  await ipcClient.invoke('settings.set', { key: 'builtinBillionContext', value: draft.builtinBillionContext })
-  await ipcClient.invoke('settings.set', { key: 'autoCheckRegistryUpdates', value: draft.autoCheckRegistryUpdates })
-  await ipcClient.invoke('settings.set', { key: 'includePrereleaseUpdates', value: draft.includePrereleaseUpdates })
-  await ipcClient.invoke('settings.set', { key: 'alertSoundEnabled', value: draft.alertSoundEnabled })
-  await ipcClient.invoke('settings.set', { key: 'alertSoundPreset', value: draft.alertSoundPreset })
-  await ipcClient.invoke('settings.set', { key: 'alertNotificationEnabled', value: draft.alertNotificationEnabled })
-  await ipcClient.invoke('settings.set', { key: 'alertOnExtensionUi', value: draft.alertOnExtensionUi })
-  await ipcClient.invoke('settings.set', { key: 'alertOnRunIdle', value: draft.alertOnRunIdle })
-  await ipcClient.invoke('settings.set', {
-    key: 'alertOnBackgroundRunIdle',
-    value: draft.alertOnBackgroundRunIdle,
-  })
-  await ipcClient.invoke('settings.set', { key: 'alertOnRunFailed', value: draft.alertOnRunFailed })
-  await ipcClient.invoke('settings.set', {
-    key: 'aiActivityGlowEnabled',
-    value: draft.aiActivityGlowEnabled,
-  })
-  await ipcClient.invoke('settings.set', {
-    key: 'completionNotificationTimeoutSeconds',
-    value: normalizeCompletionTimeoutSeconds(draft.completionNotificationTimeoutSeconds),
-  })
-  await ipcClient.invoke('settings.set', {
-    key: 'completionNotificationPreview',
-    value: draft.completionNotificationPreview,
-  })
-  await ipcClient.invoke('settings.set', {
-    key: 'completionNotificationOnlyWhenUnfocused',
-    value: draft.completionNotificationOnlyWhenUnfocused,
-  })
-  await ipcClient.invoke('settings.set', {
-    key: 'completionNotificationDndUntil',
-    value: draft.completionNotificationDndUntil,
-  })
-  await ipcClient.invoke('settings.set', {
-    key: 'completionNotificationDelivery',
-    value: draft.completionNotificationDelivery,
-  })
-  await ipcClient.invoke('settings.set', {
-    key: 'maxSessionWorkers',
-    value: normalizeMaxSessionWorkersUi(draft.maxSessionWorkers),
-  })
-  await ipcClient.invoke('settings.set', {
-    key: 'sessionWorkerIdleTimeoutMinutes',
-    value: normalizeIdleTimeoutMinutesUi(draft.sessionWorkerIdleTimeoutMinutes),
-  })
-  await ipcClient.invoke('settings.set', {
-    key: 'timelineMaxAutoExpandedTools',
-    value: draft.timelineMaxAutoExpandedTools,
-  })
-  await ipcClient.invoke('settings.set', { key: 'timelineVisibleTurns', value: normalizeTimelineVisibleTurns(draft.timelineVisibleTurns) })
-  await ipcClient.invoke('settings.set', { key: 'extensionOverrides', value: draft.extensionOverrides })
-  await ipcClient.invoke('rightPanels.saveLayout', {
-    prefs: draft.rightPanelPrefs,
-    order: draft.rightPanelOrder,
-  })
+export async function commitSettingsDraft(
+  draft: SettingsDraft,
+  i18n: I18n,
+  baseline?: SettingsDraft | null,
+): Promise<AsrConfig> {
+  const customThemeValue = draft.customTheme.light || draft.customTheme.dark ? draft.customTheme : null
+  const prevCustomThemeValue = baseline
+    ? (baseline.customTheme.light || baseline.customTheme.dark ? baseline.customTheme : null)
+    : undefined
+  const changed = (nextVal: unknown, prevVal: unknown): boolean =>
+    !baseline || JSON.stringify(nextVal ?? null) !== JSON.stringify(prevVal ?? null)
 
-  const asrRes = await ipcClient.invoke('settings.set', { key: 'asrConfig', value: draft.asrConfig })
-  const savedAsr = asrConfigFromSettingsResponse((asrRes?.value || draft.asrConfig) as AsrConfig)
-  draft.asrConfig = savedAsr
+  if (changed(draft.theme, baseline?.theme)) {
+    await ipcClient.invoke('settings.set', { key: 'theme', value: draft.theme })
+  }
+  if (changed(draft.iconTheme, baseline?.iconTheme)) {
+    await ipcClient.invoke('settings.set', { key: 'iconTheme', value: draft.iconTheme })
+  }
+  if (changed(customThemeValue, prevCustomThemeValue)) {
+    await ipcClient.invoke('settings.set', { key: 'customTheme', value: customThemeValue })
+  }
+  if (changed(draft.customCssOverride, baseline?.customCssOverride)) {
+    await ipcClient.invoke('settings.set', { key: 'customCssOverride', value: draft.customCssOverride })
+  }
+  if (changed(draft.background, baseline?.background)) {
+    await ipcClient.invoke('settings.set', { key: 'background', value: draft.background })
+  }
+  if (changed(draft.language, baseline?.language)) {
+    await ipcClient.invoke('settings.set', { key: 'language', value: draft.language })
+  }
+  if (changed(draft.autoOpenLastProject, baseline?.autoOpenLastProject)) {
+    await ipcClient.invoke('settings.set', { key: 'autoOpenLastProject', value: draft.autoOpenLastProject })
+  }
+  if (changed(draft.builtinBillionContext, baseline?.builtinBillionContext)) {
+    await ipcClient.invoke('settings.set', { key: 'builtinBillionContext', value: draft.builtinBillionContext })
+  }
+  if (changed(draft.autoCheckRegistryUpdates, baseline?.autoCheckRegistryUpdates)) {
+    await ipcClient.invoke('settings.set', { key: 'autoCheckRegistryUpdates', value: draft.autoCheckRegistryUpdates })
+  }
+  if (changed(draft.includePrereleaseUpdates, baseline?.includePrereleaseUpdates)) {
+    await ipcClient.invoke('settings.set', { key: 'includePrereleaseUpdates', value: draft.includePrereleaseUpdates })
+  }
+  if (changed(draft.alertSoundEnabled, baseline?.alertSoundEnabled)) {
+    await ipcClient.invoke('settings.set', { key: 'alertSoundEnabled', value: draft.alertSoundEnabled })
+  }
+  if (changed(draft.alertSoundPreset, baseline?.alertSoundPreset)) {
+    await ipcClient.invoke('settings.set', { key: 'alertSoundPreset', value: draft.alertSoundPreset })
+  }
+  if (changed(draft.alertSoundVolume, baseline?.alertSoundVolume)) {
+    await ipcClient.invoke('settings.set', { key: 'alertSoundVolume', value: draft.alertSoundVolume })
+  }
+  if (changed(draft.alertNotificationEnabled, baseline?.alertNotificationEnabled)) {
+    await ipcClient.invoke('settings.set', { key: 'alertNotificationEnabled', value: draft.alertNotificationEnabled })
+  }
+  if (changed(draft.alertOnExtensionUi, baseline?.alertOnExtensionUi)) {
+    await ipcClient.invoke('settings.set', { key: 'alertOnExtensionUi', value: draft.alertOnExtensionUi })
+  }
+  if (changed(draft.alertOnRunIdle, baseline?.alertOnRunIdle)) {
+    await ipcClient.invoke('settings.set', { key: 'alertOnRunIdle', value: draft.alertOnRunIdle })
+  }
+  if (changed(draft.alertOnBackgroundRunIdle, baseline?.alertOnBackgroundRunIdle)) {
+    await ipcClient.invoke('settings.set', {
+      key: 'alertOnBackgroundRunIdle',
+      value: draft.alertOnBackgroundRunIdle,
+    })
+  }
+  if (changed(draft.alertOnRunFailed, baseline?.alertOnRunFailed)) {
+    await ipcClient.invoke('settings.set', { key: 'alertOnRunFailed', value: draft.alertOnRunFailed })
+  }
+  if (changed(draft.aiActivityGlowEnabled, baseline?.aiActivityGlowEnabled)) {
+    await ipcClient.invoke('settings.set', {
+      key: 'aiActivityGlowEnabled',
+      value: draft.aiActivityGlowEnabled,
+    })
+  }
+  const normalizedTimeout = normalizeCompletionTimeoutSeconds(draft.completionNotificationTimeoutSeconds)
+  const prevTimeout = baseline ? normalizeCompletionTimeoutSeconds(baseline.completionNotificationTimeoutSeconds) : undefined
+  if (changed(normalizedTimeout, prevTimeout)) {
+    await ipcClient.invoke('settings.set', {
+      key: 'completionNotificationTimeoutSeconds',
+      value: normalizedTimeout,
+    })
+  }
+  if (changed(draft.completionNotificationPreview, baseline?.completionNotificationPreview)) {
+    await ipcClient.invoke('settings.set', {
+      key: 'completionNotificationPreview',
+      value: draft.completionNotificationPreview,
+    })
+  }
+  if (changed(draft.completionNotificationOnlyWhenUnfocused, baseline?.completionNotificationOnlyWhenUnfocused)) {
+    await ipcClient.invoke('settings.set', {
+      key: 'completionNotificationOnlyWhenUnfocused',
+      value: draft.completionNotificationOnlyWhenUnfocused,
+    })
+  }
+  if (changed(draft.completionNotificationDndUntil, baseline?.completionNotificationDndUntil)) {
+    await ipcClient.invoke('settings.set', {
+      key: 'completionNotificationDndUntil',
+      value: draft.completionNotificationDndUntil,
+    })
+  }
+  if (changed(draft.completionNotificationDelivery, baseline?.completionNotificationDelivery)) {
+    await ipcClient.invoke('settings.set', {
+      key: 'completionNotificationDelivery',
+      value: draft.completionNotificationDelivery,
+    })
+  }
+  const normalizedWorkers = normalizeMaxSessionWorkersUi(draft.maxSessionWorkers)
+  const prevWorkers = baseline ? normalizeMaxSessionWorkersUi(baseline.maxSessionWorkers) : undefined
+  if (changed(normalizedWorkers, prevWorkers)) {
+    await ipcClient.invoke('settings.set', {
+      key: 'maxSessionWorkers',
+      value: normalizedWorkers,
+    })
+  }
+  const normalizedIdle = normalizeIdleTimeoutMinutesUi(draft.sessionWorkerIdleTimeoutMinutes)
+  const prevIdle = baseline ? normalizeIdleTimeoutMinutesUi(baseline.sessionWorkerIdleTimeoutMinutes) : undefined
+  if (changed(normalizedIdle, prevIdle)) {
+    await ipcClient.invoke('settings.set', {
+      key: 'sessionWorkerIdleTimeoutMinutes',
+      value: normalizedIdle,
+    })
+  }
+  if (changed(draft.timelineMaxAutoExpandedTools, baseline?.timelineMaxAutoExpandedTools)) {
+    await ipcClient.invoke('settings.set', {
+      key: 'timelineMaxAutoExpandedTools',
+      value: draft.timelineMaxAutoExpandedTools,
+    })
+  }
+  const normalizedVisibleTurns = normalizeTimelineVisibleTurns(draft.timelineVisibleTurns)
+  const prevVisibleTurns = baseline ? normalizeTimelineVisibleTurns(baseline.timelineVisibleTurns) : undefined
+  if (changed(normalizedVisibleTurns, prevVisibleTurns)) {
+    await ipcClient.invoke('settings.set', { key: 'timelineVisibleTurns', value: normalizedVisibleTurns })
+  }
+  if (changed(draft.extensionOverrides, baseline?.extensionOverrides)) {
+    await ipcClient.invoke('settings.set', { key: 'extensionOverrides', value: draft.extensionOverrides })
+  }
+  if (
+    changed(draft.rightPanelPrefs, baseline?.rightPanelPrefs) ||
+    changed(draft.rightPanelOrder, baseline?.rightPanelOrder)
+  ) {
+    await ipcClient.invoke('rightPanels.saveLayout', {
+      prefs: draft.rightPanelPrefs,
+      order: draft.rightPanelOrder,
+    })
+  }
 
-  await ipcClient.invoke('settings.set', { key: 'agentRuntime', value: draft.agentRuntime })
-  await ipcClient.invoke('settings.set', { key: 'pluginModel', value: draft.pluginModel })
+  let savedAsr = draft.asrConfig
+  if (
+    !baseline ||
+    JSON.stringify(normalizeAsrForSignature(draft.asrConfig)) !==
+      JSON.stringify(normalizeAsrForSignature(baseline.asrConfig))
+  ) {
+    const asrRes = await ipcClient.invoke('settings.set', { key: 'asrConfig', value: draft.asrConfig })
+    savedAsr = asrConfigFromSettingsResponse((asrRes?.value || draft.asrConfig) as AsrConfig)
+    draft.asrConfig = savedAsr
+  }
+
+  if (changed(draft.agentRuntime, baseline?.agentRuntime)) {
+    await ipcClient.invoke('settings.set', { key: 'agentRuntime', value: draft.agentRuntime })
+  }
+  if (changed(draft.pluginModel, baseline?.pluginModel)) {
+    await ipcClient.invoke('settings.set', { key: 'pluginModel', value: draft.pluginModel })
+  }
 
   useUIStore.getState().setTheme(draft.theme)
   applyIconTheme(draft.iconTheme)

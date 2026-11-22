@@ -17,6 +17,8 @@ import { useUIStore } from '@renderer/stores/ui-store'
 import { SessionAttentionDot } from '@renderer/features/workspace/session-attention-dot'
 import { BranchStatusTrigger } from '@renderer/features/git/branch-status'
 import { ShellPopover } from './shell-popover'
+import { StatusSpeed } from './status-speed'
+import { ComposerToolsMenu } from '@renderer/features/composer/composer-tools-menu'
 
 type WorkerRow = { sessionFile: string; running: boolean; cwd: string }
 type MemoryKind = 'main' | 'ui' | 'sessions' | 'browser' | 'gpu' | 'other'
@@ -166,6 +168,7 @@ export function StatusBar() {
   }
   const memory = rss ? fmt(rss) : '—'
   const runFailed = useUIStore((s) => s.runState.status === 'failed')
+  const runRunning = useUIStore((s) => s.runState.status === 'running')
   const ratio = status?.total ? rss / status.total : 0
   const level = ratio >= 0.8 ? 'critical' : ratio >= 0.6 ? 'warning' : 'normal'
   const live = counts.working + counts.needsYou + counts.done
@@ -186,6 +189,10 @@ export function StatusBar() {
       </button>
       {/* 当前项目与分支：曾经在侧栏改版时丢了入口（命令面板的「切换分支」因此变成空操作），挂回状态栏左侧 */}
       <BranchStatusTrigger />
+      <div className="hidden min-w-0 items-center overflow-hidden md:flex">
+        <StatusSpeed />
+        <ComposerToolsMenu location="status" running={runRunning} />
+      </div>
       <div className="ml-auto flex shrink-0 items-center">
         <button type="button" className="workbench-status-trigger" aria-pressed={!rightHidden && activePanel === 'terminal'} title={t('common:terminal.toggle')} aria-label={t('common:terminal.toggle')} onClick={() => {
           const state = useUIStore.getState()

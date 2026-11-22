@@ -93,12 +93,14 @@ export function RunPanel() {
     activeTool: runState.activeTool,
     thinkingLevel,
   })
-  const tokPerSec =
-    metrics.tps != null && metrics.tps > 0 ? Math.round(metrics.tps / 4) : null
-  /** Live rate while streaming, last measured rate once the run is over. */
+  const tokPerSec = isRunning
+    ? (metrics.tps != null && metrics.tps > 0 ? Math.round(metrics.tps / 4) : null)
+    : (runState.runOutputTokens != null && runState.runOutputTokens > 0 && runState.lastRunDurationMs
+      ? Math.round(runState.runOutputTokens * 1000 / runState.lastRunDurationMs) : null)
+  /** Live estimate while streaming, provider-reported output averaged across the settled run. */
   const speedLabel =
     tokPerSec != null
-      ? `~${tokPerSec} tok/s`
+      ? `${isRunning ? '~' : ''}${tokPerSec} tok/s`
       : isRunning
         ? t('run:waitingOutput')
         : '—'

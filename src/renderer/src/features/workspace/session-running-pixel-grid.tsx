@@ -7,6 +7,55 @@ const CELL_COUNT = GRID * GRID
 const CELL_PX = 3
 const GAP_PX = 1.5
 const GRID_OUTER_PX = GRID * CELL_PX + (GRID - 1) * GAP_PX
+const TICK_INTERVAL_MS = 1400
+
+const subscribers = new Set<(epoch: number) => void>()
+let sharedEpoch = 0
+let sharedTimer: number | null = null
+let listeningVisibility = false
+
+function stopSharedTimer(): void {
+  if (sharedTimer !== null) {
+    window.clearInterval(sharedTimer)
+    sharedTimer = null
+  }
+}
+
+function advanceSharedEpoch(): void {
+  sharedEpoch += 1
+  for (const notify of subscribers) notify(sharedEpoch)
+}
+
+function syncSharedTimer(): void {
+  if (subscribers.size === 0 || (typeof document !== 'undefined' && document.hidden)) {
+    stopSharedTimer()
+    return
+  }
+  if (sharedTimer === null) {
+    sharedTimer = window.setInterval(advanceSharedEpoch, TICK_INTERVAL_MS)
+  }
+}
+
+function onVisibilityChange(): void {
+  syncSharedTimer()
+}
+
+function subscribePixelTick(listener: (epoch: number) => void): () => void {
+  subscribers.add(listener)
+  if (!listeningVisibility && typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    listeningVisibility = true
+  }
+  syncSharedTimer()
+  return () => {
+    subscribers.delete(listener)
+    if (subscribers.size === 0 && listeningVisibility && typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      listeningVisibility = false
+    }
+    syncSharedTimer()
+  }
+}
 
 function pickLitCells(count: number, seed: number): Set<number> {
   const indices = Array.from({ length: CELL_COUNT }, (_, i) => i)
@@ -35,12 +84,9 @@ export function SessionRunningPixelGrid({
   className?: string
   title?: string
 }) {
-  const [epoch, setEpoch] = useState(0)
+  const [epoch, setEpoch] = useState(() => sharedEpoch)
 
-  useEffect(() => {
-    const timer = window.setInterval(() => setEpoch((n) => n + 1), 1400)
-    return () => window.clearInterval(timer)
-  }, [])
+  useEffect(() => subscribePixelTick(setEpoch), [])
 
   const lit = useMemo(() => {
     // Light 3–4 cells only — sparse, not a filled block.

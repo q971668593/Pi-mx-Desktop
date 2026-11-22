@@ -87,7 +87,7 @@ export async function recordBranches({ appDir, demo, lang, outDir }) {
 }
 
 /** ~10 weeks of replies across two models, so the day chart and heatmaps have something to show. */
-function seedUsage(demo) {
+export function seedUsage(demo) {
   const dir = join(demo.agentDir, 'sessions', '--usage-history--')
   mkdirSync(dir, { recursive: true })
   const now = Date.now()

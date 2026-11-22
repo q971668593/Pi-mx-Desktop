@@ -36,6 +36,7 @@ import { isWslWindowsPath } from '@shared/wsl-path'
 import { getAgentRuntimeConfig, isWslRuntimeActive } from './wsl/runtime-config'
 import { normalizeWorkspaceCwd } from './wsl/workspace-path'
 import { readMaxSessionWorkers } from './worker-pool-config'
+import { shouldForwardEventToRenderer } from './worker-event-filter'
 import { configStore } from './config-store'
 import { unlink } from 'node:fs/promises'
 import { createNewSessionInPool, nextWorkspacePoolKey } from './worker-manager-new-session'
@@ -387,8 +388,9 @@ export class WorkerManager {
       this.applyDeferredModelReload(fromPoolKey)
     }
     if (!this.mainWindow || this.mainWindow.isDestroyed()) return
-    this.mainWindow.webContents.send('ipc:events', enriched)
     void agentTurnActive
+    if (!shouldForwardEventToRenderer(enriched, { fromPoolKey, foregroundPoolKey: this.foregroundPoolKey })) return
+    this.mainWindow.webContents.send('ipc:events', enriched)
   }
 
   /**

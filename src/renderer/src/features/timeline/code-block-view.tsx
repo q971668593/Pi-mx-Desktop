@@ -1,9 +1,10 @@
 import { memo, useEffect, useRef, useState } from 'react'
-import { Check, ChevronDown, Copy } from '@renderer/components/icons'
+import { Check, ChevronDown, Copy, Terminal } from '@renderer/components/icons'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@renderer/lib/utils'
 import { sanitizeHtml } from '@renderer/lib/sanitize'
 import { highlightCodeToHtml } from '@renderer/lib/shiki-highlighter'
+import { isShellLanguage, sendCommandToTerminal } from '@renderer/features/terminal/send-to-terminal'
 
 type Props = {
   code: string
@@ -88,15 +89,28 @@ function CodeBlockViewImpl({
         <span className="font-mono text-[10px] uppercase tracking-wide text-foreground-secondary/55">
           {lang || t('timeline:code')}
         </span>
-        <button
-          type="button"
-          onClick={copy}
-          aria-label={copied ? t('timeline:copied') : t('timeline:copy')}
-          title={copied ? t('timeline:copied') : t('timeline:copy')}
-          className="flex h-5 w-5 items-center justify-center rounded text-foreground-secondary/50 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 hover:text-foreground"
-        >
-          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-        </button>
+        <div className="flex items-center gap-0.5">
+          {isShellLanguage(lang) && code.trim() ? (
+            <button
+              type="button"
+              onClick={() => void sendCommandToTerminal(code)}
+              aria-label={t('timeline:sendToTerminal')}
+              title={t('timeline:sendToTerminal')}
+              className="flex h-5 w-5 items-center justify-center rounded text-foreground-secondary/50 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 hover:text-foreground"
+            >
+              <Terminal className="h-3 w-3" />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={copy}
+            aria-label={copied ? t('timeline:copied') : t('timeline:copy')}
+            title={copied ? t('timeline:copied') : t('timeline:copy')}
+            className="flex h-5 w-5 items-center justify-center rounded text-foreground-secondary/50 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 hover:text-foreground"
+          >
+            {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+          </button>
+        </div>
       </div>
       <div
         data-independent-scroll={scrollActive ? '' : undefined}

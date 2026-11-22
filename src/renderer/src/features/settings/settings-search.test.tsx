@@ -32,4 +32,32 @@ describe('Settings search presentation', () => {
     expect(screen.getByText('Workers')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Show advanced' })).toBeInTheDocument()
   })
+
+  it('hides sections whose rows are all filtered out during search', () => {
+    const view = render(
+      <SettingsSearchContext.Provider value="sound">
+        <SettingsSection title="Notifications">
+          <SettingRow label="Sound"><input /></SettingRow>
+        </SettingsSection>
+        <SettingsSection title="Shortcuts">
+          <SettingRow label="Command Palette"><input /></SettingRow>
+        </SettingsSection>
+      </SettingsSearchContext.Provider>,
+    )
+    expect(screen.getByText('Notifications')).toBeInTheDocument()
+    expect(screen.queryByText('Shortcuts')).not.toBeInTheDocument()
+
+    view.rerender(
+      <SettingsSearchContext.Provider value="command">
+        <SettingsSection title="Notifications">
+          <SettingRow label="Sound"><input /></SettingRow>
+        </SettingsSection>
+        <SettingsSection title="Shortcuts">
+          <SettingRow label="Command Palette"><input /></SettingRow>
+        </SettingsSection>
+      </SettingsSearchContext.Provider>,
+    )
+    expect(screen.queryByText('Notifications')).not.toBeInTheDocument()
+    expect(screen.getByText('Shortcuts')).toBeInTheDocument()
+  })
 })

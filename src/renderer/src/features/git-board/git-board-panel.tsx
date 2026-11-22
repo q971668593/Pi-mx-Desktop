@@ -16,6 +16,7 @@ import { fileTreeIcon } from '@renderer/features/workspace-files/file-tree-icons
 import './git-board.css'
 import { GitCommandHistory } from './git-command-history'
 import { GitChangesTree } from './git-changes-tree'
+import { BranchPickerPopover, type BranchStatus } from '@renderer/features/git/branch-picker'
 
 function CommitDate({ time }: { time: number }) {
   if (!time) return null
@@ -108,6 +109,10 @@ export function GitBoardPanel() {
   const [menu, setMenu] = useState<{ x: number; y: number; commit: Commit } | null>(null)
   const [confirm, setConfirm] = useState<{ title: string; message: string; run: () => Promise<void> } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [branchPickerOpen, setBranchPickerOpen] = useState(false)
+  const [branchStatus, setBranchStatus] = useState<BranchStatus | null>(null)
+  const branchAnchor = useRef<HTMLButtonElement>(null)
+  const closeBranchPicker = useCallback(() => setBranchPickerOpen(false), [])
   const loadSequence = useRef(0)
 
   const changesViewKey = cwd ? workspacePathKey(cwd) : ''
@@ -157,6 +162,31 @@ export function GitBoardPanel() {
     return () => { loadSequence.current += 1 }
   }, [cwd])
   useEffect(() => window.piDesktop?.onGitWorkspaceChanged?.(() => void load(false)) || (() => {}), [load])
+  // The header branch label opens the shared picker, so it needs the same status the status bar reads.
+  // Failure is not fatal: the overview already knows branch / upstream / ahead / behind, and that
+  // fallback keeps the picker usable when the extra round trip does not answer.
+  useEffect(() => {
+    if (!cwd) return setBranchStatus(null)
+    let live = true
+    void ipcClient
+      .invoke('git.branchStatus', { cwd })
+      .then((r) => live && setBranchStatus(r as BranchStatus))
+      .catch(() => live && setBranchStatus(null))
+    return () => {
+      live = false
+    }
+  }, [cwd, data?.status.branch, data?.status.ahead, data?.status.behind])
+
+  const pickerStatus: BranchStatus =
+    branchStatus ?? {
+      isRepo: true,
+      branch: data?.status.branch || null,
+      head: data?.commits[0]?.hash || '',
+      upstream: data?.status.upstream ?? null,
+      ahead: data?.status.ahead ?? 0,
+      behind: data?.status.behind ?? 0,
+      dirty: data?.files.length ?? 0,
+    }
   const rows = useMemo(() => layoutCommitGraph(data?.commits || []), [data])
   const nodes = useMemo(() => parseConflicts(conflictText), [conflictText])
   const unresolved = nodes.filter((node) => node.kind === 'conflict' && !choices.has(node.index)).length
@@ -495,7 +525,25 @@ export function GitBoardPanel() {
     <div className="git-board flex h-full min-h-0 flex-col" onClick={() => setMenu(null)}>
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border/50 px-3 text-[12px]">
         <GitCommitHorizontal className="h-4 w-4 text-foreground-secondary" />
-        <strong className="truncate font-medium">{data.status.branch || 'HEAD'}</strong>
+        <button
+          ref={branchAnchor}
+          type="button"
+          className={cn(
+            'flex min-w-0 max-w-[16rem] items-center gap-1 rounded px-1.5 py-0.5 font-medium',
+            'hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary',
+            data.status.branch ? 'cursor-pointer' : 'cursor-default',
+          )}
+          aria-haspopup="dialog"
+          aria-expanded={branchPickerOpen}
+          aria-label={t('common:branches.trigger', { branch: data.status.branch || 'HEAD' })}
+          title={t('common:branches.trigger', { branch: data.status.branch || 'HEAD' })}
+          disabled={!data.status.branch}
+          onClick={() => setBranchPickerOpen((v) => !v)}
+        >
+          <GitBranch className="h-3.5 w-3.5 shrink-0 text-foreground-secondary" />
+          <strong className="truncate font-medium">{data.status.branch || 'HEAD'}</strong>
+          <ChevronDown className="h-3 w-3 shrink-0 text-foreground-tertiary" />
+        </button>
         <span className="flex items-center gap-1.5 tabular-nums">
           <span
             className={cn(data.status.ahead > 0 ? 'font-medium text-red-600 dark:text-red-400' : 'text-foreground-tertiary')}
@@ -671,6 +719,15 @@ export function GitBoardPanel() {
       ].map(([label, action]) => <button key={String(label)} type="button" className="block w-full rounded px-2 py-1 text-left hover:bg-muted" onClick={() => { setMenu(null); void (action as () => unknown)() }}>{String(label)}</button>)}</div>}
       {promptOpen && createPortal(<div role="dialog" aria-modal="true" aria-label={t('common:gitBoard.promptSettings')} className="fixed inset-0 z-[800] flex items-center justify-center bg-black/40 p-4" onPointerDown={(event) => { if (event.target === event.currentTarget) setPromptOpen(false) }} onKeyDown={(event) => { if (event.key === 'Escape') setPromptOpen(false) }}><div className="w-full max-w-lg rounded-lg border border-border bg-popover p-4 text-popover-foreground shadow-xl"><h2 className="mb-2 font-semibold">{t('common:gitBoard.promptSettings')}</h2><textarea autoFocus value={promptDraft} onChange={(event) => setPromptDraft(event.target.value)} maxLength={8000} className="h-40 w-full resize-y rounded border bg-transparent p-2 text-[12px]" /><div className="mt-3 flex gap-2"><button type="button" className="rounded border px-3 py-1.5 text-[12px]" onClick={() => setPromptDraft(DEFAULT_COMMIT_PROMPT)}>{t('common:gitBoard.promptReset')}</button><button type="button" className="ml-auto rounded px-3 py-1.5 text-[12px] hover:bg-muted" onClick={() => setPromptOpen(false)}>{t('common:cancel')}</button><button type="button" className="rounded bg-primary px-3 py-1.5 text-[12px] text-primary-foreground" onClick={() => { const value = promptDraft.trim() || DEFAULT_COMMIT_PROMPT; setCommitPrompt(value); try { localStorage.setItem('pi-desktop:git-commit-prompt', value) } catch { void 0 }; setPromptOpen(false) }}>{t('common:gitBoard.promptSave')}</button></div></div></div>, document.body)}
       <ConfirmDialog open={!!confirm} title={confirm?.title || ''}  message={confirm?.message || ''}  destructive onConfirm={() => void confirm?.run()} onCancel={() => setConfirm(null)} />
+      {branchPickerOpen && data.status.branch ? (
+        <BranchPickerPopover
+          cwd={cwd}
+          status={pickerStatus}
+          anchorRef={branchAnchor}
+          onClose={closeBranchPicker}
+          onSwitched={() => void load(false)}
+        />
+      ) : null}
     </div>
   )
 }

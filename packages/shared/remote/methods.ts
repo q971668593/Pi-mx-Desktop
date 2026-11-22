@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { TEAM_STATUSES } from '../team-board'
 import {
   CursorSchema,
   ProjectInfoSchema,
@@ -470,6 +471,16 @@ export const REMOTE_METHODS = {
   ),
   /** Fuzzy path search across the project (desktop `@` search). */
   /** One file for the phone's reader (text or image); paths stay inside the session's project. */
+  'team.board': method(z.object({ sessionKey }).strict(), z.object({
+    batch: z.string(),
+    goal: z.string(),
+    tasks: z.array(z.object({
+      id: z.string(), title: z.string(), role: z.string(), status: z.enum(TEAM_STATUSES),
+      input: z.string(), output: z.string(), note: z.string(), blockType: z.string(), approval: z.string(),
+      dependsOn: z.array(z.string()), acceptance: z.array(z.object({ text: z.string(), done: z.boolean() })),
+      dispatch: z.string().optional(),
+    })),
+  }), 'viewer'),
   'file.read': method(z.object({ sessionKey, path: z.string().min(1).max(4096) }).strict(), FileReadResultSchema, 'viewer'),
   /** Commits of the session's project (empty list outside a repository). */
   /** Delete a conversation (same file removal as the desktop's 删除对话). */

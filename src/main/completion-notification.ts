@@ -45,7 +45,12 @@ function getController(): CompletionNotificationController {
         const settings = readCompletionNotificationSettings()
         // The user asked for sound without the popup: keep the card out of the way entirely.
         if (card.popup === false) {
-          if (card.sound) void playAlertSound(card.soundPreset ?? settings.soundPreset ?? DEFAULT_ALERT_SOUND_PRESET)
+          if (card.sound) {
+            void playAlertSound(
+              card.soundPreset ?? settings.soundPreset ?? DEFAULT_ALERT_SOUND_PRESET,
+              card.soundVolume ?? settings.soundVolume,
+            )
+          }
           return
         }
         void presentCompletionCard(card, settings.delivery)

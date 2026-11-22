@@ -155,11 +155,23 @@ fun TurnItem(turn: Turn, expanded: Boolean, divider: Long?, now: Long, mermaid: 
                 FileRefChips(refs, onOpen = cb.onOpenFile)
             }
         }
-        turn.error?.let { e ->
-            Row(verticalAlignment = Alignment.Top) {
-                PiIcon(if (e.kind == "aborted") PiIcons.Pause else PiIcons.Alert, if (e.kind == "aborted") Pi.c.fg3 else Pi.c.bad, 14.dp, Modifier.padding(top = 2.dp))
-                Spacer(Modifier.width(7.dp))
-                Text(e.text, style = Pi.t.secondary.copy(color = if (e.kind == "aborted") Pi.c.fg3 else Pi.c.bad), maxLines = 4, overflow = TextOverflow.Ellipsis)
+        turn.error?.let { error ->
+            val aborted = error.kind == "aborted"
+            val color = if (aborted) Pi.c.fg2 else Pi.c.bad
+            var detailsOpen by rememberSaveable(turn.id, error.text) { mutableStateOf(false) }
+            val state = stringResource(if (detailsOpen) R.string.collapse else R.string.expand)
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(color.copy(alpha = 0.08f))
+                    .clickable(role = Role.Button) { detailsOpen = !detailsOpen }
+                    .semantics { stateDescription = state }.padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    PiIcon(if (aborted) PiIcons.Pause else PiIcons.Alert, color, 15.dp)
+                    Text(stringResource(if (aborted) R.string.turn_stopped else R.string.turn_failed), style = Pi.t.bodyMedium.copy(color = color), modifier = Modifier.weight(1f))
+                    PiIcon(PiIcons.ChevronRight, color, 14.dp, Modifier.rotate(if (detailsOpen) 90f else 0f))
+                }
+                Text(error.text, style = Pi.t.secondary.copy(color = Pi.c.fg2), maxLines = if (detailsOpen) Int.MAX_VALUE else 2, overflow = TextOverflow.Ellipsis)
             }
         }
         if (!turn.running && turn.files.isNotEmpty()) FileList(turn, cb)
@@ -230,7 +242,7 @@ fun UserBubble(text: String, modifier: Modifier = Modifier, dim: Boolean = false
             Text(
                 remember(body) { linkify(body) },
                 style = Pi.t.body.copy(color = if (dim) Pi.c.fg2 else Pi.c.fg),
-                modifier = Modifier.widthIn(max = 300.dp).clip(RoundedCornerShape(16.dp)).background(Pi.c.surface).padding(horizontal = 13.dp, vertical = 9.dp),
+                modifier = Modifier.widthIn(max = 300.dp).clip(RoundedCornerShape(16.dp)).background(Pi.c.blue.copy(alpha = 0.12f)).padding(horizontal = 13.dp, vertical = 9.dp),
             )
         }
       }
@@ -253,7 +265,8 @@ private fun ActivityRow(turn: Turn, expanded: Boolean, cb: TurnCallbacks) {
     val del = turn.files.sumOf { it.del }
     val state = stringResource(if (expanded) R.string.collapse else R.string.expand)
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 36.dp).clickable(role = Role.Button) { cb.onToggle(turn.id) }.semantics { stateDescription = state },
+        Modifier.fillMaxWidth().heightIn(min = 44.dp).clip(RoundedCornerShape(8.dp)).background(Pi.c.surface)
+            .clickable(role = Role.Button) { cb.onToggle(turn.id) }.semantics { stateDescription = state }.padding(horizontal = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         PiIcon(PiIcons.ChevronRight, Pi.c.fg3, 14.dp, Modifier.rotate(angle))

@@ -21,5 +21,18 @@
   "skipToBuiltin": "先不用全局，改用内置",
   "globalReady": "已切换到全局 pi",
   "globalFail": "切换全局失败",
-  "installFail": "安装 pi 失败"
+  "installFail": "安装 pi 失败",
+  "detectedVersion": "已安装 v{{version}}",
+  "outOfBox": "开箱即用",
+  "readyToChat": "环境已就绪，开始对话吧",
+  "modelTitle": "最后一步：连接一个模型",
+  "modelIntro": "登录你的订阅账号或填入 API Key 即可开聊；也可以先跳过，随时在 设置 → 模型与能力 里配置。",
+  "modelLoading": "正在读取支持的供应商…",
+  "modelEmpty": "暂未读取到内置供应商列表，你可以在设置中手动添加供应商或中转地址。",
+  "signInOAuth": "订阅登录",
+  "signInApiKey": "API Key 登录",
+  "subscriptionTag": "订阅",
+  "openModelSettings": "去设置添加自定义供应商",
+  "skipModel": "稍后再配，先逛逛",
+  "modelReady": "模型已就绪，开始对话吧"
 }

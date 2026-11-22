@@ -171,39 +171,8 @@ fun SessionPanel(
                         RunTab(facts, stats, statsLoading, usage)
                     })
                 }
-            } else Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 20.dp)) {
-                Text(facts.title.ifEmpty { "—" }, style = Pi.t.bodyMedium.copy(color = Pi.c.fg), maxLines = 3, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.height(4.dp))
-                Text(facts.projectPath, style = Pi.t.meta.copy(color = Pi.c.fg3), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.height(12.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Dot(facts.statusColor, 7.dp)
-                    Spacer(Modifier.width(8.dp))
-                    Text(facts.status, style = Pi.t.secondary.copy(color = Pi.c.fg2))
-                }
-
-                Section(stringResource(R.string.panel_context)) {
-                    ContextBlock(stats, statsLoading)
-                }
-
-                Section(stringResource(R.string.panel_session)) {
-                    Fact(stringResource(R.string.model), facts.model?.substringAfter('/') ?: "—")
-                    Fact(stringResource(R.string.thinking), thinkingLabel(facts.thinking))
-                    Fact(stringResource(R.string.panel_turns), "${facts.turns}")
-                    if (usage != null && usage.calls > 0) Fact(stringResource(R.string.panel_cost), pluralStringResource(R.plurals.panel_cost_value, usage.calls, formatCost(usage.cost), usage.calls))
-                    Fact(stringResource(R.string.panel_tool_calls), "${facts.toolCalls}")
-                    if (facts.files > 0) Fact(stringResource(R.string.panel_project_files), stringResource(R.string.panel_files_value, facts.files, facts.added, facts.deleted))
-                    if (facts.workedMs > 0) Fact(stringResource(R.string.panel_worked), formatClock(facts.workedMs))
-                    Fact(stringResource(R.string.panel_capabilities), "${facts.toolsOn}")
-                    if (facts.queued > 0) Fact(stringResource(R.string.panel_queued), "${facts.queued}")
-                    if (facts.todoTotal != null && facts.todoTotal > 0) Fact(stringResource(R.string.panel_todo), "${facts.todoDone ?: 0} / ${facts.todoTotal}")
-                }
-
-                if (facts.sessionFile.isNotEmpty()) {
-                    Section(stringResource(R.string.panel_file)) {
-                        Text(facts.sessionFile.substringAfterLast('/').substringAfterLast('\\'), style = Pi.t.mono.copy(color = Pi.c.fg2), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    }
-                }
+            } else Box(Modifier.weight(1f)) {
+                RunTab(facts, stats, statsLoading, usage)
             }
         }
     }
@@ -224,25 +193,30 @@ private fun RunTab(facts: SessionFacts, stats: ContextStats?, statsLoading: Bool
     Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 20.dp)) {
         Text(facts.title.ifEmpty { "—" }, style = Pi.t.bodyMedium.copy(color = Pi.c.fg), maxLines = 3, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(4.dp))
-        Text(facts.projectPath, style = Pi.t.meta.copy(color = Pi.c.fg3), maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Dot(facts.statusColor, 7.dp)
             Spacer(Modifier.width(8.dp))
             Text(facts.status, style = Pi.t.secondary.copy(color = Pi.c.fg2))
         }
         Section(stringResource(R.string.panel_context)) { ContextBlock(stats, statsLoading) }
+        if (facts.files > 0) {
+            Section(stringResource(R.string.panel_project_files)) {
+                Text(stringResource(R.string.panel_files_value, facts.files, facts.added, facts.deleted), style = Pi.t.body.copy(color = Pi.c.fg))
+            }
+        }
         Section(stringResource(R.string.panel_session)) {
             Fact(stringResource(R.string.model), facts.model?.substringAfter('/') ?: "—")
             Fact(stringResource(R.string.thinking), thinkingLabel(facts.thinking))
             Fact(stringResource(R.string.panel_turns), "${facts.turns}")
             if (usage != null && usage.calls > 0) Fact(stringResource(R.string.panel_cost), pluralStringResource(R.plurals.panel_cost_value, usage.calls, formatCost(usage.cost), usage.calls))
             Fact(stringResource(R.string.panel_tool_calls), "${facts.toolCalls}")
-            if (facts.files > 0) Fact(stringResource(R.string.panel_project_files), stringResource(R.string.panel_files_value, facts.files, facts.added, facts.deleted))
             if (facts.workedMs > 0) Fact(stringResource(R.string.panel_worked), formatClock(facts.workedMs))
             Fact(stringResource(R.string.panel_capabilities), "${facts.toolsOn}")
             if (facts.queued > 0) Fact(stringResource(R.string.panel_queued), "${facts.queued}")
             if (facts.todoTotal != null && facts.todoTotal > 0) Fact(stringResource(R.string.panel_todo), "${facts.todoDone ?: 0} / ${facts.todoTotal}")
+            if (facts.projectPath.isNotBlank()) {
+                Text(facts.projectPath, style = Pi.t.meta.copy(color = Pi.c.fg2), modifier = Modifier.padding(top = 8.dp))
+            }
         }
         if (facts.sessionFile.isNotEmpty()) {
             Section(stringResource(R.string.panel_file)) {

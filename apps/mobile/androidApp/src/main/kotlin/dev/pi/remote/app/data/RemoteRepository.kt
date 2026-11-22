@@ -21,6 +21,7 @@ import dev.pi.remote.protocol.HelloResult
 import dev.pi.remote.protocol.ModelListResult
 import dev.pi.remote.protocol.PairOffer
 import dev.pi.remote.protocol.FileReadResult
+import dev.pi.remote.protocol.TeamBoardResult
 import dev.pi.remote.protocol.FileWriteResult
 import dev.pi.remote.protocol.GitLogResult
 import dev.pi.remote.protocol.FsBrowseResult
@@ -92,6 +93,10 @@ class RemoteRepository(
     private val platform: String,
     private val appVersion: String,
 ) {
+    /** In-memory per-session UI state, kept while navigating or reconnecting. */
+    val sessionDrafts = mutableMapOf<String, String>()
+    val sessionReadPositions = mutableMapOf<String, Pair<Int, Int>>()
+
     private val _hosts = MutableStateFlow(hostStore.hosts)
     val hosts: StateFlow<List<SavedHost>> = _hosts
     private val _active = MutableStateFlow(hostStore.hosts.firstOrNull { it.hostId == hostStore.activeHostId })
@@ -527,6 +532,9 @@ class RemoteRepository(
         RemoteJson.decodeFromJsonElement(ser, a.gitRaw(method, params, timeoutMs))
     }
 
+    suspend fun teamBoard(key: String): Result<TeamBoardResult> =
+        runCatching { api?.teamBoard(key) ?: error("offline") }
+
     /** One file for the phone reader: text (capped) or an image as base64. */
     suspend fun readFile(key: String, path: String): Result<FileReadResult> =
         runCatching { api?.readFile(key, path) ?: error("offline") }
@@ -649,7 +657,7 @@ class RemoteRepository(
     }
     suspend fun setThinking(key: String, level: String) = runCatching { api?.setThinking(key, level) }
     suspend fun capabilities(key: String): List<CapabilityRow> = runCatching { api?.capabilities(key) }.getOrNull().orEmpty()
-    suspend fun setCapability(key: String, id: String, on: Boolean) = runCatching { api?.setCapability(key, id, on) }
+    suspend fun setCapability(key: String, id: String, on: Boolean) = runCatching { api?.setCapability(key, id, on) ?: error("offline") }
     suspend fun cacheWarming(): String? = runCatching { api?.cacheWarming() }.getOrNull()
     suspend fun setCacheWarming(mode: String) = runCatching { api?.setCacheWarming(mode) }
     suspend fun toolDetail(key: String, toolCallId: String): ToolDetailResult? = runCatching { api?.toolDetail(key, toolCallId) }.getOrNull()

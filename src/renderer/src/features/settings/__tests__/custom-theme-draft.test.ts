@@ -38,6 +38,7 @@ function draft(): SettingsDraft {
     includePrereleaseUpdates: false,
     alertSoundEnabled: true,
     alertSoundPreset: 'chime',
+    alertSoundVolume: 100,
     alertNotificationEnabled: true,
     alertOnExtensionUi: true,
     alertOnRunIdle: true,

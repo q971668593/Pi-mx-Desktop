@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { ASSET_CHUNK_MAX, ATTACHMENT_MAX_BYTES, REMOTE_METHODS, isRemoteMethod, roleAllows, type MethodParams, type MethodResult, type RemoteMethod, type Role } from '@shared/remote'
 import { normalizeSessionFileKey } from '@shared/session-file-key'
+import { isTeamRunActive, parseTeamBoard, TEAM_BOARD_RELATIVE_PATH, TEAM_SPEC_RELATIVE_DIR, TEAM_STATE_RELATIVE_PATH } from '@shared/team-board'
+import { parseTeamState } from '../team-board-state'
 import type { AssetInfo } from './assets'
 import { RpcFail } from './errors'
 import type { GitBoardMethod, RemoteHostPort } from './host-port'
@@ -207,6 +209,27 @@ export class RemoteRpc {
         const r = await port.listDir(projectId, p.path || '.', p.dotfiles === true)
         if (!r) throw new RpcFail('not_found', 'folder not found in the project')
         return { entries: r.entries.slice(0, FILE_LIST_MAX), truncated: r.truncated || r.entries.length > FILE_LIST_MAX }
+      },
+      'team.board': async (_c, p) => {
+        const { projectId } = await hub.authorize(p.sessionKey)
+        const file = await port.readFile(projectId, `${TEAM_SPEC_RELATIVE_DIR}/${TEAM_BOARD_RELATIVE_PATH}`)
+        if (!file) throw new RpcFail('not_found', 'team board not found')
+        if (file.truncated || file.kind !== 'text' || file.text === undefined) {
+          throw new RpcFail('bad_request', 'team board must be a readable text file')
+        }
+        const state = await port.readFile(projectId, `${TEAM_SPEC_RELATIVE_DIR}/${TEAM_STATE_RELATIVE_PATH}`)
+        const runs = parseTeamState(state?.text ?? '').runs
+        const latest = new Map(runs.map((run) => [run.taskId, run]))
+        const { batch, goal, tasks } = parseTeamBoard(file.text)
+        return {
+          batch,
+          goal,
+          tasks: tasks.map(({ id, title, role, status, input, output, note, blockType, approval, dependsOn, acceptance }) => {
+            const run = latest.get(id)
+            const dispatch = run?.staleAt && isTeamRunActive(run) ? 'stale' : run?.status
+            return { id, title, role, status, input, output, note, blockType, approval, dependsOn, acceptance, ...(dispatch ? { dispatch } : {}) }
+          }),
+        }
       },
       'file.read': async (_c, p) => {
         const { projectId } = await hub.authorize(p.sessionKey)

@@ -304,6 +304,7 @@ fun InboxContent(
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var showHidden by rememberSaveable { mutableStateOf(false) }
+    var statusFilter by rememberSaveable { mutableStateOf("all") }
     val collapsed = remember { mutableStateMapOf<String, Boolean>() }
     val temporaryIds = inbox.projects.filter { it.temporary }.map { it.id }.toSet()
     // 和电脑侧栏同一份顺序：project.list 的顺序就是宿主顺序，这里不重排、也不按状态往顶上挪。
@@ -312,8 +313,11 @@ fun InboxContent(
     val hidden = real.filter { it.hidden }
     val q = query.trim()
     val matches = { text: String -> q.isEmpty() || text.contains(q, ignoreCase = true) }
-    val shownProjects = if (q.isEmpty()) visible else visible.filter { matches(it.name) }
     val sessions = inbox.sessions
+    val filteredSessions = sessions.filter { statusFilter == "all" || it.status == statusFilter }
+    val shownProjects = visible.filter { project ->
+        q.isEmpty() || matches(project.name) || filteredSessions.any { it.projectId == project.id && matches(it.title) }
+    }
     val online = connection is HostConnection.State.Ready
     val now = useTicker(sessions.any { it.status == "running" })
 
@@ -364,6 +368,15 @@ fun InboxContent(
             )
         }
 
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            listOf("all" to R.string.inbox_filter_all, "needsInput" to R.string.inbox_filter_needs, "running" to R.string.inbox_filter_running, "failed" to R.string.inbox_filter_failed).forEach { (value, label) ->
+                FilterTab(stringResource(label), statusFilter == value) { statusFilter = value }
+            }
+        }
+
         PullRefresh(refreshing, onRefresh, Modifier.fillMaxSize()) {
             LazyColumn(Modifier.fillMaxSize()) {
                 if (inbox.projects.isEmpty() && !inbox.loaded) {
@@ -374,14 +387,21 @@ fun InboxContent(
                     }
                     return@LazyColumn
                 }
+                if (statusFilter != "all" && filteredSessions.none { session ->
+                    val project = visible.firstOrNull { it.id == session.projectId }
+                    (session.projectId in temporaryIds && matches(session.title)) || (project != null && (matches(project.name) || matches(session.title)))
+                }) {
+                    item("no-status-match") { SectionLabel(stringResource(R.string.inbox_filter_empty)) }
+                }
                 if (shownProjects.isEmpty() && q.isNotEmpty()) {
                     item("no-match") { SectionLabel(stringResource(R.string.inbox_no_project_match)) }
                 }
                 for (p in shownProjects) {
-                    val list = sessions
-                        .filter { it.projectId == p.id && matches(it.title) }
+                    val list = filteredSessions
+                        .filter { it.projectId == p.id && (matches(p.name) || matches(it.title)) }
                         .sortedByDescending { it.updatedAt }
-                    val closed = collapsed[p.id] == true
+                    if (statusFilter != "all" && list.isEmpty()) continue
+                    val closed = statusFilter == "all" && q.isEmpty() && collapsed[p.id] == true
                     item("p-${p.id}") {
                         ProjectHeader(
                             name = p.name,
@@ -434,9 +454,9 @@ fun InboxContent(
                     }
                 }
 
-                val temp = sessions.filter { it.projectId in temporaryIds }.sortedByDescending { it.updatedAt }
+                val temp = filteredSessions.filter { it.projectId in temporaryIds && matches(it.title) }.sortedByDescending { it.updatedAt }
                 if (temp.isNotEmpty()) {
-                    val closed = collapsed[TEMPORARY] ?: true
+                    val closed = statusFilter == "all" && q.isEmpty() && (collapsed[TEMPORARY] ?: true)
                     item("p-temp") {
                         ProjectHeader(
                             name = stringResource(R.string.temporary_chats),
@@ -556,8 +576,8 @@ private fun SessionRow(
                     val live = s.live?.takeIf { it.isNotEmpty() }?.let { "${s.liveCategory?.let { c -> verbFor(c) } ?: ""} $it".trim() } ?: "Thinking"
                     ShimmerText(live, Pi.t.secondary)
                 }
-                "needsInput" -> s.preview?.let { Text("${stringResource(R.string.status_needs)}：$it", style = Pi.t.secondary.copy(color = Pi.c.warn), maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                "failed" -> s.preview?.let { Text(it, style = Pi.t.secondary.copy(color = Pi.c.bad), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                "needsInput" -> Text(listOfNotNull(stringResource(R.string.status_needs), s.preview?.takeIf { it.isNotBlank() }).joinToString("："), style = Pi.t.secondary.copy(color = Pi.c.warn), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                "failed" -> Text(listOfNotNull(stringResource(R.string.inbox_filter_failed), s.preview?.takeIf { it.isNotBlank() }).joinToString("："), style = Pi.t.secondary.copy(color = Pi.c.bad), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 else -> s.preview?.let { Text(it, style = Pi.t.secondary.copy(color = Pi.c.fg3), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
             val project = when {

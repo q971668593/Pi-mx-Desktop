@@ -13,6 +13,7 @@ import { registerGitBranchHandlers } from './ipc/handlers/git-branches'
 import { registerGitBoardHandlers } from './ipc/handlers/git-board'
 import { registerBackgroundHandlers } from './ipc/handlers/background'
 import { registerModelRuntimeHandlers } from './ipc/handlers/model-runtime'
+import { registerModelAuthHandlers } from './ipc/handlers/model-auth'
 import { registerExtensionHandlers } from './ipc/handlers/extensions'
 import { registerExtensionUiHandlers } from './ipc/handlers/extension-ui'
 import { registerAdapterPanelHandlers } from './ipc/handlers/adapter-panels'
@@ -56,6 +57,7 @@ export function registerAllHandlers(): void {
   registerBackgroundHandlers()
   registerExtensionUiHandlers()
   registerModelRuntimeHandlers()
+  registerModelAuthHandlers()
   registerExtensionHandlers()
   registerAdapterPanelHandlers()
   registerSkillsResourceHandlers()

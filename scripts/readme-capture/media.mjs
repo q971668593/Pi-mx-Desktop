@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { copyFileSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { electronBinary, electronFlags } from './app.mjs'
-import { BACKGROUND, CROPS, PANELS, REPO, VIEWPORT } from './config.mjs'
+import { BACKGROUND, CROPS, REPO, VIEWPORT } from './config.mjs'
 
 const run = (cmd, args) => execFileSync(cmd, args, { stdio: ['ignore', 'ignore', 'inherit'] })
 const magick = (...args) => run('magick', args.flat())
@@ -78,9 +78,9 @@ export function tile({ input, out, crop, tmp }) {
   console.log(`  ${out} (${kb(out)})`)
 }
 
-/** Right-sidebar panels side by side on the light brand gradient. */
-export function panelStrip({ rawDir, lang, out, tmp }) {
-  const parts = PANELS[lang].map((name, i) => {
+/** Right-sidebar panels side by side on the light brand gradient. `names` are raw shot suffixes. */
+export function panelStrip({ rawDir, lang, names, out, tmp }) {
+  const parts = names.map((name, i) => {
     const cut = join(tmp, `panel-${i}.png`)
     const rounded = join(tmp, `panel-${i}-r.png`)
     const finished = join(tmp, `panel-${i}-f.png`)

@@ -47,11 +47,44 @@ export function normalizeAlertSoundPreset(value: unknown): AlertSoundPreset {
     : DEFAULT_ALERT_SOUND_PRESET
 }
 
-/** Schedules the preset on an AudioContext; returns the total length in seconds (0 = silent). */
-export function playAlertSoundTones(ctx: AudioContext, preset: AlertSoundPreset, when = 0): number {
+/** Volume range, in percent. 100 is the designed level; 200 doubles the gain for noisy rooms. */
+export const ALERT_SOUND_VOLUME_MIN = 0
+export const ALERT_SOUND_VOLUME_MAX = 200
+export const ALERT_SOUND_VOLUME_STEP = 5
+export const DEFAULT_ALERT_SOUND_VOLUME = 100
+
+/** Baseline multiplier applied at 100% in both playback contexts. */
+export const ALERT_SOUND_BASE_GAIN = 2
+
+/**
+ * Clamps anything (missing key, null, NaN, "120", -5) into an integer percent in range.
+ * Note `Number(null) === 0` and `Number('') === 0`: those are absence, not "silent", so they fall
+ * back to the designed level instead of muting the alert.
+ */
+export function normalizeAlertSoundVolume(value: unknown): number {
+  const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : Number.NaN
+  if (!Number.isFinite(n)) return DEFAULT_ALERT_SOUND_VOLUME
+  if (n <= ALERT_SOUND_VOLUME_MIN) return ALERT_SOUND_VOLUME_MIN
+  if (n >= ALERT_SOUND_VOLUME_MAX) return ALERT_SOUND_VOLUME_MAX
+  return Math.round(n)
+}
+
+/**
+ * Schedules the preset on an AudioContext; returns the total length in seconds (0 = silent).
+ * `volume` is a percent of the baseline gain, so 200% doubles the amplitude at 100%.
+ * 0% short-circuits before any oscillator is created.
+ */
+export function playAlertSoundTones(
+  ctx: AudioContext,
+  preset: AlertSoundPreset,
+  when = 0,
+  volume: number = DEFAULT_ALERT_SOUND_VOLUME,
+): number {
   if (preset === 'none') return 0
   const tones = ALERT_SOUND_TONES[preset]
   if (!tones) return 0
+  const factor = (normalizeAlertSoundVolume(volume) / 100) * ALERT_SOUND_BASE_GAIN
+  if (factor <= 0) return 0
   const start = ctx.currentTime + when
   let end = 0
   for (const tone of tones) {
@@ -60,7 +93,7 @@ export function playAlertSoundTones(ctx: AudioContext, preset: AlertSoundPreset,
     osc.type = tone.w ?? 'sine'
     osc.frequency.value = tone.f
     const t0 = start + tone.t
-    const peak = tone.g ?? 0.08
+    const peak = (tone.g ?? 0.08) * factor
     gain.gain.setValueAtTime(0.0001, t0)
     gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.012)
     gain.gain.exponentialRampToValueAtTime(0.0001, t0 + tone.d)

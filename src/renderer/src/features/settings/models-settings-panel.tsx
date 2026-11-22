@@ -21,11 +21,24 @@ import { btnOutline, btnPrimary, cloneConfig, configEqual, defaultModelEntry } f
 import { ModelsProviderCard } from './models-provider-card'
 import { ModelsSdkProviderSection } from './models-sdk-provider-section'
 import { saveModelsConfigDraft } from './save-models-config'
-import { ModelDefaultsSection } from './model-defaults-section'
 import { PluginModelSettings } from './plugin-model-settings'
-import { ImageGenSettings } from './image-gen-settings'
+import { ModelRuntimeAdvanced } from './model-runtime-advanced'
 import { invalidateAvailableModels, prefetchAvailableModels } from '@renderer/lib/available-models-cache'
 import { ProviderTemplateDialog } from './provider-template-dialog'
+import { ProviderConfigDialog, type ProviderDraft } from './provider-config-dialog'
+
+/** Prefill for the add-provider form: template defaults, blank for a custom relay. */
+function initialConfigForPreset(
+  preset: ProviderPreset,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): PiModelsProviderConfig {
+  const config = clonePresetConfig(preset)
+  if (preset.id === 'custom-openai') {
+    const label = t('models.customProvider')
+    return { ...config, name: label, baseUrl: undefined, apiKey: undefined, models: [] }
+  }
+  return config
+}
 
 export function ModelsSettingsPanel() {
   const { t } = useTranslation('settings')
@@ -41,10 +54,10 @@ export function ModelsSettingsPanel() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [fetching, setFetching] = useState<string | null>(null)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
+  const [newProvider, setNewProvider] = useState<{ pid: string; preset: ProviderPreset } | null>(null)
   const [remoteCatalog, setRemoteCatalog] = useState<Record<string, { ids: string[]; error?: string }>>({})
   const [settingsModels, setSettingsModels] = useState<ModelInfo[]>([])
   const [expandedLocalModel, setExpandedLocalModel] = useState<Record<string, boolean>>({})
-  const [apiKeyVisible, setApiKeyVisible] = useState<Record<string, boolean>>({})
   const [confirmState, setConfirmState] = useState<{
     title: string
     message: string
@@ -81,6 +94,8 @@ export function ModelsSettingsPanel() {
       .finally(() => setLoading(false))
     return onAppEvent((event) => {
       if (event.type === 'sdk-runtime-changed') void load()
+      // A subscription login / logout rewrote auth.json: refresh the SDK rows' auth status.
+      if (event.type === 'model-auth' && (event.phase === 'done' || event.phase === 'cancelled')) void load()
     })
   }, [load, t])
 
@@ -150,20 +165,18 @@ export function ModelsSettingsPanel() {
 
   const addFromPreset = (preset: ProviderPreset) => {
     const key = allocateProviderKey(draft?.providers || {}, preset.defaultKey)
-    const config = clonePresetConfig(preset)
-    const label = preset.id === 'custom-openai' ? t('models.customProvider') : t(`models.providerLabels.${preset.id}`, { defaultValue: preset.label })
-    if (preset.id === 'custom-openai') {
-      config.name = label
-      config.baseUrl = undefined
-      config.apiKey = undefined
-      config.models = []
-    }
+    setAddMenuOpen(false)
+    // Nothing is written until the connection form is filled in and saved.
+    setNewProvider({ pid: key, preset })
+  }
+
+  const createProvider = ({ pid: key, config }: ProviderDraft) => {
     patchDraft((c) => {
       c.providers[key] = config
     })
     setExpanded((e) => ({ ...e, [key]: true }))
-    setAddMenuOpen(false)
-    toast.success(t('models.addedProviderToast', { label, key }))
+    setNewProvider(null)
+    toast.success(t('models.addedProviderToast', { label: config.name || key, key }))
   }
 
   const removeProvider = (id: string) => {
@@ -279,10 +292,6 @@ export function ModelsSettingsPanel() {
         }
       />
 
-      <ModelDefaultsSection />
-      <PluginModelSettings />
-      <ImageGenSettings />
-
       {(parseError || schemaError || saveError) && (
         <div className="rounded-md border border-amber-500/35 bg-amber-500/10 whitespace-pre-wrap px-3 py-2 text-sm text-amber-900 dark:text-amber-200">
           {parseError && <div>{parseError}</div>}
@@ -341,8 +350,6 @@ export function ModelsSettingsPanel() {
                   fetching={fetching === pid}
                   remoteIds={catalogIds}
                   remoteError={remoteCatalog[pid]?.error}
-                  apiKeyVisible={!!apiKeyVisible[pid]}
-                  onToggleApiKeyVisible={() => setApiKeyVisible((s) => ({ ...s, [pid]: !s[pid] }))}
                   expandedLocalModel={expandedLocalModel}
                   onToggleLocalModel={(rowKey) =>
                     setExpandedLocalModel((e) => ({ ...e, [rowKey]: !e[rowKey] }))
@@ -375,9 +382,30 @@ export function ModelsSettingsPanel() {
         )}
       </section>
 
-      <ModelsSdkProviderSection providerIds={sdkProviderIds} modelsByProvider={sdkModelsByProvider} />
+      <ModelsSdkProviderSection
+        providerIds={sdkProviderIds}
+        modelsByProvider={sdkModelsByProvider}
+        onAuthChanged={() => void load()}
+      />
+
+      {/* 配完供应商再配插件：插件模型跑在主对话之外（Git 提交说明、终端任务检测等）。
+          默认模型不在设置里选：每个对话自己挑，新会话由 SDK 自动取第一个可用模型。 */}
+      <PluginModelSettings />
+
+      <ModelRuntimeAdvanced />
 
       {addMenuOpen ? <ProviderTemplateDialog onClose={() => setAddMenuOpen(false)} onSelect={addFromPreset} /> : null}
+
+      {newProvider ? (
+        <ProviderConfigDialog
+          mode="add"
+          pid={newProvider.pid}
+          preset={newProvider.preset}
+          initial={initialConfigForPreset(newProvider.preset, t)}
+          onSubmit={createProvider}
+          onCancel={() => setNewProvider(null)}
+        />
+      ) : null}
 
       {manualAddProviderId && draft?.providers[manualAddProviderId] && (
         <ManualModelAddDialog

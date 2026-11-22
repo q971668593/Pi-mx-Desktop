@@ -115,6 +115,8 @@ export interface RunState {
   availableThinkingLevels?: string[]
   startTime?: number
   lastRunDurationMs?: number
+  /** Output tokens reported by the model across assistant turns in this run. */
+  runOutputTokens?: number
   /** Time from the turn start to the first assistant content delta. */
   firstOutputDelayMs?: number
   usage?: {

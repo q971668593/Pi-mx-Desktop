@@ -1,6 +1,10 @@
 import { BrowserWindow, Notification, ipcMain, screen } from 'electron'
 import { join } from 'path'
-import { normalizeAlertSoundPreset, type AlertSoundPreset } from '@shared/alert-sound'
+import {
+  normalizeAlertSoundPreset,
+  normalizeAlertSoundVolume,
+  type AlertSoundPreset,
+} from '@shared/alert-sound'
 import { resolveAppIcon } from './app-icon'
 import { getMainWindow } from './window'
 import { readSessionMetaFromFile } from './session-file-meta'
@@ -32,7 +36,7 @@ let hostFailed = false
 let hoverPaused = false
 let expireTimer: ReturnType<typeof setTimeout> | null = null
 /** Sounds requested before the host page finished loading. */
-const pendingSounds: AlertSoundPreset[] = []
+const pendingSounds: Array<{ preset: AlertSoundPreset; volume: number }> = []
 const active: ActiveCard[] = []
 let listenersBound = false
 
@@ -92,9 +96,11 @@ function scheduleExpire(): void {
   }, wait)
 }
 
-/** Idle card host: hide now, destroy after a grace period so the renderer stops costing RAM. */
-const HOST_IDLE_DESTROY_MS = 90_000
+/** Idle card host: hide now, throttle background WebContents, and destroy after a short grace period. */
+const HOST_IDLE_DESTROY_MS = 30_000
+const SOUND_IDLE_GRACE_MS = 3_000
 let hostDestroyTimer: ReturnType<typeof setTimeout> | null = null
+let soundIdleTimer: ReturnType<typeof setTimeout> | null = null
 
 function cancelHostDestroy(): void {
   if (hostDestroyTimer) {
@@ -103,9 +109,19 @@ function cancelHostDestroy(): void {
   }
 }
 
-function hideHost(): void {
+function cancelSoundIdle(): void {
+  if (soundIdleTimer) {
+    clearTimeout(soundIdleTimer)
+    soundIdleTimer = null
+  }
+}
+
+function setHostBackgroundThrottling(throttled: boolean): void {
   if (!host || host.isDestroyed()) return
-  host.hide()
+  host.webContents.setBackgroundThrottling(throttled)
+}
+
+function scheduleHostDestroy(): void {
   cancelHostDestroy()
   hostDestroyTimer = setTimeout(() => {
     hostDestroyTimer = null
@@ -118,25 +134,52 @@ function hideHost(): void {
   }, HOST_IDLE_DESTROY_MS)
 }
 
+function hideHost(): void {
+  if (!host || host.isDestroyed()) return
+  host.hide()
+  setHostBackgroundThrottling(true)
+  scheduleHostDestroy()
+}
+
+function scheduleIdleAfterSound(): void {
+  cancelSoundIdle()
+  soundIdleTimer = setTimeout(() => {
+    soundIdleTimer = null
+    if (active.length > 0 || pendingSounds.length > 0) return
+    setHostBackgroundThrottling(true)
+    scheduleHostDestroy()
+  }, SOUND_IDLE_GRACE_MS)
+}
+
 function flushPendingSounds(): void {
   if (!host || host.isDestroyed() || !hostReady || pendingSounds.length === 0) return
-  for (const preset of pendingSounds.splice(0)) host.webContents.send('notification:sound', { preset })
+  setHostBackgroundThrottling(false)
+  for (const item of pendingSounds.splice(0)) {
+    host.webContents.send('notification:sound', { preset: item.preset, volume: item.volume })
+  }
+  scheduleIdleAfterSound()
 }
 
 /**
  * Plays one preset sound through the (hidden) notification host. Used for "sound only" mode and for
  * cards that should be heard but not pop up.
  */
-export async function playAlertSound(preset: AlertSoundPreset | string): Promise<void> {
+export async function playAlertSound(preset: AlertSoundPreset | string, volume?: number): Promise<void> {
   const normalized = normalizeAlertSoundPreset(preset)
   if (normalized === 'none') return
+  const level = normalizeAlertSoundVolume(volume)
+  if (level <= 0) return
   const ok = await createHost()
   if (!ok || !host || host.isDestroyed()) return
+  cancelSoundIdle()
+  cancelHostDestroy()
+  setHostBackgroundThrottling(false)
   if (!hostReady) {
-    pendingSounds.push(normalized)
+    pendingSounds.push({ preset: normalized, volume: level })
     return
   }
-  host.webContents.send('notification:sound', { preset: normalized })
+  host.webContents.send('notification:sound', { preset: normalized, volume: level })
+  scheduleIdleAfterSound()
 }
 
 function ensureListeners(): void {
@@ -197,6 +240,7 @@ function dismissCard(id: string): void {
 
 async function createHost(): Promise<boolean> {
   cancelHostDestroy()
+  cancelSoundIdle()
   if (host && !host.isDestroyed()) return true
   ensureListeners()
   try {
@@ -204,10 +248,12 @@ async function createHost(): Promise<boolean> {
       completionNotificationWindowOptions(join(__dirname, '../preload/notification.cjs')),
     )
     host.setMenu(null)
+    setHostBackgroundThrottling(true)
     host.on('closed', () => {
       host = null
       hostReady = false
       cancelHostDestroy()
+      cancelSoundIdle()
     })
     await host.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(notificationHostPageHtml())}`)
     return placeHost()
@@ -276,7 +322,7 @@ export async function presentCompletionCard(card: CompletionCard, mode: Delivery
   rememberNotificationTarget(card.notificationId, target)
   const system = preferSystem(mode)
   // One sound path for custom cards and for "sound only" mode; the OS plays its own for system ones.
-  if (card.sound && !system) void playAlertSound(card.soundPreset ?? 'chime')
+  if (card.sound && !system) void playAlertSound(card.soundPreset ?? 'chime', card.soundVolume)
 
   if (system) {
     showSystemCard(card)
@@ -288,6 +334,9 @@ export async function presentCompletionCard(card: CompletionCard, mode: Delivery
     showSystemCard(card)
     return
   }
+  cancelSoundIdle()
+  cancelHostDestroy()
+  setHostBackgroundThrottling(false)
   active.push({ ...card, expiresAt: Date.now() + card.timeoutMs })
   if (active.length > NOTIFICATION_MAX_VISIBLE) {
     const dropped = active.shift()
@@ -308,6 +357,8 @@ export function focusCompletionNotificationHost(): boolean {
 }
 
 export function disposeCompletionDelivery(): void {
+  cancelHostDestroy()
+  cancelSoundIdle()
   if (expireTimer) clearTimeout(expireTimer)
   expireTimer = null
   active.length = 0

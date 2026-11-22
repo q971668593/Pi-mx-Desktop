@@ -1,21 +1,25 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Copy, Check, Undo2 } from '@renderer/components/icons'
+import { Copy, Check, MessageSquareText, Pencil, Undo2 } from '@renderer/components/icons'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@renderer/lib/utils'
 
-/** Hover actions for messages: copy + rewind. Fork lives in the session context menu / node detail. */
+/** Hover actions for messages: copy + quote + edit-resend + rewind. Fork lives in the session context menu / node detail. */
 function MessageHoverActionsImpl({
   text,
   timestamp,
   align,
   sessionEntryId,
   onRewind,
+  onQuote,
+  onEditResend,
 }: {
   text: string
   timestamp?: number
   align: 'left' | 'right'
   sessionEntryId?: string
   onRewind?: (entryId: string) => void
+  onQuote?: () => void
+  onEditResend?: (entryId: string) => void
 }) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
@@ -40,6 +44,28 @@ function MessageHoverActionsImpl({
           }
         >
           <Undo2 className="h-3.5 w-3.5" />
+        </button>
+      )}
+      {onEditResend && sessionEntryId && (
+        <button
+          type="button"
+          onClick={() => onEditResend(sessionEntryId)}
+          className="chrome-icon-btn flex h-6 w-6 items-center justify-center rounded-md text-foreground-secondary hover:text-primary"
+          title={t('timeline:editResend')}
+          aria-label={t('timeline:editResend')}
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </button>
+      )}
+      {onQuote && text.trim() && (
+        <button
+          type="button"
+          onClick={onQuote}
+          className="chrome-icon-btn flex h-6 w-6 items-center justify-center rounded-md text-foreground-secondary hover:text-primary"
+          title={t('timeline:quote')}
+          aria-label={t('timeline:quote')}
+        >
+          <MessageSquareText className="h-3.5 w-3.5" />
         </button>
       )}
       <button

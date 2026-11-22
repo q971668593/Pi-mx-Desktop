@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { TEAM_BOARD_RELATIVE_PATH, TEAM_SPEC_RELATIVE_DIR, TEAM_STATE_RELATIVE_PATH } from '@shared/team-board'
 import { base64UrlDecode, decodePairLink, isAllowedEndpoint, type OpenResult, type PairOffer, type TurnPatch } from '@shared/remote'
 import { HandshakeError, generateKeyPair } from '@shared/remote/crypto'
 import { RemoteGateway, hostAddresses, lanAddresses } from '../gateway'
@@ -303,6 +304,30 @@ describe('sessions', () => {
     await expect(c.call('file.list', { sessionKey: session, path: '../etc' })).rejects.toMatchObject({ err: { code: 'not_found' } })
     const found = (await c.call('file.search', { sessionKey: session, query: 'AUTH' })) as { entries: { path: string }[] }
     expect(found.entries.map((e) => e.path)).toEqual(['src/auth.ts'])
+  })
+
+  it('exposes the structured team board to viewers without session file paths', async () => {
+    const board = [
+      '- 当前批次：手机端', '- 目标：显示任务', '', '### T-001 看板', '',
+      '- 角色：前端', '- 状态：进行中', '', '- [ ] 显示卡片',
+    ].join('\n')
+    const state = JSON.stringify({ runs: [{ taskId: 'T-001', sessionFile: '/private/team.jsonl', status: 'running', staleAt: 1 }] })
+    const read = vi.spyOn(host, 'readFile').mockImplementation(async (_projectId, path) => {
+      const text = path === `${TEAM_SPEC_RELATIVE_DIR}/${TEAM_BOARD_RELATIVE_PATH}` ? board : state
+      return { path, size: Buffer.byteLength(text), truncated: false, kind: 'text', text }
+    })
+    const c = await pairNew()
+    gw.setDeviceRole(c.hello!.deviceId, 'viewer')
+    const result = await c.call('team.board', { sessionKey: session })
+    expect(result).toMatchObject({
+      batch: '手机端', goal: '显示任务',
+      tasks: [{ id: 'T-001', title: '看板', role: '前端', status: '进行中', dispatch: 'stale', acceptance: [{ text: '显示卡片', done: false }] }],
+    })
+    expect(JSON.stringify(result)).not.toContain('/private/team.jsonl')
+    expect(read.mock.calls.map(([, path]) => path)).toEqual([
+      `${TEAM_SPEC_RELATIVE_DIR}/${TEAM_BOARD_RELATIVE_PATH}`,
+      `${TEAM_SPEC_RELATIVE_DIR}/${TEAM_STATE_RELATIVE_PATH}`,
+    ])
   })
 
   it('reviews the working tree: file list, then one file\'s lines', async () => {

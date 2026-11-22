@@ -2,6 +2,9 @@ package dev.pi.remote.app.ui.session
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,50 +48,46 @@ import dev.pi.remote.app.theme.PiIcon
 import dev.pi.remote.app.theme.PiIcons
 import dev.pi.remote.app.ui.Hairline
 import dev.pi.remote.app.ui.QuietButton
-import dev.pi.remote.app.ui.SectionLabel
 import dev.pi.remote.app.ui.Spinner
 import dev.pi.remote.app.ui.formatAgo
 import dev.pi.remote.protocol.FileEntry
 import dev.pi.remote.protocol.FileReadResult
 import kotlinx.coroutines.launch
 
-/** 与桌面端侧栏一致的 tab 顺序：文件 / Git / 工作团队 / 终端 / 浏览器。 */
 private val TABS = listOf("run", "files", "git", "team")
 
-/**
- * 会话面板的 tab 区（⋯ 打开的那一栏）：文件可预览可编辑保存，Git 看改动与提交，
- * 工作团队读电脑上的看板文件；终端与浏览器依赖桌面窗口，这里只给入口说明。
- */
 @Composable
 fun SessionPanelTabs(
     repo: RemoteRepository,
     sessionKey: String,
     canWrite: Boolean,
-    runContent: (@Composable () -> Unit)? = null,
+    runContent: @Composable () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // 概览（Run）第一个：上下文、本会话、会话文件都在里面，和电脑端 Run tab 对齐。
     var tab by remember { mutableStateOf("run") }
-    Column(modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().selectableGroup().padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             for (key in TABS) {
                 val selected = tab == key
                 Box(
-                    Modifier.clip(RoundedCornerShape(Pi.radius)).background(if (selected) Pi.c.surface else Color.Transparent)
-                        .clickable(role = Role.Tab) { tab = key }.padding(horizontal = 10.dp, vertical = 6.dp),
+                    Modifier.weight(1f).heightIn(min = 48.dp).clip(RoundedCornerShape(Pi.radius))
+                        .background(if (selected) Pi.c.blue.copy(alpha = 0.14f) else Color.Transparent)
+                        .selectable(selected, role = Role.Tab) { tab = key },
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Text(stringResource(tabLabel(key)), style = Pi.t.meta.copy(color = if (selected) Pi.c.fg else Pi.c.fg3))
+                    Text(stringResource(tabLabel(key)), style = Pi.t.secondary.copy(color = if (selected) Pi.c.blue else Pi.c.fg2))
                 }
             }
         }
         Spacer(Modifier.height(6.dp))
         Hairline()
         when (tab) {
-            "run" -> if (runContent != null) runContent() else TeamTab(repo, sessionKey)
+            "run" -> runContent()
             "files" -> FilesTab(repo, sessionKey, canWrite)
             // Git 面板：电脑端「更改 / 图谱 / 分支 / 命令记录 / 更多」整套都在 GitPanel 里。
             "git" -> GitPanel(repo, sessionKey)
-            else -> TeamTab(repo, sessionKey)
+            else -> TeamBoardTab(repo, sessionKey)
         }
     }
 }
@@ -241,30 +240,6 @@ private fun FilesTab(repo: RemoteRepository, sessionKey: String, canWrite: Boole
         }
     }
 }
-
-@Composable
-private fun TeamTab(repo: RemoteRepository, sessionKey: String) {
-    var text by remember { mutableStateOf<String?>(null) }
-    var failed by remember { mutableStateOf(false) }
-    LaunchedEffect(sessionKey) {
-        val r = repo.readFile(sessionKey, TEAM_BOARD_PATH)
-        text = r.getOrNull()?.takeIf { it.kind == "text" }?.text
-        failed = text == null
-    }
-    Column(Modifier.fillMaxWidth()) {
-        SectionLabel(stringResource(R.string.panel_tab_team))
-        when {
-            text == null && !failed -> Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.Center) { Spinner(Pi.c.fg3, 16.dp) }
-            failed -> Text(stringResource(R.string.panel_team_empty, TEAM_BOARD_PATH), style = Pi.t.meta.copy(color = Pi.c.fg3), modifier = Modifier.padding(16.dp))
-            else -> Box(Modifier.fillMaxWidth().heightIn(max = 360.dp).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-                Text(text.orEmpty(), style = Pi.t.meta.copy(fontFamily = FontFamily.Monospace, color = Pi.c.fg))
-            }
-        }
-    }
-}
-
-/** 团队看板的固定位置，和桌面端一致。 */
-private const val TEAM_BOARD_PATH = ".文档/开发规范/看板/当前批次.md"
 
 /** 供 Compose Preview / 截图之外的调用方复用：当前 section 的标题。 */
 @Composable

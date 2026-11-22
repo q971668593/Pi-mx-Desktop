@@ -12,6 +12,8 @@ import { normalizeSessionFilePath, sessionFilePathsEqual } from '@shared/session
 export type CompletionNotificationSettings = {
   soundEnabled: boolean
   soundPreset?: AlertSoundPreset
+  /** Volume percent (0–200); omitted = designed level. */
+  soundVolume?: number
   notificationEnabled: boolean
   alertOnRunIdle: boolean
   alertOnBackgroundRunIdle: boolean
@@ -35,6 +37,8 @@ export type CompletionCard = {
   timeoutMs: number
   sound: boolean
   soundPreset?: AlertSoundPreset
+  /** Volume percent copied from settings at raise time, so a later change never retro-plays. */
+  soundVolume?: number
   /** false = sound only, no popup (the user turned popups off). */
   popup?: boolean
   isTest?: boolean
@@ -137,6 +141,7 @@ export function createCompletionNotificationController(deps: CompletionControlle
       timeoutMs: settings.timeoutSeconds * 1000,
       sound: settings.soundEnabled,
       soundPreset: settings.soundPreset,
+      soundVolume: settings.soundVolume,
       popup: settings.notificationEnabled,
       copy: buildCompletionNotificationCopy({
         language: settings.language,
@@ -245,6 +250,7 @@ export function createCompletionNotificationController(deps: CompletionControlle
       timeoutMs: settings.timeoutSeconds * 1000,
       sound: settings.soundEnabled,
       soundPreset: settings.soundPreset,
+      soundVolume: settings.soundVolume,
       popup: settings.notificationEnabled,
       isTest: true,
       copy: buildCompletionNotificationCopy({

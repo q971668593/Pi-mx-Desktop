@@ -1,22 +1,21 @@
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronRight, CloudDownload, Eye, EyeOff, Trash2 } from '@renderer/components/icons'
+import { ChevronRight, CloudDownload, Pencil, Trash2 } from '@renderer/components/icons'
 import { cn } from '@renderer/lib/utils'
 import type { PiModelsConfigPayload, PiModelsProviderConfig } from '@shared/ipc-contract'
 import { guessPresetForProvider } from '@renderer/features/settings/model-provider-presets'
 import { ModelCatalogPicker } from '@renderer/features/settings/model-catalog-picker'
 import { ModelEntryEditor, type LocalModelEntry } from '@renderer/features/settings/model-entry-editor'
-import {
-  API_OPTS,
-  ProviderAvatar,
-  btnDanger,
-  btnOutline,
-  inputCls,
-  maskApiKey,
-  selectCls,
-} from './models-settings-shared'
+import { ProviderConfigDialog } from './provider-config-dialog'
+import { API_OPTS, ProviderAvatar, btnDanger, btnOutline, maskApiKey } from './models-settings-shared'
 
-const fieldCls = 'settings-field h-[30px] py-0 text-[12.5px]'
-
+/**
+ * One configured provider.
+ *
+ * The card is a summary: name, endpoint, API shape, masked key, model count. Connection fields
+ * only exist in {@link ProviderConfigDialog}, so editing never means hunting four inputs inside
+ * an expanded card, and the header/row heights stay readable at any provider count.
+ */
 export function ModelsProviderCard({
   pid,
   cardIndex,
@@ -26,8 +25,6 @@ export function ModelsProviderCard({
   fetching,
   remoteIds,
   remoteError,
-  apiKeyVisible,
-  onToggleApiKeyVisible,
   expandedLocalModel,
   onToggleLocalModel,
   onUpdateProvider,
@@ -47,8 +44,6 @@ export function ModelsProviderCard({
   fetching: boolean
   remoteIds: string[]
   remoteError?: string
-  apiKeyVisible: boolean
-  onToggleApiKeyVisible: () => void
   expandedLocalModel: Record<string, boolean>
   onToggleLocalModel: (rowKey: string) => void
   onUpdateProvider: (patch: Partial<PiModelsProviderConfig>) => void
@@ -61,6 +56,7 @@ export function ModelsProviderCard({
   onRemoveModel: (modelId: string) => void
 }) {
   const { t } = useTranslation('settings')
+  const [editing, setEditing] = useState(false)
   const p = config.providers[pid]
   const preset = guessPresetForProvider(pid, p)
   const displayName = p.name || preset?.label || pid
@@ -101,79 +97,23 @@ export function ModelsProviderCard({
       <div className="settings-expand-grid" data-open={open}>
         <div className="settings-expand-inner">
           <div className="settings-expand-content space-y-5 px-4 py-4">
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-[11.5px] text-foreground-secondary">{t('models.labelName')}</label>
-                <input
-                  className={cn(inputCls, fieldCls)}
-                  value={p.name || ''}
-                  onChange={(e) => onUpdateProvider({ name: e.target.value || undefined })}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-[11.5px] text-foreground-secondary">{t('models.labelApi')}</label>
-                <select
-                  className={cn(selectCls, fieldCls, 'w-full')}
-                  value={p.api || 'openai-completions'}
-                  onChange={(e) => onUpdateProvider({ api: e.target.value as PiModelsProviderConfig['api'] })}
-                >
-                  {API_OPTS.map((o) => (
-                    <option key={o.v} value={o.v}>
-                      {o.l}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="sm:col-span-2">
-                <label className="mb-1 block text-[11.5px] text-foreground-secondary">{t('models.labelBaseUrl')}</label>
-                <input
-                  className={cn(inputCls, fieldCls)}
-                  value={p.baseUrl || ''}
-                  placeholder="https://api.example.com/v1"
-                  onChange={(e) => onUpdateProvider({ baseUrl: e.target.value || undefined })}
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="mb-1 block text-[11.5px] text-foreground-secondary">{t('models.labelApiKey')}</label>
-                <div className="relative">
-                  <input
-                    className={cn(inputCls, fieldCls, 'pr-9')}
-                    type={apiKeyVisible ? 'text' : 'password'}
-                    value={p.apiKey || ''}
-                    placeholder="$OPENAI_API_KEY"
-                    onChange={(e) => onUpdateProvider({ apiKey: e.target.value || undefined })}
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
-                    onClick={onToggleApiKeyVisible}
-                    aria-label={apiKeyVisible ? t('models.hideKeyLabel') : t('models.showKeyLabel')}
-                  >
-                    {apiKeyVisible ? <EyeOff className="h-3 w-3" strokeWidth={2} /> : <Eye className="h-3 w-3" strokeWidth={2} />}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 className={cn(btnOutline, 'border-primary/30 text-primary')}
-                disabled={fetching}
-                onClick={onFetchRemote}
+                onClick={() => setEditing(true)}
               >
+                <Pencil className="mr-1 inline h-3 w-3" strokeWidth={2} />
+                {t('models.editConnection')}
+              </button>
+              <button type="button" className={btnOutline} disabled={fetching} onClick={onFetchRemote}>
                 <CloudDownload className="mr-1 inline h-3 w-3" strokeWidth={2} />
                 {fetching ? t('models.fetching') : t('models.fetchModels')}
               </button>
               <button type="button" className={btnOutline} onClick={onManualAdd}>
                 {t('models.manualAdd')}
               </button>
-              <button
-                type="button"
-                className={cn(btnDanger, 'ml-auto')}
-                onClick={onRemoveProvider}
-              >
+              <button type="button" className={cn(btnDanger, 'ml-auto')} onClick={onRemoveProvider}>
                 <Trash2 className="mr-1 inline h-3 w-3" strokeWidth={2} />
                 {t('models.deleteBtn')}
               </button>
@@ -224,6 +164,20 @@ export function ModelsProviderCard({
           </div>
         </div>
       </div>
+
+      {editing ? (
+        <ProviderConfigDialog
+          mode="edit"
+          pid={pid}
+          preset={preset}
+          initial={p}
+          onSubmit={({ config: next }) => {
+            setEditing(false)
+            onUpdateProvider(next)
+          }}
+          onCancel={() => setEditing(false)}
+        />
+      ) : null}
     </div>
   )
 }

@@ -122,10 +122,23 @@ fun SessionScreen(repo: RemoteRepository, sessionKey: String, onBack: () -> Unit
     val scope = rememberCoroutineScope()
     val timeline = timelines[sessionKey]
     val summary = inbox.sessions.firstOrNull { it.sessionKey == sessionKey }
-    var draft by remember(sessionKey) { mutableStateOf(TextFieldValue("")) }
+    val viewKey = "${repo.active.value?.hostId}:$sessionKey"
+    var draft by remember(viewKey) { mutableStateOf(TextFieldValue(repo.sessionDrafts[viewKey].orEmpty())) }
+    val currentDraft by androidx.compose.runtime.rememberUpdatedState(draft)
+    val initialPosition = remember(viewKey) { repo.sessionReadPositions[viewKey] ?: (0 to 0) }
+    val sessionListState = rememberLazyListState(initialPosition.first, initialPosition.second)
+    androidx.compose.runtime.DisposableEffect(repo, viewKey) {
+        onDispose {
+            if (currentDraft.text.isEmpty()) repo.sessionDrafts.remove(viewKey) else repo.sessionDrafts[viewKey] = currentDraft.text
+            repo.sessionReadPositions[viewKey] = sessionListState.firstVisibleItemIndex to sessionListState.firstVisibleItemScrollOffset
+        }
+    }
     var notice by remember { mutableStateOf<String?>(null) }
     var sheet by remember { mutableStateOf<String?>(null) }
-    var caps by remember { mutableStateOf<List<CapabilityRow>>(emptyList()) }
+    var caps by remember(sessionKey) { mutableStateOf<List<CapabilityRow>>(emptyList()) }
+    var pendingCapability by remember(sessionKey) { mutableStateOf<String?>(null) }
+    var capabilityError by remember(sessionKey) { mutableStateOf<String?>(null) }
+    val capabilityFailure = stringResource(R.string.team_tool_update_failed)
     var cache by remember { mutableStateOf<String?>(null) }
     var models by remember { mutableStateOf<ModelListResult?>(null) }
     var deferred by remember { mutableStateOf(setOf<String>()) }
@@ -285,6 +298,7 @@ fun SessionScreen(repo: RemoteRepository, sessionKey: String, onBack: () -> Unit
         title = timeline?.title?.ifEmpty { null } ?: summary?.title?.ifEmpty { null } ?: stringResource(R.string.session_untitled),
         project = summary?.projectId?.trimEnd('/', '\\')?.substringAfterLast('/')?.substringAfterLast('\\').orEmpty(),
         timeline = timeline,
+        listState = sessionListState,
         connection = connection,
         canWrite = repo.canWrite,
         draft = draft,
@@ -506,10 +520,21 @@ fun SessionScreen(repo: RemoteRepository, sessionKey: String, onBack: () -> Unit
 
     when (sheet) {
         "tools" -> ToolsSheet(
-            caps, cache, repo.canWrite,
+            caps, cache, ready && repo.canWrite, pendingCapability, capabilityError,
             onCapability = { id, on ->
-                caps = caps.map { if (it.id == id) it.copy(enabled = on) else it }
-                scope.launch { repo.setCapability(sessionKey, id, on) }
+                if (pendingCapability == null) {
+                    pendingCapability = id
+                    capabilityError = null
+                    scope.launch {
+                        try {
+                            repo.setCapability(sessionKey, id, on)
+                                .onSuccess { result -> caps = caps.map { it.copy(enabled = it.id in result.enabled) } }
+                                .onFailure { capabilityError = capabilityFailure }
+                        } finally {
+                            pendingCapability = null
+                        }
+                    }
+                }
             },
             onCache = { mode ->
                 cache = mode
@@ -646,7 +671,7 @@ fun SessionContent(
     val density = LocalDensity.current
     val panel = remember { Animatable(0f) }
     BoxWithConstraints(Modifier.fillMaxSize()) {
-    val panelWidth = minOf(maxWidth * 0.86f, 340.dp)
+    val panelWidth = minOf(maxWidth * 0.96f, 440.dp)
     val panelPx = with(density) { panelWidth.toPx() }
     fun settlePanel(velocity: Float) {
         val target = when {

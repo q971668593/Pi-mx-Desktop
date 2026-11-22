@@ -5,6 +5,7 @@ import { cn } from '@renderer/lib/utils'
 import { ipcClient } from '@renderer/lib/ipc-client'
 import { AlertTriangle, Check, Copy, Loader2, RefreshCw, XCircle } from '@renderer/components/icons'
 import { SettingRow, SettingsSection } from './settings-page-shared'
+import { SettingsPageHeader } from './settings-shell'
 import { Switch } from '@renderer/components/ui/switch'
 import { selectCls, btnOutline } from './settings-controls'
 import { useSettingsDraft } from './settings-draft-context'
@@ -321,6 +322,19 @@ function WslEnvironmentCard({
       <p className="mt-3 border-t border-border/40 pt-2.5 text-[11.5px] leading-[1.55] text-foreground-secondary/85">
         {t('settings:runtime.fsHint')}
       </p>
+    </div>
+  )
+}
+
+export function RuntimeSettingsPage() {
+  const { t } = useTranslation()
+  return (
+    <div className="space-y-8">
+      <SettingsPageHeader
+        title={t('settings:runtime.title')}
+        description={t('settings:runtime.description')}
+      />
+      <RuntimeSettingsPanel />
     </div>
   )
 }

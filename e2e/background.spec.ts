@@ -47,7 +47,10 @@ test.describe('background image', () => {
       expect(await rootAttr('data-bg-content-material')).toBe('clear')
       await win.getByRole('switch', { name: 'Vignette' }).click()
       await expect(win.locator('#pi-background')).toHaveClass(/has-vignette/)
-      await win.getByRole('button', { name: 'Save', exact: true }).click()
+      await expect.poll(() => {
+        const cfg = JSON.parse(fs.readFileSync(path.join(agent.home, '.config', 'Electron', 'pi-desktop.json'), 'utf8'))
+        return cfg.background?.light?.vignette
+      }).toBe(true)
       await shot(win, 'settings')
       await win.getByRole('button', { name: 'Back', exact: true }).click()
       // Clear material: tint only, no blur behind the chat column.

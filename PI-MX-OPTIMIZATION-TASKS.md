@@ -235,3 +235,40 @@ e2e 逐个失败的根因（都是界面改了、用例没跟）：
 4. `packages/shared/feature-flags.ts` 目前只有基建与单测，**尚无读取点**；第一个接入点建议放在 G2（`plugin_manager`）或 T8（`theme_json_presets`），不要为了"用上"而给现有稳定功能套开关。
 5. `models.json` 监听对「正在跑 turn 的槽位」是推迟重载（Phase 2.6 R9），但**没有行为测试**：`worker-manager` 的槽位池需要真实 transport 才能驱动。要补得先给 `worker-manager` 抽一层可注入的 transport（Phase 3 一起做，别在功能改动里顺手改）。
 6. `@typescript-eslint/no-unused-vars` 目前是 `off`（实测打开有 170 处存量违规）。建议按预算型门禁单开一轮：先把它设成 `warn` + 记 170 的基线测试，再逐月降。在此之前 R8 这类死代码只能靠 review 抓。
+
+## R14 模型设置重构（默认模型移除 / 生图独立页 / 供应商弹窗化 / 订阅登录）
+
+用户的判断是「模型页本末倒置」：默认模型每次对话都要选，不该在设置里再设一遍；插件模型要先有供应商才谈得上；生图和供应商挤在同一页。按这个顺序重排。
+
+| # | 改动 | 位置 |
+|---|---|---|
+| 1 | 删掉「默认模型与思考」区，新会话由 SDK `findInitialModel` 自动取第一个可用模型（`settings.defaultProvider/defaultModel` 留空即走这条回退链） | 删除 `features/settings/model-defaults-section.tsx` + 单测；`npm run check:i18n` 同步删除 `modelDefaults` 词条 |
+| 2 | 保留「模型切换范围」「按模型绑定思考等级」，收进可折叠的「高级」卡片，草稿切片 id 改为 `model-advanced` | 新建 `features/settings/model-runtime-advanced.tsx`（`changedModelAdvancedSettings`、`ModelRuntimeAdvanced`），`models-settings-panel.tsx` 末尾挂载 |
+| 3 | 生图从模型页拆成设置独立入口「生图模型配置」 | 新建 `image-gen-settings-page.tsx`；`settings-page.tsx` 加 `imageGen` 到 `SettingsPage` / `NAV_GROUPS`（agent 组，`Image` 图标）/ `WIDE_PAGES` / 渲染分支；`ImageGenSettings({ showHeading })` 让独立页不重复标题 |
+| 4 | 添加供应商改成「选模板 → 连接信息弹窗 → 保存才落 draft」；卡片只做摘要，随时「编辑连接信息」再打开同一弹窗 | 新建 `provider-config-dialog.tsx`（`ProviderConfigDialog` / `ProviderDraft`，缺 scheme 自动补 `http://`，本地网关可直接填 `localhost:11434`）；`models-settings-panel.tsx` 的 `addFromPreset` 只开弹窗、`createProvider` 才写；`models-provider-card.tsx` 展开体去掉 4 个输入框改为按钮行 |
+| 5 | 订阅（OAuth）登录：主进程跑 SDK 自己的 `ModelRuntime.login`，凭据由 SDK 写 `auth.json`（与终端 pi 共用） | 新建 `src/main/ipc/handlers/model-auth.ts`（`model.auth.providers/login/answer/cancel/logout`，`registerHandlerWithSchema` 全量校验，`sendEvent` 推 `model-auth` 事件）；`packages/shared/app-events.ts` 加 `ModelAuthEvent`；`app-event-session.ts` 加 `model-auth` 排除会话作用域；新建 `features/settings/model-auth-dialog.tsx`；`models-sdk-provider-section.tsx` 每个 provider 行加「登录（OAuth）/ 用 API Key 登录 / 退出登录」 |
+
+**高级卡片说明**：删除「默认模型与思考」整块后，仍有两项是「按模型 / 按范围」而非「默认」语义，收进模型页末尾的可折叠卡片 `data-testid="model-advanced"`（`model-runtime-advanced.tsx`，脏切片 id 改成 `model-advanced`，与旧的 `model-defaults` 不冲突）：
+
+- 模型切换范围 → pi `enabledModels`，逗号分隔支持通配；清空写 `null`（IPC 会丢 `undefined`）。
+- 按模型绑定思考等级 → pi `modelThinkingLevels`，与终端 pi ≥ 0.84 共用同一份设置。
+
+新增单测：`provider-config-dialog.test.tsx`（6 例）、`model-runtime-advanced.test.tsx`（3 例：只回改动键 / 改等级 / 新增绑定）。两个已知陷阱：`SettingRow` 会把 children 包进 `role="group"`，`getByLabelText` 会命中多个 → 用 `findByPlaceholderText`；`configBaseUrlRequired` 的英文文案是 "Endpoint is required" 而不是 "Base URL is required"。
+
+实测的订阅能力：44 个内置 provider 里 9 个带 OAuth —— `anthropic`（Claude Pro/Max）、`github-copilot`、`kimi-coding`、`meta`、`openai`（Sign in with ChatGPT）、`openai-codex`（ChatGPT Plus/Pro）、`openrouter`、`radius`、`xai`（SuperGrok / X Premium）；其余 40 个有 `apiKey.login`（amazon-bedrock / anthropic / azure / deepseek / google / groq / mistral / moonshotai / openai / openrouter / together / vercel-ai-gateway / xai / zai / magpie 等），走「用 API Key 登录」由 SDK 校验并写 `auth.json`，不再要求手改 models.json。
+
+SDK 段落的 `model.auth.providers` 是**惰性加载**的：展开 SDK 供应商 `<details>` 才拉一次（`authLoaded` 标志）。原因不是性能，而是 `models-settings-panel.test.tsx` 对 `model.list` 调用序列有精确断言，挂载时多发 IPC 会打破它。
+
+**验收（实测）**
+
+| 命令 | 结果 |
+|---|---|
+| `npx tsc -p tsconfig.web.json --noEmit` | ✅ 0 |
+| `npx tsc -p tsconfig.node.json --noEmit` | ✅ 0 |
+| `node scripts/check-i18n-parity.mjs` | ✅ locales are in parity |
+| `npx eslint .`（目标文件） | ✅ 0 |
+| `npm run gen:ipc` | ✅ 322 invoke / 12 event 通道（新增 5 个 `ipc:model.auth.*`） |
+| `npm run test:unit` | ✅ 470 文件 / 2855 例通过；1 个既有失败 `scripts/relay/server.test.mjs`（rolldown 解析 `scripts/relay/server.mjs` 的 shebang，commit e13380f 引入，与本轮无关） |
+| `npm run test:scripts` | 4 个既有失败（`incomplete-assistant-timeline` / `ipc-schema-coverage` 56>55 / `session-goal-contract` / `structure-boundaries`），本轮未新增未校验 handler（5 个新通道全部 `registerHandlerWithSchema`），计数未变 |
+
+> 订阅登录的 `getDeviceId` 复用生图身份里的安装 UUID —— 「Sign in with ChatGPT」要求 `urn:uuid:<uuid>`，否则直接报 "requires a device ID (UUID)"。

@@ -12,8 +12,10 @@ describe('notification host page', () => {
   it('plays the preset alert sound on its own channel, so sound-only mode has no card', () => {
     const html = notificationHostPageHtml()
 
-    expect(html).toContain('api.onSound((preset) => play(preset))')
-    expect(html).toContain('function play(preset)')
+    // The host applies the user's volume (percent, 0–200) on top of the shared tone table.
+    expect(html).toContain('api.onSound((preset, volume) => play(preset, volume))')
+    expect(html).toContain('function play(preset, volume)')
+    expect(html).toContain('const factor = (level / 100) * 2')
     // The main process decides when to sound (card or sound-only), so a render must stay silent.
     expect(html).not.toContain('playedSoundIds')
   })

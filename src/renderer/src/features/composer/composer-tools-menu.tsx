@@ -160,7 +160,7 @@ function BrowserModeRow({ builtin, chrome, enabled, sessionFile }: { builtin: Ca
   )
 }
 
-export function ComposerToolsMenu({ disabled, running }: { disabled?: boolean; running?: boolean }) {
+export function ComposerToolsMenu({ disabled, running, location = 'composer' }: { disabled?: boolean; running?: boolean; location?: 'composer' | 'status' }) {
   const { t } = useTranslation()
   const sessionFile = useUIStore((s) => s.historySessionFile)
   const key = capabilityKey(sessionFile)
@@ -207,7 +207,7 @@ export function ComposerToolsMenu({ disabled, running }: { disabled?: boolean; r
           and the menu), so turning things on never widens the toolbar. */}
       <button
         type="button"
-        data-composer-tools=""
+        data-composer-tools={location}
         disabled={disabled}
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -215,7 +215,7 @@ export function ComposerToolsMenu({ disabled, running }: { disabled?: boolean; r
         title={enabled.length ? t('composer:tools.enabledTitle', { names }) : t('composer:tools.button')}
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          'composer-toolbar-btn flex h-7 min-w-7 shrink-0 items-center justify-center gap-1 rounded-md px-1.5 text-foreground-secondary/75 disabled:opacity-30',
+          location === 'status' ? 'workbench-status-trigger' : 'composer-toolbar-btn flex h-7 min-w-7 shrink-0 items-center justify-center gap-1 rounded-md px-1.5 text-foreground-secondary/75 disabled:opacity-30',
           open && 'bg-[var(--bg-active)] text-foreground',
           enabled.length > 0 && 'text-primary',
         )}
@@ -224,11 +224,19 @@ export function ComposerToolsMenu({ disabled, running }: { disabled?: boolean; r
         {enabled.map((id) => (
           <span key={id} className="composer-capability-chip hidden" data-capability={id} />
         ))}
-        {enabled.length > 0 ? <span className="text-[11px] tabular-nums">{enabled.length}</span> : null}
+        {location === 'status' && <span className="hidden items-center gap-1.5 lg:flex">
+          {(['work-team', 'computer', 'pi-ui', 'web-search', 'browser'] as const).map((id) => {
+            const active = enabled.includes(id) || (id === 'browser' && enabled.includes('chrome'))
+            return <span key={id} className={cn('whitespace-nowrap', active ? 'text-primary' : 'text-muted-foreground/60')}>
+              {id === 'browser' ? t('composer:tools.browserMode.label') : label(id)} {active ? '●' : '○'}
+            </span>
+          })}
+        </span>}
+        {location === 'composer' && enabled.length > 0 ? <span className="text-[11px] tabular-nums">{enabled.length}</span> : null}
       </button>
       {open ? (
         <ComposerPopover
-          anchorSelector="[data-composer-tools]"
+          anchorSelector={`[data-composer-tools="${location}"]`}
           align="start"
           width={280}
           label={t('composer:tools.title')}
