@@ -87,8 +87,10 @@ export function visualJobs({ lang, rawDir, tmp, outDir }) {
     // Right panel, widened → the side-by-side diff.
     'review.png': cut('light-hero', 'review.png', { x: 520, y: 176, width: 920, height: 420 }),
     'team.png': cut('light-team', 'team.png', { x: 520, y: 96, width: 920, height: 620 }),
-    'terminal.png': cut('light-terminal', 'terminal.png', { x: 980, y: 78, width: 460, height: 520 }),
-    'files.png': cut('light-files', 'files.png', { x: 980, y: 78, width: 460, height: 560 }),
+    // 终端：录屏末帧（上下分屏两块真 shell），不是空 pane。
+    'terminal.png': cut('panel-terminal', 'terminal.png', { x: 960, y: 140, width: 480, height: 540 }),
+    // 文件：录屏末帧（加宽面板 + links.mjs 预览）。
+    'files.png': cut('panel-files', 'files.png', { x: 520, y: 110, width: 920, height: 640 }),
     'context.png': cut('light-context', 'context.png', { x: 980, y: 96, width: 460, height: 340 }),
     // Composer with an @ file chip.
     'composer.png': cut('composer', 'composer.png', { x: 360, y: 640, width: 600, height: 250 }),

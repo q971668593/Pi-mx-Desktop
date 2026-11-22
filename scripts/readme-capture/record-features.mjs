@@ -6,6 +6,7 @@ import { clickText, launchApp } from './app.mjs'
 import { UI } from './config.mjs'
 import { text } from './demo-script.mjs'
 import { recorder } from './record.mjs'
+import { openSession } from './ui.mjs'
 
 const COPY = {
   zh: { strength: '图片强度', uiOpacity: '界面不透明度', split: '左右分屏', closePane: '关闭此栏', usage: '用量', days90: '90 天', back: '返回', save: '保存', dark: '深色', light: '浅色', lightTheme: '浅色主题', darkTheme: '深色主题', choose: '选择图片…' },
@@ -13,9 +14,9 @@ const COPY = {
 }
 
 async function openPlanSession(win, lang, title = text(lang).planTitle) {
-  await clickText(win, 'lumen')
-  await win.waitForTimeout(1800)
-  await clickText(win, title, { exact: false })
+  // 项目/会话列表要先载入，用 ui.openSession 的分段等待。
+  await openSession(win, lang, 'plan').catch(() => {})
+  await clickText(win, title, { exact: false }).catch(() => {})
   await win.waitForTimeout(2200)
 }
 
@@ -25,7 +26,10 @@ export async function recordTerminal({ appDir, demo, lang, outDir }) {
   process.env.PS1 = 'lumen $ '
   const { app, win } = await launchApp({ appDir, demo, lang })
   const rec = recorder(win, outDir)
-  const c = COPY[lang]
+  const copy = {
+    zh: { split: '向下拆分', newTerminal: '新建终端', closeAll: '关闭此项目全部终端', closeTab: '关闭终端' },
+    en: { split: 'Split down', newTerminal: 'New terminal', closeAll: 'Close all terminals in this project', closeTab: 'Close terminal' },
+  }[lang]
   try {
     await openPlanSession(win, lang)
     await rec.hold(500)
@@ -35,28 +39,28 @@ export async function recordTerminal({ appDir, demo, lang, outDir }) {
     await win.locator('.terminal-drawer .xterm').first().click()
     await rec.type('git log --oneline -3\n', false)
     await rec.hold(900)
-    await rec.type('node --test 2>&1 | grep -E "^. (tests|pass|fail) "\n', false)
+    await rec.type('node --test 2>&1 | tail -6\n', false)
     await rec.hold(2200)
-    await win.getByRole('button', { name: c.split }).click()
-    await rec.hold(500)
-    await win.getByRole('menuitem').first().click()
+    await win.locator(`.terminal-drawer button[aria-label="${copy.split}"]`).first().click()
+    await rec.hold(600)
+    const menu = win.getByRole('menuitem').filter({ hasText: /终端|Terminal|Git Bash|Pwsh|PowerShell/i }).first()
+    if ((await menu.count()) > 0) await menu.click()
+    else await win.keyboard.press('Enter')
     await win.locator('.terminal-drawer .xterm').nth(1).waitFor({ timeout: 15_000 })
     await rec.hold(700)
     await rec.type('git status --short\n', false)
-    await rec.hold(1200)
-    const close = win.locator('.terminal-drawer').getByRole('button', { name: c.closePane }).nth(1)
-    await close.hover()
-    await rec.hold(500)
-    await close.click()
-    await rec.hold(1500)
+    await rec.hold(1600)
     rec.save()
     console.log(`  terminal: ${rec.count()} frames`)
   } finally {
     delete process.env.PS1
     // Running shells make the window's close guard ask first; end them so the app can quit.
-    await win.evaluate(() => document.querySelectorAll('.terminal-drawer [aria-label="Close terminal"], .terminal-drawer [aria-label="关闭终端"]').forEach((b) => b.click())).catch(() => {})
-    await win.waitForTimeout(500)
-    await app.close()
+    await win.locator(`.terminal-drawer button[aria-label="${copy.closeAll}"]`).first().click({ timeout: 5000 }).catch(() => {})
+    await win.waitForTimeout(800)
+    // 关全部终端会弹确认框，先按键确认，再兜底强杀，否则 app.close() 会一直挂着。
+    await win.keyboard.press('Enter').catch(() => {})
+    const closed = await Promise.race([app.close().then(() => true).catch(() => true), new Promise((r) => setTimeout(() => r(false), 15_000))])
+    if (!closed) app.process().kill('SIGKILL')
   }
 }
 

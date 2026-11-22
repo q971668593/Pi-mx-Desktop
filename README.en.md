@@ -1,11 +1,15 @@
 <div align="center">
 
-<img src="resources/pi-mx-icon.png" alt="Pi mx Desktop" width="76" height="76" />
+<img src="resources/pi-mx-icon.png" alt="Pi mx Desktop" width="80" />
 
 # Pi mx Desktop
 
-**The desktop workbench a terminal coding agent deserves.**<br/>
-Same [pi](https://github.com/earendil-works/pi) agent, same `~/.pi/agent` — plus a timeline, a system-prompt switch (purge), file / Git / terminal surfaces, a team board, built-in image generation, and an Android client so you can keep going away from the desk.
+### The pi terminal agent is already excellent. What it lacks is a desk.
+
+**A desktop workbench around the pi terminal agent — the agent untouched, the process laid out.**
+
+Same `pi`, same `~/.pi/agent`, same extensions and model config.<br />
+What you gain is a whole screen: timeline, side-by-side diffs, file tree, real terminals, team board, themes.
 
 [![Release](https://img.shields.io/github/v/release/q971668593/Pi-mx-Desktop?style=flat-square&color=d97706&label=release)](https://github.com/q971668593/Pi-mx-Desktop/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/q971668593/Pi-mx-Desktop/total?style=flat-square&color=d97706)](https://github.com/q971668593/Pi-mx-Desktop/releases)
@@ -13,109 +17,201 @@ Same [pi](https://github.com/earendil-works/pi) agent, same `~/.pi/agent` — pl
 ![Android](https://img.shields.io/badge/Android-9%2B%20arm64-d97706?style=flat-square)
 [![License](https://img.shields.io/github/license/q971668593/Pi-mx-Desktop?style=flat-square&color=d97706)](LICENSE)
 
-**English** · [简体中文](./README.md) · [Download](https://github.com/q971668593/Pi-mx-Desktop/releases/latest) · [Getting started](./doc/guide/getting-started.md) · [Adapters](./doc/guide/adapters.en.md)
+[Download](https://github.com/q971668593/Pi-mx-Desktop/releases/latest) · [Getting started](doc/guide/getting-started.md) · [Adapters](doc/guide/adapters.en.md) · [简体中文](./README.md)
 
-<sub>Built on [pi Desktop](https://github.com/justhil/pi-app) by [justhil](https://github.com/justhil). MIT licensed.</sub>
+<sub>Built on [pi Desktop](https://github.com/justhil/pi-app) by [justhil](https://github.com/justhil). MIT licensed. Not an official pi product.</sub>
 
 </div>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/assets/readme/en/hero-dark.png" />
-  <img src="doc/assets/readme/en/hero-light.png" alt="Pi mx Desktop: a finished turn in the timeline with the Review panel showing a Git diff" />
+  <img src="doc/assets/readme/en/hero-light.png" alt="Pi mx Desktop: session list on the left, the agent's fix in the middle, the Review panel showing a side-by-side Git diff on the right" />
 </picture>
 
-## What this is
+## First, the part people get wrong: your terminal is intact
 
-Terminal agents (Claude Code, Codex CLI and friends) are great at "one command, task done". The moment a task runs longer than ten minutes you start scrolling: what changed? which hunk do I keep? who owns port 3000? where did yesterday's session stop?
+| | `pi` in a terminal | Pi mx Desktop |
+| --- | --- | --- |
+| The agent itself | `@earendil-works/pi-coding-agent` | **Literally the same**, running in a background Worker |
+| Session data | `~/.pi/agent/sessions/*.jsonl` | **The same files** — no separate database |
+| Models & keys | `~/.pi/agent/models.json` | **The same file**, models configured in the terminal just work |
+| Settings & extensions | `~/.pi/agent/settings.json`, `extensions/` | **The same**, installed extensions still load |
+| Tools & runtime | Built-in tools, MCP, skills | **All kept**, nothing rewritten or replaced |
+| Keep using the terminal | — | **Yes**, either side can pick up the same session |
 
-**Pi mx Desktop puts those answers on screen without changing the agent.** The Worker runs the same pi SDK and reads/writes the same files (sessions, `models.json`, `settings.json`, installed extensions). Sessions you started in a terminal are already in the sidebar.
+**No patches to `pi`, no edits in `node_modules`, no second agent core.** The desktop does exactly one thing: it takes what the agent can only scroll past in a terminal and puts it on a screen you can read at once.
 
-## How it compares
+> Scripts, CI, `git bisect` — still better in a terminal. This solves a different stretch: **the part where the agent works and the human has to look, judge, and interrupt.**
 
-| | Claude Code / Codex CLI | Zed / Cursor | **Pi mx Desktop** |
-|---|---|---|---|
-| Shape | Terminal TUI | Editor-centric | **Agent-centric desktop workbench** |
-| Sessions & files | CLI-owned directory | Editor project model | **Shares `~/.pi/agent` with the CLI, either side can continue** |
-| Reviewing changes | Scroll a big diff | Editor diff | **Review panel: stage hunk by hunk, long-press lines to annotate, annotations ride into the next message** |
-| Files / Git / terminal | Type commands | Built in, scattered | **All three docked on the right, reorderable tabs** |
-| Interrupting | Ctrl+C and restart | — | **Docked question card above the composer + goal bar with stop / restart** |
-| Phone | — | — | **Android client to the same machine: sessions, files, Git, sound alerts** |
-| System prompt | Fixed in the CLI | Vendor-fixed | **Purge: swap in your own persona, one switch, next message** |
-| Team work | Single session | Single session | **Work-team board: five roles, cards, dispatch, watchdog** |
+## One screen, five answers
 
-## Highlights
+Ten minutes into a turn you start scrolling: which files changed? which hunk do I keep? who owns port 3000? where did yesterday's session stop? how much context is left?
 
-### Timeline
-Streaming steps (thinking, commands, reads, edits), collapsed into one line once prose starts; `+N −M` on every edit; a "files changed" card at the end of each turn. Hover any message to copy, rewind, or fork a new session. Failures are classified (timeout / unreachable / quota / auth / context too long / HTTP status) with the raw error expandable and copyable. Images in chat render as thumbnails, click to open full screen.
+The desktop answers all five at once:
 
-### Purge — your own system prompt
-Settings → Agent → Purge replaces pi's system prompt with a local persona (prompt only — pi itself is never patched). The extension reads `config.json` before `before_agent_start`, so flipping the switch applies to the **next message in the current session**.
+| Question | In a terminal | Pi mx Desktop |
+| --- | --- | --- |
+| What did the agent just do | Scroll back line by line | **Timeline**: thinking / commands / reads / edits become steps, collapsing into one line once prose starts |
+| Which lines actually changed | `git diff`, then scroll | **Review panel**: stage hunk by hunk, side-by-side diff, annotate specific lines |
+| What is in the project | `ls` / `cat` | **Files panel**: tree + search + revision-guarded preview and edit |
+| Who holds the port | Guess with `netstat` | **Real terminal**: tabs, splits, port badges, one dev server per project |
+| Where the context went | Guess | **Context panel**: user / assistant / each tool type, plus what is left |
 
-| Mode | Prompt sent | Cost |
-|---|---|---|
-| `strict` (default) | persona + cwd | host prompt dropped (AGENTS.md, skills list too) |
-| `replace` | persona + host prompt (identity and docs section removed) | tool rules kept; degrades to `append` when anchors don't match |
-| `append` | persona + host prompt verbatim | mildest, weakest |
+<img src="doc/assets/readme/en/overview.png" alt="Overview: timeline steps, side-by-side review, team board, real terminal, file preview, @ references, context breakdown, light and dark themes, and the shared ~/.pi/agent directory" width="100%" />
 
-An empty or missing persona file means **no takeover** — never an empty system prompt. `/purge on|off|status|mode` in the terminal edits the same config.
+## Six things you won't give back
 
-### Files
-Tree + search, click to preview, edit and save in place (revision-guarded: a stale write is refused, not silently applied). **Drag a folder into the composer** and it lands as an `@path` reference. Paths and image names in the timeline are clickable — documents open in the right panel, images can be copied, saved, or quoted back into the chat.
+### 1. Timeline — every step visible, then folded away
 
-### Git
-Review panel with per-hunk staging and line annotations; pull / sync / push in the header with `↑` / `↓` counters; branch switching; fork a new session from any message; a commit board with tags, stashes and worktrees; a dedicated conflict resolution view.
+Thinking, commands, file reads and edits stream in order; once prose starts, the whole block folds into one line: `Edited README.md, links.mjs · browsed 1 file · ran 2 commands +5 −2`. Open it when you care, let it out of the way when you don't.
 
-### Terminal
-Bottom drawer with tabs and splits (PowerShell / cmd / WSL). **Port badges** show which command holds which port, and starting a dev server twice for the same project reuses the running one instead of racing for the port.
+<img src="doc/assets/readme/en/timeline.gif" alt="Timeline: the collapsed tool summary expands into seven steps, then folds again" width="100%" />
 
-### Browser & computer use
-Built-in browser the agent can drive, with an annotation layer you can draw on. On Windows 10/11 the agent can see windows, click and type — with an edge glow while it does, and **Esc always interrupts**.
+- Thinking chains, Markdown, code blocks and KaTeX render in place; long output stays collapsed.
+- Every edit is tagged `+N −M`, and each turn ends with a "files changed" card that opens in Review or the files panel.
+- Failures are not one red line: **classified cause (timeout / unreachable / quota / auth / context too long / HTTP status) + the raw error, expandable and copyable**.
+- Hover any message: copy, rewind to here, or fork a new session.
 
-### Sessions, goals, queue
-Session tree with branches from any message; a **goal bar** above the composer with stop / restart / delete; queue messages while a turn runs and **send them immediately** with `Ctrl/⌘+Enter`; a docked question card that never blocks the right panel, with "allow this kind for this session".
+### 2. Review — a real diff, side by side
 
-### Work-team board
-Five role lanes (Leader / designer / frontend / backend / QA), cards move through stages, the agent creates and dispatches through the `team_board` tool, and a watchdog surfaces stuck cards.
+Widen the right panel, switch to Review's Git scope, walk files one by one or stage by hunk; long-press a few lines to annotate, and the annotation rides into the next message — no more re-explaining "why here?".
 
-### Built-in image generation
-The prompt is scored on nine visual dimensions first and auto-completed when it scores below 60, with your original sentence kept verbatim at the front. Transparent / icon requests switch to PNG + alpha automatically. Images land in `generated-images/` and render as thumbnails in the timeline.
+<img src="doc/assets/readme/en/review-stage.gif" alt="Widen the sidebar, open the Git scope in Review, expand links.mjs, switch to side-by-side, stage one hunk" width="100%" />
 
-### Android client
-Pair once by QR (end-to-end encrypted, no server in between; self-signed `wss://` certificate pinned by fingerprint, tunnels welcome). Read and send sessions, browse files and images, view Git commits and diffs, see generated images, switch models and thinking levels, answer the agent, switch branches, fork from a message. **Sound alert** when a background run finishes or asks you something. Projects share the desktop order and hidden state; swipe to delete; the ⋯ panel mirrors the desktop tabs.
+Pull / sync / push sit in the header with `↑` and `↓` counters; branch switching, commit-message generation and conflict resolution each get a real surface.
 
-### Runtime, first launch included
-First launch asks once: **built-in pi** (ships with the app, no node/npm) or **global pi** (recommended — shares the terminal's pi). Choosing global probes Node.js / npm / global pi, offers a download link when missing, installs pi in one click and verifies it; failures state the real reason (missing node, npm global bin not on PATH, version not in the registry). WSL, portable mode and Python runtimes are one switch away.
+<img src="doc/assets/readme/en/branches.gif" alt="Switching branches" width="100%" />
 
-## Twenty small decisions engineers notice
+### 3. Files — read, edit, quote a line
 
-Esc stops and restores your draft · queue sends immediately · delete is undoable for 5s · failure reasons are classified · question dock stays out of the way · goal bar stops/restarts · reorderable right panels · session titles follow the latest message · hidden projects stay in sync with the phone · live context / token / cost readout · cache warming modes · models and thinking on two rows · `⌘K` palette, `/` commands, `@` files · right-click any image · port badges · one dev server per project · phone shows heartbeat latency · temporary chats stay separate · tray keeps the agent alive.
+Tree + search, `.gitignore` respected; previews are revision-guarded (a stale save is refused, not silently applied). Drag a folder into the composer and it lands as an `@path` reference; type `@` and candidates pop up, selecting one turns it into a file chip.
 
-## Install
+<img src="doc/assets/readme/en/files-preview.gif" alt="Open the files panel, expand a directory, preview links.mjs, quote a line into the composer" width="100%" />
 
-Windows: `Pi mx-Setup-<version>-x64.exe` or the portable build. macOS / Linux: see Releases. The installers are not code-signed yet, so Windows shows "unknown publisher" once.
+<p align="center"><img src="doc/assets/readme/en/composer-mention.gif" alt="Typing @ opens file candidates; selecting one inserts a file reference" width="640" /></p>
 
-## Mobile
+### 4. Terminal — what the agent ran, you can take over
 
-Android 9+ (arm64):
+A bottom drawer with tabs and splits: PowerShell, cmd, WSL, Git Bash. **A second dev server for the same project reuses the running one** instead of racing for the port; ports are badged, so you can see who is listening.
 
-```bash
-cd apps/mobile
-./gradlew :androidApp:assembleRelease
+<img src="doc/assets/readme/en/terminal.gif" alt="Two real Git Bash panes: git log and node --test results up top, git status --short below" width="520" />
+
+### 5. Work team — roles, lanes, dispatchable cards
+
+Five roles (Leader / designer / frontend / backend / QA) share one board, cards move through stages. The agent creates cards, writes acceptance items and dispatches through the `team_board` tool; unmet dependencies are refused, a watchdog surfaces stuck cards, and interruptions are recorded on the card.
+
+<img src="doc/assets/readme/en/team-dispatch.gif" alt="Open a task drawer, hit dispatch, and the card moves to in-progress with an assignee" width="100%" />
+
+### 6. Appearance — light, dark, or yours
+
+Bundled presets (Claude / VS Code / Nord / Catppuccin / Rosé Pine / GitHub) plus custom accents and code colours; **a background image can show through the whole UI** with frosted panes, tuned separately for chat and the side panel. Good out of the box, no default theme to endure.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="doc/assets/readme/en/theme-switch.gif" />
+  <img src="doc/assets/readme/en/themes.png" alt="Light and dark with a background image" width="100%" />
+</picture>
+
+## How it attaches to the pi terminal
+
+The renderer process draws the UI, the main process owns IPC, the worker pool, Git, terminals and previews, and the Worker still runs the pi SDK — while the pi terminal and the desktop read and write the same `~/.pi/agent`.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="doc/assets/readme/en/architecture-dark.png" />
+  <img src="doc/assets/readme/en/architecture-light.png" alt="Architecture: pi terminal on the left, Pi mx Desktop (renderer / main process / workers) on the right, sharing the ~/.pi/agent data directory" width="100%" />
+</picture>
+
+```
+~/.pi/agent/
+├── sessions/          ← the same sessions the terminal pi reads and writes
+├── models.json        ← model list, keys, subscription logins
+├── settings.json      ← global settings
+└── extensions/        ← installed extensions (the desktop shows their config read-only)
 ```
 
-Sideloading triggers the standard Play Protect prompt.
+One Worker per session, six kept alive by default, idle ones recycled after 15 minutes; pre-run and exit policies are configurable.
+
+## Also in the box
+
+- **Context & usage**: live token count and breakdown above the composer, per-type detail in the Context panel, a 90-day bar chart and heatmap in settings.
+- **Run panel**: context occupancy and the real resource use of background sessions, one click from the status bar.
+- **Question dock & goal bar**: when the agent asks something the card docks above the composer, collapsible, never covering the files panel; the goal bar stops / restarts / deletes and matches on both ends.
+- **Message queue**: sending while a turn runs queues it, `Ctrl/⌘+Enter` sends immediately, `Alt+↑` pulls it back into the composer, `Esc` stops the current turn together with it.
+- **Shortcuts**: `Ctrl/⌘+K` palette, `Ctrl/⌘+/` shortcut sheet, ``Ctrl+` `` terminal drawer, `Ctrl/⌘+Shift+N` jump to the latest completion.
+- **Session tree & rewind**: branch from any message, rewind to a message and continue; the tree shows why you changed direction.
+- **Purge (optional)**: Settings → Agent → Purge swaps the system prompt for a local persona — prompt only, `pi` untouched, effective on the next message in the current session.
+- **Built-in image generation (optional)**: the prompt is scored on nine visual dimensions and auto-completed below 60, output lands in `generated-images/` and renders as a thumbnail in the timeline.
+- **Browser & computer use (extensions)**: the built-in browser can be driven by the agent and annotated by you; on Windows 10/11 it can see windows, click and type, with an edge glow while it works and **Esc always interrupting**.
+- **Android client**: pair by QR with the same machine, end-to-end encrypted; read sessions / files / Git / generated images, switch models and thinking levels, answer the agent, get a sound when a turn finishes.
+
+<img src="doc/assets/readme/en/agent-turn.gif" alt="A full turn in a new session: prompt sent, steps streaming in, prose arriving, files-changed card" width="100%" />
+
+<p align="center"><img src="doc/assets/readme/en/usage.png" alt="90-day usage bar chart and heatmap in settings" width="720" /></p>
+
+<p align="center"><img src="doc/assets/readme/en/phone.png" alt="Android client: session list, a turn with its diff, a per-file comment, and the session panel" width="100%" /></p>
+
+
+## Keyboard shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| `Ctrl/⌘+K` | Command palette |
+| `Ctrl/⌘+/` | Shortcut sheet |
+| ``Ctrl+` `` | Toggle the terminal drawer |
+| `Ctrl/⌘+Enter` | Send the queued message now |
+| `Alt+↑` | Pull the queue back into the composer |
+| `Esc` | Stop the run / close the overlay |
+| `Ctrl/⌘+Shift+N` | Jump to the latest completion |
+| `@` / `/` | Reference a file / invoke a command |
+
+All rebindable: Settings → Keyboard shortcuts.
+
+## Quick start
+
+1. Grab a build from [Releases](https://github.com/q971668593/Pi-mx-Desktop/releases/latest): Windows has an installer and a portable build, macOS and Linux are on the release page.
+2. First launch asks for a runtime once: **global pi** (recommended — shares the terminal's pi, same version and extensions) or **built-in pi** (ships with the app, no node/npm needed). Choosing global probes Node.js / npm / pi on the spot and offers whatever is missing.
+3. Open a project folder, start a session — or just click the session you already left in the terminal.
+4. Work. Switch the right panel between `Review` / `Git` / `Files` / `Terminal`, drag the splitter wider, ``Ctrl+` `` for the terminal drawer.
+
+Already using pi in a terminal? Nothing to migrate: your projects and sessions are in the sidebar on first launch.
+
+## Data & compatibility
+
+- The agent runs through `@earendil-works/pi-coding-agent` and keeps its data in `~/.pi/agent/`; the desktop has its own app config (theme, layout, background image).
+- In portable mode data follows the program directory; switch runtimes and the effective paths follow your settings.
+- The desktop UI and the terminal UI differ, so a few extensions that depend on terminal-only rendering may need desktop adaptation — see [the adapter list](doc/guide/adapters.en.md).
+- Model calls need your own provider or credentials; the download itself contains no quota.
+- The installers are not code-signed yet, so Windows shows "unknown publisher" once — More info → Run anyway.
 
 ## Development
 
+Requires Node.js **22.19+** and npm.
+
 ```bash
-npm install && npm run dev      # Electron + Vite
-npm run typecheck && npm run test:unit
-npm run package:win
-npm run readme:capture -- --only screens   # re-shoot README stills (needs magick + git; GIFs also need ffmpeg)
+git clone https://github.com/q971668593/Pi-mx-Desktop.git
+cd Pi-mx-Desktop
+npm install
+npm run dev
 ```
 
-`src/main` (gateway, worker pool, git, terminal, extensions) · `src/renderer` (UI) · `src/worker` (pi runtime) · `packages/shared` (protocol shared with the phone) · `apps/mobile` (Android).
+```bash
+npm run typecheck      # main process + renderer
+npm run lint           # ESLint
+npm run test:unit      # unit tests
+npm run test:scripts   # script and contract tests
+npm run package:win    # build the Windows installer
+npm run readme:capture # re-shoot every still and GIF here (needs magick + ffmpeg + git)
+```
 
-## License
+Layout: `src/main` (gateway, worker pool, git, terminal, extensions) · `src/renderer` (UI) · `src/worker` (pi runtime) · `packages/shared` (protocol shared with the worker and the phone) · `apps/mobile` (Android).
 
-MIT. The agent is [pi](https://github.com/earendil-works/pi); the original desktop shell is [pi Desktop](https://github.com/justhil/pi-app) by [justhil](https://github.com/justhil).
+More in [getting started](doc/guide/getting-started.md).
+
+## License & credits
+
+[MIT License](LICENSE).
+
+The agent is [pi](https://github.com/earendil-works/pi); the original desktop shell is [pi Desktop](https://github.com/justhil/pi-app) by [justhil](https://github.com/justhil). Thanks to the contributors on both sides.
+
+---
+
+<div align="center"><sub>Every desktop screenshot and GIF here was recorded from the real running app by <code>npm run readme:capture</code> — not a mockup; the phone strip comes from the Android client.</sub></div>

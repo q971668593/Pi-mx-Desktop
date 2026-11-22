@@ -68,7 +68,8 @@ export async function recordAgentTurn({ appDir, demo, lang, outDir }) {
   const { startMockLlm } = await import('./mock-llm.mjs')
   const { MOCK_PORT } = await import('./config.mjs')
   const mock = await startMockLlm({ port: MOCK_PORT, lang })
-  const { app, win } = await openDemo({ appDir, demo, lang })
+  // live demo 里没有 fix 会话（就是要让真实 worker 跑出来），只启动到主界面。
+  const { app, win } = await openDemo({ appDir, demo, lang, session: null })
   const rec = recorder(win, outDir)
   try {
     await win.locator(`button[aria-label="${UI[lang].newSession}"]`).first().click()
@@ -121,7 +122,7 @@ export async function recordReviewStage({ appDir, demo, lang, outDir }) {
   }
 }
 
-/** 工作团队看板：从「待办」拖一张卡到「进行中」，再点派发 —— 卡片上出现执行者与运行态。 */
+/** 工作团队看板：打开一张待办卡 → 任务抽屉里点「派发开工」 —— 卡片上出现执行者与运行态。 */
 export async function recordTeamDispatch({ appDir, demo, lang, outDir }) {
   const { startMockLlm } = await import('./mock-llm.mjs')
   const { MOCK_PORT } = await import('./config.mjs')
@@ -129,33 +130,43 @@ export async function recordTeamDispatch({ appDir, demo, lang, outDir }) {
   const { app, win } = await openDemo({ appDir, demo, lang, config: {}, session: 'plan' })
   const rec = recorder(win, outDir)
   const copy = {
-    zh: { board: '工作团队', dispatch: '派发', fanout: '全部派发', todo: '待办', doing: '进行中' },
-    en: { board: 'Team', dispatch: 'Dispatch', fanout: 'Dispatch all', todo: 'Todo', doing: 'In progress' },
+    zh: { card: '文档站更新', dispatch: '派发开工' },
+    en: { card: 'Docs site update', dispatch: 'Dispatch' },
   }[lang]
   try {
     await clickTab(win, tabsFor(lang).team)
     await rec.hold(800)
     await widenPanel(win, PANEL.wideX, { recorder: rec })
     await rec.hold(900)
-    // 卡片右上角的「派发」按钮（第一张未派发的卡）。
-    const point = await win.evaluate((label) => {
-      const buttons = [...document.querySelectorAll('button')].filter((b) => (b.textContent || '').trim() === label || (b.getAttribute('title') || '').includes(label))
-      const box = buttons.map((b) => b.getBoundingClientRect()).find((r) => r.width > 0)
+    // 卡片本身是一个 title=任务标题的按钮，点开右侧任务抽屉。
+    const card = await win.evaluate((label) => {
+      const box = [...document.querySelectorAll(`button[title="${label}"]`)].map((b) => b.getBoundingClientRect()).find((r) => r.width > 0)
+      return box ? { x: box.x + box.width / 2, y: box.y + box.height / 2 } : null
+    }, copy.card)
+    if (!card) throw new Error(`team card not found: ${copy.card}`)
+    await win.mouse.move(card.x, card.y)
+    await rec.hold(500)
+    await win.mouse.click(card.x, card.y)
+    await rec.hold(1400)
+    const fire = await win.evaluate((label) => {
+      const box = [...document.querySelectorAll('button')].filter((b) => (b.textContent || '').trim() === label).map((b) => b.getBoundingClientRect()).find((r) => r.width > 0)
       return box ? { x: box.x + box.width / 2, y: box.y + box.height / 2 } : null
     }, copy.dispatch)
-    if (point) {
-      await win.mouse.move(point.x, point.y)
-      await rec.hold(400)
-      await win.mouse.click(point.x, point.y)
-    } else {
-      console.warn('  team: dispatch button not found, recording the board only')
-    }
+    if (!fire) throw new Error(`team dispatch button not found: ${copy.dispatch}`)
+    await win.mouse.move(fire.x, fire.y)
+    await rec.hold(500)
+    await win.mouse.click(fire.x, fire.y)
     await waitIdle(win, rec, { limit: 45_000, idle: 2000 })
-    await rec.hold(1800)
+    await rec.hold(2200)
     rec.save()
     console.log(`  team: ${rec.count()} frames`)
   } finally {
-    await app.close()
+    // 派发出的会话还在跑，app.close() 会等 Worker 收尾；超时就强杀，别把整条流水线挂住。
+    const closed = await Promise.race([
+      app.close().then(() => true).catch(() => true),
+      new Promise((resolve) => setTimeout(() => resolve(false), 20_000)),
+    ])
+    if (!closed) app.process().kill('SIGKILL')
     await mock.close()
   }
 }
@@ -259,16 +270,16 @@ export { revealPanel, shot, openSession }
 /** 输入框：打入 @ 触发文件候选，选中后插成文件引用。 */
 export async function recordComposer({ appDir, demo, lang, outDir }) {
   const t = text(lang)
-  const { app, win } = await openDemo({ appDir, demo, lang, session: 'plan' })
+  const { app, win } = await openDemo({ appDir, demo, lang })
   const rec = recorder(win, outDir)
   try {
     await focusComposer(win)
     await rec.hold(600)
     await rec.type(t.mentionBefore)
     await rec.type('@li')
-    await rec.hold(1100)
+    await rec.hold(1500)
     await win.keyboard.press('Enter')
-    await rec.hold(500)
+    await rec.hold(700)
     await rec.type(t.mentionAfter)
     await rec.hold(2200)
     rec.save()

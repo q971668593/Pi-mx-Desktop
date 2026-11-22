@@ -1,8 +1,9 @@
 // Seed an isolated demo HOME: a small git repo plus pi sessions written through the real SDK.
 // Tool results come from actually running the SDK's read/edit/bash tools on the demo repo.
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { basename, dirname, join } from 'node:path'
 import { MODEL, PROJECT_FILES, fixTurnSteps, text } from './demo-script.mjs'
 import { seedTeamBoard } from './seed-board.mjs'
 
@@ -15,12 +16,19 @@ export async function seedDemo({ root, lang, live = false, mockPort }) {
   const home = join(root, 'home')
   const agentDir = join(home, '.pi', 'agent')
   const project = join(home, 'code', 'lumen')
-  rmSync(root, { recursive: true, force: true })
+  // Windows 上刚退出的 Electron 可能还握着 demo 目录，重试一下比直接抛 EPERM 好。
+  rmSync(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 300 })
   mkdirSync(agentDir, { recursive: true })
 
   for (const [name, content] of Object.entries(PROJECT_FILES)) {
     mkdirSync(dirname(join(project, name)), { recursive: true })
     writeFileSync(join(project, name), content)
+  }
+  // @ 文件补全靠 fd 枚举工作区；演示 HOME 里放一份，输入框的候选才会真的出来。
+  const fdSource = process.env.PI_CAPTURE_FD || join(homedir(), '.pi', process.platform === 'win32' ? 'agent/bin/fd.exe' : 'agent/bin/fd')
+  if (existsSync(fdSource)) {
+    mkdirSync(join(agentDir, 'bin'), { recursive: true })
+    copyFileSync(fdSource, join(agentDir, 'bin', basename(fdSource)))
   }
   // 工作团队看板与角色配置一起进初始提交，Git 面板里就不会出现一堆未跟踪文件。
   seedTeamBoard(project, lang)

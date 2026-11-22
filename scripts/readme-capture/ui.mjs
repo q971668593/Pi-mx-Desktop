@@ -58,12 +58,13 @@ export async function widenPanel(win, toX = PANEL.wideX, { recorder, y = PANEL.t
   await win.waitForTimeout(900)
 }
 
-/** 打开演示项目与指定会话；`session: 'plan' | 'fix' | 'json'`。 */
+/** 打开演示项目与指定会话；`session: 'plan' | 'fix' | 'json'`，传 `null` 只启动到主界面。 */
 export async function openSession(win, lang, session = 'fix') {
   const t = text(lang)
-  const title = session === 'plan' ? t.planTitle : session === 'json' ? t.jsonTitle : t.fixTitle
   await clickOwnText(win, 'lumen')
   await win.waitForTimeout(WAIT.project)
+  if (!session) return
+  const title = session === 'plan' ? t.planTitle : session === 'json' ? t.jsonTitle : t.fixTitle
   await clickOwnText(win, title, { exact: false })
   await win.waitForTimeout(WAIT.session)
 }
