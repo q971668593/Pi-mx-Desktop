@@ -32,6 +32,10 @@
     <string name="pair_err_unpaired">The computer doesn’t know this phone. Scan a new code to pair.</string>
     <string name="pair_err_invalid">That isn’t a valid pairing link.</string>
     <string name="conn_connecting">Connecting…</string>
+    <string name="conn_error_tls">Certificate verification failed. Pair again using the latest QR code on the computer.</string>
+    <string name="conn_error_timeout">The computer took too long to respond.</string>
+    <string name="conn_error_disconnected">The connection was closed.</string>
+    <string name="conn_error_unreachable">The computer is unreachable on this network.</string>
     <string name="conn_reconnecting_n">Reconnecting (attempt %d)…</string>
     <string name="conn_reconnecting">Reconnecting…</string>
     <string name="conn_refused">The computer refused this phone.</string>

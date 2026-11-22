@@ -122,7 +122,7 @@ export function TerminalRunBar() {
     if (!workspace || !draft) return
     setBusy(true)
     try {
-      const saved = await ipcClient.invoke('workspace.tasks.save', { cwd: workspace, content: draft.content }) as { ok?: boolean; groups?: TaskGroup[]; error?: string }
+      const saved = await ipcClient.invoke('workspace.tasks.save', { cwd: workspace, content: draft.content, replaceDetected: true }) as { ok?: boolean; groups?: TaskGroup[]; error?: string }
       if (!saved?.ok) throw new Error(saved?.error || 'save_failed')
       const next = saved.groups || draft.groups
       setGroups(next)

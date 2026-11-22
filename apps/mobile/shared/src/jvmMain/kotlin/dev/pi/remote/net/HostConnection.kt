@@ -39,6 +39,8 @@ import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
+import javax.net.ssl.SSLException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.KSerializer
@@ -143,7 +145,14 @@ class HostConnection(
                     }
                     lastError = e.code
                 } catch (e: Exception) {
-                    lastError = e.message ?: e::class.simpleName
+                    val error = when {
+                        generateSequence<Throwable>(e) { it.cause }.any { it is SSLException || it is java.security.cert.CertificateException } -> "tls"
+                        e is ConnectionLost -> "disconnected"
+                        e is java.net.SocketTimeoutException -> "timeout"
+                        else -> "unreachable"
+                    }
+                    // Keep certificate failures visible even if a later LAN fallback is unreachable.
+                    if (lastError != "tls") lastError = error
                 } finally {
                     failPending()
                 }
@@ -174,7 +183,7 @@ class HostConnection(
         coroutineScope {
             for (ep in list) launch(Dispatchers.IO) {
                 val uri = runCatching { java.net.URI(ep) }.getOrNull() ?: return@launch
-                val port = if (uri.port > 0) uri.port else 80
+                val port = if (uri.port > 0) uri.port else if (uri.scheme in listOf("wss", "https")) 443 else 80
                 runCatching {
                     java.net.Socket().use { it.connect(java.net.InetSocketAddress(uri.host, port), PROBE_TIMEOUT_MS) }
                     reachable += ep
@@ -190,13 +199,13 @@ class HostConnection(
         client.webSocket(url) {
             val hs = ClientHandshake(hostPub, identity)
             send(WsFrame.Text(hs.hs1(deviceName, platform, pairToken)))
-            val reply = withTimeout(10_000) {
+            val reply = withTimeoutOrNull(10_000) {
                 when (val f = incoming.receive()) {
                     is WsFrame.Text -> f.readText()
                     else -> throw HandshakeException("bad")
                 }
             }
-            val (identityPayload, keys) = hs.finish(reply)
+            val (identityPayload, keys) = hs.finish(reply ?: throw java.net.SocketTimeoutException())
             if (pairToken != null) {
                 pairToken = null
                 onPaired(identityPayload)
@@ -245,7 +254,9 @@ class HostConnection(
                 }
             }
             try {
-                val helloResult = typedCall("host.hello", HelloParams.serializer(), hello, HelloResult.serializer(), 15_000)
+                val helloResult = withTimeoutOrNull(15_000) {
+                    typedCall("host.hello", HelloParams.serializer(), hello, HelloResult.serializer(), 20_000)
+                } ?: throw java.net.SocketTimeoutException()
                 _state.value = State.Ready(endpoint, identityPayload, helloResult)
                 // Prefer the endpoint that worked next time.
                 endpoints = listOf(endpoint) + endpoints.filter { it != endpoint }

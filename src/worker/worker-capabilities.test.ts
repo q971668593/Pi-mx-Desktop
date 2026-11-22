@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { capabilitiesExtension, capabilitySectionsForTest, setCapabilitySections, withCapabilities } from './worker-capabilities'
+import { capabilitiesExtension, capabilitySectionsForTest, handleSetCapabilities, resetCapabilities, setCapabilitySections, withCapabilities } from './worker-capabilities'
+import { teamToolsExtension } from './worker-team-tools'
 
 afterEach(() => setCapabilitySections({}))
 
@@ -51,6 +52,28 @@ describe('worker capabilities', () => {
     const off = event({ desktop_pi_ui: '# pi-ui' })
     handlers.before_agent_start(off)
     expect(off.systemPromptOptions.sections).toEqual({})
+  })
+
+  it('activates the team tool only while the session switch is on', async () => {
+    let active = ['read']
+    const tools: Array<{ defaultActive?: boolean; execute: (id: string, args: unknown) => Promise<unknown> }> = []
+    const api = {
+      on: () => {},
+      getActiveTools: () => active,
+      setActiveTools: (next: string[]) => { active = next },
+      registerTool: (tool: (typeof tools)[number]) => tools.push(tool),
+    }
+    const extension = teamToolsExtension as { factory: (api: unknown) => void }
+    extension.factory(api)
+    expect(tools[0].defaultActive).toBe(false)
+    await expect(tools[0].execute('disabled', {})).rejects.toThrow('switched off')
+    try {
+      await handleSetCapabilities({ tools: ['work-team'] }, () => {})
+      expect(active).toEqual(['read', 'team_board'])
+    } finally {
+      resetCapabilities()
+    }
+    expect(active).toEqual(['read'])
   })
 
   it('blocks a tool call whose capability is off, even for tools registered after load', () => {

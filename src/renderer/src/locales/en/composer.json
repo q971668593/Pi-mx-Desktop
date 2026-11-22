@@ -213,6 +213,10 @@
     "note": "Applies from your next message; turning off takes effect at once. New chats start with the built-in browser on.",
     "noteRunning": "The prompt of the running turn stays; tools you turn off stop at once.",
     "items": {
+      "work-team": {
+        "name": "Use work team",
+        "desc": "Let this conversation create and dispatch team cards for implementation requests."
+      },
       "pi-ui": {
         "name": "pi-ui visuals",
         "desc": "Answers with charts, KPI cards, tables and other blocks",

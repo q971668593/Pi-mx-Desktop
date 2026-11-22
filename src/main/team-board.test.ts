@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   bindTeamSession,
   createTeamTask,
@@ -19,6 +19,26 @@ import {
   teamBoardPath,
   teamSpecPath,
 } from './team-board'
+
+const { settings } = vi.hoisted(() => ({ settings: { preset: '', global: { defaultProvider: 'test', defaultModel: 'base' } } }))
+vi.mock('./config-store', () => ({ configStore: { get: () => settings.preset } }))
+vi.mock('./pi-agent-settings-read', () => ({ readPiAgentGlobalSettingsFromDisk: () => settings.global }))
+
+it('resolves the global preset for existing teams while keeping role overrides editable', () => {
+  const { root, spec } = workspace()
+  initTeamProject(root)
+  expect(readTeamSnapshot(root).defaultModel).toBe('test/base')
+  saveTeamRoles(spec, [{ role: 'Leader', model: 'test/leader' }])
+  settings.preset = 'test/team'
+  try {
+    const snapshot = readTeamSnapshot(root)
+    expect(snapshot.defaultModel).toBe('test/team')
+    expect(snapshot.roles.find((role) => role.role === 'Leader')?.model).toBe('test/leader')
+    expect(snapshot.roles.find((role) => role.role === '前端')?.model).toBe('')
+  } finally {
+    settings.preset = ''
+  }
+})
 
 const roots: string[] = []
 

@@ -141,7 +141,7 @@ class RemoteRepository(
             onPaired = { p: Hs2Payload ->
                 // Re-pairing the same computer keeps the addresses the user typed in.
                 val manual = hostStore.hosts.firstOrNull { it.hostId == p.hostId }?.manualEndpoints.orEmpty()
-                saved = SavedHost(p.hostId, p.hostName, offer.hostPub, offer.endpoints, p.deviceId, p.role, System.currentTimeMillis(), manual, offer.tls).also {
+                saved = SavedHost(p.hostId, p.hostName, offer.hostPub, offer.endpoints, p.deviceId, p.role, System.currentTimeMillis(), manual, tlsPin = offer.tls, relayTlsPin = offer.relayTls).also {
                     hostStore.upsert(it)
                     _hosts.value = hostStore.hosts
                 }

@@ -12,6 +12,8 @@ import type { WorkerReply } from './worker-handler-types.js'
 import { setBrowserToolsEnabled } from './worker-browser-tools.js'
 import { blockedCapabilityTool, setExtensionCapabilityToolsEnabled } from './extension-capability-guard.js'
 
+import { setTeamToolsEnabled } from './worker-team-tools.js'
+
 const SECTION_PREFIX = 'desktop_'
 let sections: Record<string, string> = {}
 
@@ -69,6 +71,7 @@ export async function handleSetCapabilities(msg: WorkerIncomingMessage, reply: W
   setCapabilitySections(msg.sections)
   const tools = Array.isArray(msg.tools) ? msg.tools : []
   setBrowserToolsEnabled(tools.includes('browser'))
+  setTeamToolsEnabled(tools.includes('work-team'))
   setExtensionCapabilityToolsEnabled({ webSearch: tools.includes('web-search'), computer: tools.includes('computer') })
   reply({ ok: true, count: Object.keys(sections).length })
 }
@@ -81,5 +84,6 @@ export async function handleSetCapabilities(msg: WorkerIncomingMessage, reply: W
 export function resetCapabilities(): void {
   sections = {}
   setBrowserToolsEnabled(false)
+  setTeamToolsEnabled(false)
   setExtensionCapabilityToolsEnabled({ webSearch: false, computer: false })
 }

@@ -15,6 +15,7 @@ vi.mock('@renderer/components/icons', () => ({
   Search: () => null,
   SlidersHorizontal: () => null,
   Sparkles: () => null,
+  Users: () => null,
 }))
 vi.mock('@renderer/components/ui/switch', () => ({
   Switch: ({ checked, onCheckedChange, ...rest }: { checked: boolean; onCheckedChange: (next: boolean) => void }) => (
@@ -32,6 +33,7 @@ import { ComposerToolsMenu } from './composer-tools-menu'
 
 const CATALOG = {
   capabilities: [
+    { id: 'work-team', available: true, promptTokens: 60, tools: 1 },
     { id: 'pi-ui', available: true, promptTokens: 120, tools: 0 },
     { id: 'browser', available: true, promptTokens: 900, tools: 24, coreTools: 10 },
     { id: 'chrome', available: false, reason: 'chrome-off', promptTokens: 900, tools: 24 },
@@ -86,4 +88,15 @@ it('revokes a capability on the live worker as soon as its switch goes off', asy
     expect(invoke).toHaveBeenLastCalledWith('capabilities.apply', { sessionFile: '/s.jsonl', capabilities: ['browser'] }),
   )
   expect(useSessionCapabilitiesStore.getState().byKey['/s.jsonl']).toEqual(['browser'])
+})
+
+it('keeps work team off for fresh conversations and applies it to this session only', async () => {
+  await open()
+  const toggle = screen.getByRole('switch', { name: 'composer:tools.items.work-team.name' })
+  expect(toggle).toHaveAttribute('aria-checked', 'false')
+  fireEvent.click(toggle)
+  expect(toggle).toHaveAttribute('aria-checked', 'true')
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith('capabilities.apply', {
+    sessionFile: '/s.jsonl', capabilities: ['browser', 'work-team'],
+  }))
 })

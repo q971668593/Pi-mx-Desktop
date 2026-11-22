@@ -13,6 +13,8 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { configStore } from './config-store'
+import { readPiAgentGlobalSettingsFromDisk } from './pi-agent-settings-read'
 import {
   TEAM_BOARD_RELATIVE_PATH,
   TEAM_RUN_REPORT_KINDS,
@@ -292,10 +294,7 @@ export function readTeamState(spec: string): TeamState {
   const runs: TeamRun[] = Array.isArray(parsed.runs)
     ? parsed.runs.map(normalizeRun).filter((run): run is TeamRun => !!run).slice(-200)
     : []
-  const settings = parsed.settings && typeof parsed.settings === 'object' && !Array.isArray(parsed.settings)
-    ? { autoTeam: (parsed.settings as { autoTeam?: unknown }).autoTeam === true }
-    : undefined
-  return { version: 1, sessions, runs, ...(settings ? { settings } : {}) }
+  return { version: 1, sessions, runs }
 }
 
 function writeTeamState(spec: string, state: TeamState): void {
@@ -311,19 +310,6 @@ function withTeamState<T>(spec: string, mutate: (state: TeamState) => T): T {
     writeTeamState(spec, state)
     return result
   })
-}
-
-/** 项目级工作流开关：自动进入工作流（默认 false手动）。 */
-export function getTeamAutoMode(workspaceRoot: string): boolean {
-  return readTeamState(teamSpecPath(workspaceRoot)).settings?.autoTeam === true
-}
-
-export function setTeamAutoMode(workspaceRoot: string, autoTeam: boolean): TeamSnapshot {
-  const spec = teamSpecPath(workspaceRoot)
-  withTeamState(spec, (state) => {
-    state.settings = { ...(state.settings ?? {}), autoTeam: autoTeam === true }
-  })
-  return snapshotFor(spec, workspaceRoot)
 }
 
 export function recordTeamDispatch(
@@ -389,6 +375,11 @@ export function snapshotFor(spec: string, workspaceId: string): TeamSnapshot {
     board = parseTeamBoard(markdown)
   }
   const state = readTeamState(spec)
+  const defaultModelOverride = configStore.get('teamDefaultModel') || ''
+  const settings = exists ? readPiAgentGlobalSettingsFromDisk() : null
+  const provider = typeof settings?.defaultProvider === 'string' ? settings.defaultProvider.trim() : ''
+  const model = typeof settings?.defaultModel === 'string' ? settings.defaultModel.trim() : ''
+  const globalDefaultModel = provider && model ? `${provider}/${model}` : ''
   return {
     workspaceId,
     specPath: spec,
@@ -400,7 +391,9 @@ export function snapshotFor(spec: string, workspaceId: string): TeamSnapshot {
     roles: readTeamRoles(spec),
     sessions: state.sessions,
     runs: state.runs,
-    autoTeam: state.settings?.autoTeam === true,
+    defaultModelOverride,
+    globalDefaultModel,
+    defaultModel: defaultModelOverride || globalDefaultModel,
   }
 }
 
@@ -847,7 +840,7 @@ const TASTE_TEMPLATE = `# 品味账本
 
 export function initTeamProject(
   workspaceRoot: string,
-  options: { mode?: 'new' | 'legacy'; name?: string; defaultModel?: string } = {},
+  options: { mode?: 'new' | 'legacy'; name?: string } = {},
 ): TeamSnapshot {
   const root = String(workspaceRoot || '').trim()
   if (!root || !existsSync(root) || !statSync(root).isDirectory()) throw new Error('当前工作区目录不可用，请重新选择工作区')
@@ -870,12 +863,6 @@ export function initTeamProject(
     if (existsSync(path)) continue
     writeAtomic(path, content)
   }
-  if (!existsSync(join(spec, '角色配置.json'))) {
-    const fallback = defaultTeamRoleBindings()
-    const preset = String(options.defaultModel || '').trim()
-    // 初始化时用全局默认模型预填：每个角色仍可在团队设置里单独改。
-    const bindings = preset ? fallback.map((role) => ({ ...role, model: preset })) : fallback
-    saveTeamRoles(spec, bindings)
-  }
+  if (!existsSync(join(spec, '角色配置.json'))) saveTeamRoles(spec, defaultTeamRoleBindings())
   return snapshotFor(spec, root)
 }

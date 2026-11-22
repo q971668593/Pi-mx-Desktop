@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { CapabilityId, CapabilityInfo } from '@shared/capabilities'
-import { Clock, Globe, Monitor, Search, SlidersHorizontal, Sparkles, type AppIconComponent } from '@renderer/components/icons'
+import { Clock, Globe, Monitor, Search, SlidersHorizontal, Sparkles, Users, type AppIconComponent } from '@renderer/components/icons'
 import { Switch } from '@renderer/components/ui/switch'
 import { ipcClient } from '@renderer/lib/ipc-client'
 import { useBrowserStore } from '@renderer/features/browser/browser-store'
@@ -18,7 +18,7 @@ import { cn } from '@renderer/lib/utils'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { ComposerPopover } from './composer-popover'
 
-const ICONS: Record<CapabilityId, AppIconComponent> = { 'pi-ui': Sparkles, browser: Globe, chrome: Monitor, 'web-search': Search, computer: Monitor }
+const ICONS: Record<CapabilityId, AppIconComponent> = { 'pi-ui': Sparkles, browser: Globe, chrome: Monitor, 'web-search': Search, computer: Monitor, 'work-team': Users }
 
 let catalogCache: CapabilityInfo[] | null = null
 

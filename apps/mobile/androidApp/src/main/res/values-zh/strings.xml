@@ -31,6 +31,10 @@
     <string name="pair_err_unpaired">电脑不认识这台手机，请重新扫码配对。</string>
     <string name="pair_err_invalid">不是有效的配对链接。</string>
     <string name="conn_connecting">正在连接…</string>
+    <string name="conn_error_tls">证书校验失败，请用电脑上的最新二维码重新配对。</string>
+    <string name="conn_error_timeout">电脑响应超时。</string>
+    <string name="conn_error_disconnected">连接已断开。</string>
+    <string name="conn_error_unreachable">当前网络连不到电脑。</string>
     <string name="conn_reconnecting_n">正在重连（第 %d 次）…</string>
     <string name="conn_reconnecting">重新连接中…</string>
     <string name="conn_refused">电脑拒绝了这台手机的连接。</string>

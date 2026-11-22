@@ -1,5 +1,5 @@
 /** Opt-in session capabilities (composer Tools menu). A new chat starts with the built-in browser on. */
-export const CAPABILITY_IDS = ['pi-ui', 'browser', 'chrome', 'web-search', 'computer'] as const
+export const CAPABILITY_IDS = ['pi-ui', 'browser', 'chrome', 'web-search', 'computer', 'work-team'] as const
 export type CapabilityId = (typeof CAPABILITY_IDS)[number]
 
 /** A conversation nobody switched anything in drives the built-in browser; the rest stay opt-in. */

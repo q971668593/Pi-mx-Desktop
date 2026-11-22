@@ -19,16 +19,15 @@ import {
   type TeamStatus,
 } from '@shared/team-board'
 import { authorizeProjectCwd } from '../../trusted-workspace'
+import { configStore } from '../../config-store'
 import { workerManager } from '../../worker-manager'
 import {
   bindTeamSession,
   createTeamTask,
-  getTeamAutoMode,
   initTeamProject,
   readTeamSnapshot,
   resolveTeamTaskApproval,
   saveTeamRoles,
-  setTeamAutoMode,
   setTeamTaskStatus,
   settleTeamRun,
   sweepTeamRuns,
@@ -60,34 +59,12 @@ export function registerTeamBoardHandlers(): void {
         workspaceId: workspace,
         mode: z.enum(['new', 'legacy']).optional(),
         name: z.string().max(80).optional(),
-        defaultModel: z.string().max(200).optional(),
       })
       .strict(),
-    async ({ workspaceId, mode, name, defaultModel }) => {
+    async ({ workspaceId, mode, name }) => {
       const cwd = authorizedCwd(workspaceId)
-      const preset = String(defaultModel || '').trim()
-      // 只接受 provider/model 形态；形态不对就当没传（角色保持未绑定）。
-      const snapshot = initTeamProject(cwd, { mode, name, ...(preset.includes('/') ? { defaultModel: preset } : {}) })
+      const snapshot = initTeamProject(cwd, { mode, name })
       return { ok: true, snapshot }
-    },
-  )
-
-  registerHandlerWithSchema(
-    'ipc:teamBoard.autoMode.get',
-    z.object({ workspaceId: workspace }).strict(),
-    async ({ workspaceId }) => {
-      const cwd = authorizedCwd(workspaceId)
-      return { ok: true, autoTeam: getTeamAutoMode(cwd) }
-    },
-  )
-
-  registerHandlerWithSchema(
-    'ipc:teamBoard.autoMode.set',
-    z.object({ workspaceId: workspace, autoTeam: z.boolean() }).strict(),
-    async ({ workspaceId, autoTeam }) => {
-      const cwd = authorizedCwd(workspaceId)
-      const snapshot = setTeamAutoMode(cwd, autoTeam)
-      return { ok: true, autoTeam: snapshot.autoTeam, snapshot }
     },
   )
 
@@ -96,6 +73,7 @@ export function registerTeamBoardHandlers(): void {
     z
       .object({
         workspaceId: workspace,
+        defaultModelOverride: z.string().trim().max(200).refine((value) => !value || !!splitTeamModel(value)).optional(),
         roles: z
           .array(
             z
@@ -112,10 +90,11 @@ export function registerTeamBoardHandlers(): void {
           .max(10),
       })
       .strict(),
-    async ({ workspaceId, roles }) => {
+    async ({ workspaceId, roles, defaultModelOverride }) => {
       const cwd = authorizedCwd(workspaceId)
       const spec = teamSpecPath(cwd)
       const saved = saveTeamRoles(spec, roles)
+      if (defaultModelOverride !== undefined) configStore.set('teamDefaultModel', defaultModelOverride)
       return { ok: true, roles: saved, snapshot: readTeamSnapshot(cwd) }
     },
   )
@@ -233,7 +212,7 @@ export function registerTeamBoardHandlers(): void {
       const sessionFile = session.sessionFile
       titleRoleSession(sessionFile, `${role} · ${snapshot.batch || '工作团队'}`)
       try {
-        await applyRoleRoute(cwd, role, sessionFile)
+        await applyRoleRoute(binding, sessionFile)
         await workerManager.sendPrompt(prompt, sessionFile)
       } catch (error) {
         void workerManager.abort(sessionFile).catch(() => {})

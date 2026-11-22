@@ -227,7 +227,13 @@ fun ConnectionBanner(state: dev.pi.remote.net.HostConnection.State, onRetry: () 
     when (state) {
         is dev.pi.remote.net.HostConnection.State.Backoff -> {
             val text = androidx.compose.ui.res.stringResource(dev.pi.remote.R.string.conn_reconnecting_n, state.attempt.coerceAtLeast(1))
-            Banner(text, androidx.compose.ui.res.stringResource(dev.pi.remote.R.string.conn_retry), onRetry)
+            val reason = when (state.lastError) {
+                "tls" -> dev.pi.remote.R.string.conn_error_tls
+                "timeout" -> dev.pi.remote.R.string.conn_error_timeout
+                "disconnected" -> dev.pi.remote.R.string.conn_error_disconnected
+                else -> dev.pi.remote.R.string.conn_error_unreachable
+            }
+            Banner("$text\n${androidx.compose.ui.res.stringResource(reason)}", androidx.compose.ui.res.stringResource(dev.pi.remote.R.string.conn_retry), onRetry)
         }
         is dev.pi.remote.net.HostConnection.State.Connecting -> if (state.attempt > 0) Banner(androidx.compose.ui.res.stringResource(dev.pi.remote.R.string.conn_reconnecting))
         is dev.pi.remote.net.HostConnection.State.Refused -> Banner(androidx.compose.ui.res.stringResource(dev.pi.remote.R.string.conn_refused))

@@ -115,6 +115,7 @@ export interface StoreSchema {
   browserChromeBridge: { enabled: boolean; port: number; token: string }
   browserDownloadConnections: number
   /** Composer Tools menu: capabilities switched on per session file (absent = the default, built-in browser on). */
+  teamDefaultModel?: string
   sessionCapabilities: Record<string, import('@shared/capabilities').CapabilityId[]>
   /** 内置生图：订阅（~/.codex/auth.json）或自定义中转；off = 继续走 MCP。 */
   imageGen: import('@shared/image-gen').ImageGenConfig

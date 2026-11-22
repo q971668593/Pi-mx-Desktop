@@ -41,18 +41,18 @@ export function roleBinding(
   const binding = snapshot.roles.find((item) => item.role === role)
   if (!binding) throw new Error(`未知角色：${roleValue}`)
   if (!binding.enabled) throw new Error(`角色「${role}」已停用，请先在团队设置里开启`)
-  if (!splitTeamModel(binding.model)) throw new Error(`角色「${role}」还没有绑定模型，请先在团队设置里选择`)
-  return { snapshot, role, binding }
+  const model = binding.model || snapshot.defaultModel || ''
+  if (!splitTeamModel(model)) throw new Error(`角色「${role}」还没有绑定模型，请先在团队设置里选择`)
+  return { snapshot, role, binding: { ...binding, model } }
 }
 
 /** 先确认模型切换成功，再按模型支持的档位设置思考深度。 */
-export async function applyRoleRoute(workspaceRoot: string, role: string, sessionFile: string): Promise<void> {
-  const { binding } = roleBinding(workspaceRoot, role)
+export async function applyRoleRoute(binding: TeamRoleBinding, sessionFile: string): Promise<void> {
   const parts = splitTeamModel(binding.model)
-  if (!parts) throw new Error(`角色「${role}」的模型绑定无效`)
+  if (!parts) throw new Error(`角色「${binding.role}」的模型绑定无效`)
   const expected = `${parts.provider}/${parts.modelId}`
   const result = await workerManager.setModelWithThinking(parts.provider, parts.modelId, sessionFile)
-  if (result.modelId && result.modelId !== expected && result.modelId !== parts.modelId) {
+  if (result.modelId !== expected && result.modelId !== parts.modelId) {
     throw new Error(`模型切换未确认：期望 ${expected}，实际 ${result.modelId || '未知'}`)
   }
   if (!binding.effort) return
@@ -124,7 +124,7 @@ export async function dispatchTeamTask(
   recordTeamDispatch(teamSpecPath(workspaceRoot), { taskId, role, sessionFile, sessionId: session.sessionId })
 
   try {
-    await applyRoleRoute(workspaceRoot, role, sessionFile)
+    await applyRoleRoute(binding, sessionFile)
     await workerManager.sendPrompt(prompt, sessionFile)
     markTeamRunRunning(teamSpecPath(workspaceRoot), sessionFile)
   } catch (error) {

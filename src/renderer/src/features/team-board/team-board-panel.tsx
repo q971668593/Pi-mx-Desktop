@@ -153,7 +153,7 @@ export function TeamBoardPanel() {
   }, [view])
 
   const tasks = snapshot?.tasks ?? []
-  const roles = snapshot?.roles ?? []
+  const roles = snapshot?.roles.map((role) => ({ ...role, model: role.model || snapshot.defaultModel || '' })) ?? []
   const runs = snapshot?.runs ?? []
   const progress = teamProgress(tasks)
   const runningRoles = roles.filter((binding) =>
@@ -306,19 +306,6 @@ export function TeamBoardPanel() {
     }
   }
 
-  const toggleAutoMode = async () => {
-    if (!snapshot?.exists) return
-    const next = snapshot.autoTeam !== true
-    try {
-      const response = await ipcClient.invoke('teamBoard.autoMode.set', { workspaceId, autoTeam: next })
-      if (response?.snapshot) setSnapshot(response.snapshot as TeamSnapshot)
-      notifyTeamBoardChanged()
-      toast.success(next ? t('team:autoModeEnabled') : t('team:autoModeDisabled'))
-    } catch (caught) {
-      toast.error(t('team:statusFailed'), { description: String((caught as Error)?.message || caught) })
-    }
-  }
-
   const openRunSession = async (run: TeamRun) => {
     try {
       await openTeamSession({ workspaceId, sessionFile: run.sessionFile, sessionId: run.sessionId })
@@ -405,21 +392,6 @@ export function TeamBoardPanel() {
           <span className="shrink-0 text-[12.5px] font-semibold leading-4">{t('team:title')}</span>
           <span className="team-project min-w-0 truncate" title={workspaceId}>{projectName}</span>
           <div className="team-head-actions ml-auto flex shrink-0 items-center gap-0.5">
-            {snapshot?.exists ? (
-              <button
-                type="button"
-                role="switch"
-                aria-checked={snapshot.autoTeam === true}
-                onClick={() => void toggleAutoMode()}
-                title={t('team:autoModeHint')}
-                aria-label={t('team:autoMode')}
-                className="team-auto-switch"
-                data-on={snapshot.autoTeam === true}
-              >
-                <span className="team-auto-knob" />
-                <span className="team-auto-label">{t('team:autoMode')}</span>
-              </button>
-            ) : null}
             <button
               type="button"
               onClick={() => void refresh({ silent: false })}
@@ -724,7 +696,9 @@ export function TeamBoardPanel() {
       {settingsOpen ? (
         <TeamSettingsSheet
           workspaceId={workspaceId}
-          roles={roles}
+          roles={snapshot?.roles ?? []}
+          defaultModel={snapshot?.globalDefaultModel || ''}
+          defaultModelOverride={snapshot?.defaultModelOverride || ''}
           onClose={() => setSettingsOpen(false)}
           onSaved={(next) => setSnapshot(next)}
         />

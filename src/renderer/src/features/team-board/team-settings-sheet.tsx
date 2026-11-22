@@ -12,18 +12,22 @@ import {
 import { ipcClient } from '@renderer/lib/ipc-client'
 import type { ModelInfo } from '@shared/ipc-contract'
 import type { TeamRoleBinding, TeamSnapshot } from '@shared/team-board'
-import { effortLabel, roleAvatar, roleColor, roleLabel, shortModel } from './team-board-lib'
+import { effortLabel, roleAvatar, roleColor, roleLabel } from './team-board-lib'
 
 const ALL_EFFORTS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
 
 export function TeamSettingsSheet({
   workspaceId,
   roles,
+  defaultModel,
+  defaultModelOverride,
   onClose,
   onSaved,
 }: {
   workspaceId: string
   roles: TeamRoleBinding[]
+  defaultModel: string
+  defaultModelOverride: string
   onClose: () => void
   onSaved: (snapshot: TeamSnapshot) => void
 }) {
@@ -33,6 +37,8 @@ export function TeamSettingsSheet({
   const [loading, setLoading] = useState(() => isAvailableModelsPending())
   const [loadError, setLoadError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [preset, setPreset] = useState(defaultModelOverride)
+  const effectivePreset = preset || defaultModel
 
   useEffect(() => {
     const unsubscribe = subscribeAvailableModels(setModels)
@@ -62,6 +68,21 @@ export function TeamSettingsSheet({
       .map(([provider, rows]) => ({ provider, rows: rows.sort((a, b) => a.id.localeCompare(b.id)) }))
   }, [models])
 
+  const modelOptions = (selected: string) => (
+    <>
+      {selected && !models.some((item) => `${item.provider}/${item.id}` === selected) ? (
+        <option value={selected}>{selected}</option>
+      ) : null}
+      {byProvider.map(({ provider, rows }) => (
+        <optgroup key={provider} label={provider}>
+          {rows.map((model) => (
+            <option key={model.id} value={`${provider}/${model.id}`}>{model.name || model.id}</option>
+          ))}
+        </optgroup>
+      ))}
+    </>
+  )
+
   const update = (role: TeamRoleBinding['role'], patch: Partial<TeamRoleBinding>) => {
     setDraft((current) => current.map((item) => (item.role === role ? { ...item, ...patch } : item)))
   }
@@ -72,27 +93,10 @@ export function TeamSettingsSheet({
     return levels && levels.length ? levels : ALL_EFFORTS
   }
 
-  const fillGlobalDefault = async () => {
-    try {
-      const response = await ipcClient.invoke('pi.settings.get')
-      const provider = String(response?.settings?.defaultProvider || '').trim()
-      const model = String(response?.settings?.defaultModel || '').trim()
-      if (!provider || !model) {
-        toast.message(t('team:globalDefaultMissing'))
-        return
-      }
-      const value = `${provider}/${model}`
-      setDraft((current) => current.map((item) => ({ ...item, model: value, effort: item.effort || '' })))
-      toast.success(t('team:fillGlobalDefault'))
-    } catch (error) {
-      toast.error(t('team:statusFailed'), { description: String((error as Error)?.message || error) })
-    }
-  }
-
   const save = async () => {
     setSaving(true)
     try {
-      const response = await ipcClient.invoke('teamBoard.roles.save', { workspaceId, roles: draft })
+      const response = await ipcClient.invoke('teamBoard.roles.save', { workspaceId, roles: draft, ...(preset !== defaultModelOverride ? { defaultModelOverride: preset } : {}) })
       if (response?.snapshot) onSaved(response.snapshot)
       toast.success(t('team:saved'))
       onClose()
@@ -128,20 +132,26 @@ export function TeamSettingsSheet({
 
       <div className="team-sheet-scroll team-scroll">
         <p className="text-2xs leading-relaxed text-foreground-secondary">{t('team:settingsDesc')}</p>
-        <button
-          type="button"
-          onClick={() => void fillGlobalDefault()}
-          className="mt-2 inline-flex items-center gap-1 rounded border border-border/50 px-2 py-1 text-2xs text-foreground-secondary hover:bg-[var(--bg-hover)] hover:text-foreground"
-        >
-          {t('team:fillGlobalDefault')}
-        </button>
+        <label className="mt-2 block text-2xs text-foreground-secondary">
+          {t('team:defaultModel')}
+          <select
+            value={preset}
+            onChange={(event) => setPreset(event.target.value)}
+            className="team-sheet-input mt-0.5"
+          >
+            <option value="">{t('team:followGlobalModel')}</option>
+            {modelOptions(preset)}
+          </select>
+        </label>
+        <p className="mt-1 text-2xs text-foreground-secondary">{t('team:defaultModelHint')}</p>
+        {effectivePreset ? null : <p className="mt-1 text-2xs text-foreground-secondary">{t('team:globalDefaultMissing')}</p>}
         {loading ? <p className="mt-1 text-2xs text-foreground-tertiary">{t('team:loadingModels')}</p> : null}
         {loadError ? <p className="mt-1 text-2xs text-amber-600">{t('team:modelLoadFailed')}</p> : null}
 
         <div className="mt-2 space-y-2">
           {draft.map((role) => {
             const accent = roleColor(role.role)
-            const efforts = effortsFor(role.model)
+            const efforts = effortsFor(role.model || effectivePreset)
             return (
               <div key={role.role} className="team-people-group !p-2" style={{ marginTop: 0 }}>
                 <div className="flex items-center gap-1.5">
@@ -170,22 +180,8 @@ export function TeamSettingsSheet({
                     onChange={(event) => update(role.role, { model: event.target.value, effort: '' })}
                     className="team-sheet-input mt-0.5"
                   >
-                    <option value="">{t('team:unbound')}</option>
-                    {role.model && !models.some((item) => `${item.provider}/${item.id}` === role.model) ? (
-                      <option value={role.model}>{shortModel(role.model)}</option>
-                    ) : null}
-                    {byProvider.map((group) => (
-                      <optgroup key={group.provider} label={group.provider}>
-                        {group.rows.map((model) => {
-                          const value = `${model.provider}/${model.id}`
-                          return (
-                            <option key={value} value={value}>
-                              {model.name || model.id}
-                            </option>
-                          )
-                        })}
-                      </optgroup>
-                    ))}
+                    <option value="">{t('team:inheritModel', { model: effectivePreset || t('team:unbound') })}</option>
+                    {modelOptions(role.model)}
                   </select>
                 </label>
 

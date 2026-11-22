@@ -303,7 +303,7 @@
     "paste": "Paste",
     "clipboardError": "Could not access the clipboard. Check system permissions.",
     "addToChat": "Add to chat",
-    "draftHelp": "Choose commands to run now. All configurations are saved in the project.",
+    "draftHelp": "Saving replaces the project’s existing tasks and groups with these results. Checkboxes only choose what starts now.",
     "saveOnly": "Save only"
   },
   "window": {

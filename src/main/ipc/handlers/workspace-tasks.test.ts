@@ -94,6 +94,24 @@ describe('run task management', () => {
     expect(readTasks(root)).toHaveLength(1)
   })
 
+  it('overwrites stale tasks and groups even when their generation was never recorded', async () => {
+    const root = project([
+      { label: 'old-api', command: 'npm', args: ['run', 'old'] },
+      { label: '运行 (AI 2)', dependsOn: ['old-api'], group: 'build' },
+      { label: '发布', command: 'npm', args: ['run', 'publish'], group: 'publish' },
+    ])
+    const save = handlers.get('ipc:workspace.tasks.save')!
+    const saveDetected = (label: string) => save({ cwd: root, replaceDetected: true, content: JSON.stringify({ tasks: [
+      { label, command: 'npm', args: ['run', label] },
+      { label: '运行', dependsOn: [label], group: 'build' },
+    ] }) })
+    expect((await saveDetected('mid-api')).ok).toBe(true)
+    expect((await saveDetected('new-api')).ok).toBe(true)
+    expect(readTasks(root).map((task) => task.label)).toEqual(['new-api', '运行'])
+    expect((await save({ cwd: root, replaceDetected: true, content: '{"tasks":[]}' })).ok).toBe(false)
+    expect(readTasks(root).map((task) => task.label)).toEqual(['new-api', '运行'])
+  })
+
   it('treats AI detection as a snapshot: saving twice replaces the previous draft', async () => {
     const root = project([{ label: 'keep-me', command: 'echo', args: ['hi'] }])
     const first = {

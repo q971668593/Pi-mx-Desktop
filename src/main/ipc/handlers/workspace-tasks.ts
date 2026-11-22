@@ -1,4 +1,5 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { z } from 'zod'
 import { applyEdits, modify } from 'jsonc-parser'
@@ -24,7 +25,7 @@ const draftSchema = z.object({
   files: z.array(z.object({ path: z.string(), content: z.string().max(20_000) }).strict()).max(40),
 }).strict()
 const deleteSchema = z.object({ cwd: z.string().min(1), label: z.string().trim().min(1).max(200) }).strict()
-const saveSchema = z.object({ cwd: z.string().min(1), content: z.string().min(2).max(500_000).optional(), group: z.object({ label: z.string().trim().min(1).max(200), dependsOn: z.array(z.string().min(1).max(200)).min(1).max(100), originalLabel: z.string().min(1).max(200).optional() }).strict().optional() }).strict().refine((value) => !!value.content !== !!value.group)
+const saveSchema = z.object({ cwd: z.string().min(1), content: z.string().min(2).max(500_000).optional(), replaceDetected: z.literal(true).optional(), group: z.object({ label: z.string().trim().min(1).max(200), dependsOn: z.array(z.string().min(1).max(200)).min(1).max(100), originalLabel: z.string().min(1).max(200).optional() }).strict().optional() }).strict().refine((value) => !!value.content !== !!value.group && (!value.replaceDetected || !!value.content))
 
 async function tasksDocument(cwd: string): Promise<{ groups: ReturnType<typeof parseTaskGroups>; raw: string | null }> {
   const path = join(cwd, '.vscode', 'tasks.json')
@@ -117,13 +118,14 @@ export function registerWorkspaceTaskHandlers(): void {
     }
   })
 
-  registerHandlerWithSchema('ipc:workspace.tasks.save', saveSchema, async ({ cwd, content, group }) => {
+  registerHandlerWithSchema('ipc:workspace.tasks.save', saveSchema, async ({ cwd, content, group, replaceDetected }) => {
     const authorized = authorizeProjectCwd(cwd)
     if (!authorized.ok) return { ok: false, error: authorized.error }
     const path = join(authorized.cwd, '.vscode', 'tasks.json')
     const existing = await readFile(path, 'utf8').catch(() => null)
     let parsed: unknown
     let output: string
+    let detectedLabels: string[] | undefined
     try {
       const current = existing ? parseJsonDocument(existing.replace(/^\uFEFF/, '')) : { version: '2.0.0', tasks: [] }
       const currentTasks = tasksOf(current)
@@ -143,8 +145,16 @@ export function registerWorkspaceTaskHandlers(): void {
         }
         if (group.dependsOn.some((label) => reachesCurrent(label, new Set()))) return { ok: false, error: 'invalid_task_group' }
         output = applyEdits(existing, modify(existing, ['tasks', index, 'dependsOn'], group.dependsOn, { formattingOptions: { insertSpaces: true, tabSize: 2 } }))
+      } else if (group) {
+        if (labels.has(group.label)) return { ok: false, error: 'invalid_task_group' }
+        output = mergeTaskDocument(existing, incoming)
+      } else if (replaceDetected) {
+        // Validate the new snapshot on its own before replacing the project's task list.
+        const fresh = mergeTaskDocument(null, incoming)
+        const tasks = tasksOf(parseJsonDocument(fresh))
+        output = existing ? applyEdits(existing, modify(existing, ['tasks'], tasks, { formattingOptions: { insertSpaces: true, tabSize: 2 } })) : fresh
+        detectedLabels = tasks.map((task) => String(task.label))
       } else {
-        if (group && labels.has(group.label)) return { ok: false, error: 'invalid_task_group' }
         // AI 检测是「快照」不是增量：先删掉上一轮 AI 写进去的任务再合并，
         // 否则每检测一次就多一套（一键运行 (AI) / 早已失效的 dev:api…），底部列表只增不减。
         const manifest = getRunTaskAiManifest()
@@ -202,7 +212,7 @@ export function registerWorkspaceTaskHandlers(): void {
         const added = tasksOf(parseJsonDocument(output.replace(/^\uFEFF/, '')))
           .map((task) => task.label)
           .filter((label): label is string => typeof label === 'string' && !baseLabels.has(label))
-        manifest.set(authorized.cwd, added)
+        detectedLabels = added
       }
       parsed = parseJsonDocument(output.replace(/^\uFEFF/, ''))
     } catch { return { ok: false, error: 'invalid_json' } }
@@ -210,6 +220,7 @@ export function registerWorkspaceTaskHandlers(): void {
     if (!groups.length) return { ok: false, error: 'tasks_not_runnable' }
     await mkdir(dirname(path), { recursive: true })
     await writeFile(path, output.endsWith('\n') ? output : `${output}\n`, 'utf8')
+    if (detectedLabels) getRunTaskAiManifest().set(authorized.cwd, detectedLabels)
     return { ok: true, groups }
   })
 }

@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, Check, FolderTree, Loader2, Sparkles } from '@renderer/components/icons'
+import { ArrowLeft, FolderTree, Loader2, Sparkles } from '@renderer/components/icons'
 import { ipcClient } from '@renderer/lib/ipc-client'
 import { cn } from '@renderer/lib/utils'
 import type { TeamSnapshot } from '@shared/team-board'
@@ -26,27 +26,6 @@ export function TeamInitSheet({
   const [name, setName] = useState(projectName)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [useGlobalDefault, setUseGlobalDefault] = useState(true)
-  const [globalDefault, setGlobalDefault] = useState('')
-
-  useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      try {
-        const response = await ipcClient.invoke('pi.settings.get')
-        if (cancelled) return
-        const provider = String(response?.settings?.defaultProvider || '').trim()
-        const model = String(response?.settings?.defaultModel || '').trim()
-        if (provider && model) setGlobalDefault(`${provider}/${model}`)
-      } catch {
-        /* 没有全局默认就不预填 */
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
   const submit = async () => {
     setBusy(true)
     setError('')
@@ -55,7 +34,6 @@ export function TeamInitSheet({
         workspaceId,
         mode,
         name: name.trim() || projectName,
-        ...(useGlobalDefault && globalDefault ? { defaultModel: globalDefault } : {}),
       })
       if (response?.snapshot) onDone(response.snapshot)
       toast.success(t('team:init.done'))
@@ -128,31 +106,6 @@ export function TeamInitSheet({
             <div className="font-medium">{t('team:init.modeLegacy')}</div>
           </button>
         </div>
-
-        <button
-          type="button"
-          role="checkbox"
-          aria-checked={useGlobalDefault}
-          onClick={() => setUseGlobalDefault((value) => !value)}
-          disabled={!globalDefault}
-          className="mt-3 flex w-full items-start gap-2 rounded-lg border border-border/50 px-2 py-2 text-left text-xs disabled:opacity-50"
-        >
-          <span
-            aria-hidden
-            className={cn(
-              'mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border',
-              useGlobalDefault && globalDefault ? 'border-primary bg-primary text-primary-foreground' : 'border-border text-transparent',
-            )}
-          >
-            <Check className="h-2.5 w-2.5" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block font-medium text-foreground">{t('team:useGlobalDefault')}</span>
-            <span className="block truncate font-mono text-2xs text-foreground-tertiary">
-              {globalDefault || t('team:globalDefaultMissing')}
-            </span>
-          </span>
-        </button>
 
         <div className="mt-3 flex items-start gap-1.5 text-2xs text-foreground-tertiary">
           <FolderTree className="mt-[1px] h-3 w-3 shrink-0" />
