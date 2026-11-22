@@ -108,7 +108,7 @@ export function QuestionnaireOptions({
           </span>
         </button>
         {draft.useCustom && (
-          <div className="questionnaire-reveal px-3 pb-3">
+          <div className="questionnaire-reveal min-w-0 self-stretch px-3 pb-3">
             <textarea
               ref={customRef}
               className="w-full resize-none rounded-md border border-input bg-background px-2.5 py-2 text-[13px] leading-5 outline-none focus:border-primary/50"
