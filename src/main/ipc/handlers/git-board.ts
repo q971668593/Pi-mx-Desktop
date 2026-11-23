@@ -95,6 +95,22 @@ export function registerGitBoardHandlers(): void {
     }
   })
 
+  registerHandlerWithSchema('ipc:gitBoard.changes', z.object({ cwd: z.string().min(1) }).strict(), async ({ cwd }) => {
+    const repo = await authorized(cwd)
+    if (!repo.ok) return { ok: false, error: repo.error }
+    const [status, operation] = await Promise.all([
+      git(repo.cwd, ['status', '--porcelain=v2', '-b', '--untracked-files=all', '-z']),
+      gitOperation(repo.cwd),
+    ])
+    if (!status.ok) return status
+    return {
+      ok: true,
+      status: parseStatus(status.stdout),
+      files: parseStatusV2(status.stdout),
+      operation,
+    }
+  })
+
   registerHandlerWithSchema('ipc:gitBoard.stage', pathsSchema, async ({ cwd, paths }) => {
     const repo = await authorized(cwd)
     const safe = safePaths(paths)

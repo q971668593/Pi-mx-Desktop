@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest'
 import { formatCommitDate, layoutCommitGraph } from './git-graph'
 
 describe('commit date label', () => {
-  it('uses MM-DD inside the current year', () => {
-    const time = Math.floor(new Date(2026, 0, 5, 12).getTime() / 1000)
-    expect(formatCommitDate(time, new Date(2026, 5, 1))).toBe('01-05')
+  it('uses MM-DD HH:mm:ss inside the current year', () => {
+    const time = Math.floor(new Date(2026, 0, 5, 12, 34, 56).getTime() / 1000)
+    expect(formatCommitDate(time, new Date(2026, 5, 1))).toBe('01-05 12:34:56')
   })
 
   it('adds the year for older commits', () => {
-    const time = Math.floor(new Date(2025, 10, 9, 12).getTime() / 1000)
-    expect(formatCommitDate(time, new Date(2026, 5, 1))).toBe('2025-11-09')
+    const time = Math.floor(new Date(2025, 10, 9, 8, 5, 7).getTime() / 1000)
+    expect(formatCommitDate(time, new Date(2026, 5, 1))).toBe('2025-11-09 08:05:07')
   })
 
   it('returns an empty label without a timestamp', () => {

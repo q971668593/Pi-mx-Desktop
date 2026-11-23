@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, ChevronRight, Eye, EyeOff, Maximize2, Minus, Search } from '@renderer/components/icons'
+import { ChevronLeft, ChevronRight, Eye, EyeOff, Maximize2, Minus, RefreshCw, Search } from '@renderer/components/icons'
 import { cn } from '@renderer/lib/utils'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useRightPanelHidden } from '@renderer/lib/use-right-panel-hidden'
@@ -328,8 +328,23 @@ export function WorkspaceFilesPanel() {
     }
   }, [workspaceFileToOpen, workspaceRoot, onSelectPath])
 
+  const refreshPreview = useCallback(() => {
+    setTreeEpoch((n) => n + 1)
+    setPreviewRefreshKey((n) => n + 1)
+  }, [])
+
   const chromeTrailing = (
     <>
+      <button
+        type="button"
+        className="chrome-icon-btn flex h-7 w-7 shrink-0 items-center justify-center rounded-md"
+        title={t('chrome.refresh')}
+        aria-label={t('chrome.refresh')}
+        disabled={!previewPath}
+        onClick={refreshPreview}
+      >
+        <RefreshCw className="h-3.5 w-3.5" />
+      </button>
       <button
         ref={expandButtonRef}
         type="button"
@@ -487,6 +502,15 @@ export function WorkspaceFilesPanel() {
               onClick={() => setShowDotfiles((v) => !v)}
             >
               {showDotfiles ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+            </button>
+            <button
+              type="button"
+              title={t('chrome.refresh')}
+              aria-label={t('chrome.refresh')}
+              className="workbench-icon"
+              onClick={refreshPreview}
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
             </button>
             <button
               type="button"

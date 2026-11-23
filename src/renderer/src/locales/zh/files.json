@@ -4,6 +4,7 @@
   },
   "chrome": {
     "noFile": "未选择文件",
+    "refresh": "刷新预览和文件树",
     "collapseExplorer": "收起文件树",
     "expandExplorer": "展开文件树",
     "expandPreview": "展开预览到聊天区",
@@ -64,6 +65,7 @@
     "saved": "已保存",
     "saveFailed": "保存失败，请重试",
     "cancelEdit": "取消",
+    "attachToChat": "添加到引用",
     "discardEdits": "有未保存的修改，离开后会丢掉。仍要离开吗？",
     "externalChange": "文件已在其他位置修改，是否用当前内容覆盖？",
     "find": "查找",

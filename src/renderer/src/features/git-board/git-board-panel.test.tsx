@@ -40,6 +40,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   useUIStore.setState({ currentWorkspace: '/repo' })
   mocks.invoke.mockImplementation(async (channel: string) => {
+    if (channel === 'gitBoard.changes') return { ok: true, status: overview.status, files: overview.files, operation: null }
     if (channel === 'gitBoard.overview') return overview
     if (channel === 'git.branchStatus') {
       return { isRepo: true, branch: 'main', head: 'abc1234', upstream: 'origin/main', ahead: 0, behind: 0, dirty: 0 }

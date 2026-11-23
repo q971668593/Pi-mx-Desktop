@@ -492,6 +492,7 @@
     "branches": "分支",
     "advanced": "更多",
     "refresh": "刷新",
+    "timeout": "Git 加载超时，请点刷新重试",
     "noWorkspace": "先打开一个项目",
     "notRepo": "这里还不是 Git 仓库",
     "clean": "没有待提交的更改",

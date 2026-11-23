@@ -22,7 +22,7 @@ function CommitDate({ time }: { time: number }) {
   if (!time) return null
   const date = new Date(time * 1000)
   if (Number.isNaN(date.getTime())) return null
-  return <time dateTime={date.toISOString()} title={date.toLocaleString()} className="min-w-[46px] shrink-0 whitespace-nowrap text-right font-mono text-[10px] tabular-nums text-foreground-tertiary">{formatCommitDate(time)}</time>
+  return <time dateTime={date.toISOString()} title={date.toLocaleString()} className="min-w-[112px] shrink-0 whitespace-nowrap text-right font-mono text-[10px] tabular-nums text-foreground-tertiary">{formatCommitDate(time)}</time>
 }
 
 function GitFileIcon({ path }: { path: string }) {
@@ -47,6 +47,10 @@ type Overview = {
   remotes: Array<{ name: string; fetch: string; push: string }>
   worktrees: Array<{ path: string; head: string; branch: string | null }>
   operation: 'merge' | 'rebase' | 'cherry-pick' | 'revert' | null
+}
+type QuickChanges = {
+  ok?: boolean; error?: string
+  status: Overview['status']; files: Change[]; operation: Overview['operation']
 }
 const TABS = ['changes', 'graph', 'branches', 'log', 'advanced'] as const
 type Tab = (typeof TABS)[number]
@@ -107,6 +111,7 @@ export function GitBoardPanel() {
   const [conflictText, setConflictText] = useState('')
   const [choices, setChoices] = useState<Map<number, ConflictChoice>>(new Map())
   const [menu, setMenu] = useState<{ x: number; y: number; commit: Commit } | null>(null)
+  const [restError, setRestError] = useState('')
   const [confirm, setConfirm] = useState<{ title: string; message: string; run: () => Promise<void> } | null>(null)
   const [busy, setBusy] = useState(false)
   const [branchPickerOpen, setBranchPickerOpen] = useState(false)
@@ -125,25 +130,80 @@ export function GitBoardPanel() {
     try { localStorage.setItem(`pi-desktop:git-changes-view:${changesViewKey}`, view) } catch { /* storage is optional */ }
   }
 
+  const withTimeout = <T,>(promise: Promise<T>, ms: number) => Promise.race([
+    promise,
+    new Promise<never>((_, reject) => { setTimeout(() => reject(new Error('git_timeout')), ms) }),
+  ])
+
   const load = useCallback(async (append = false, resetFilters = false) => {
     if (!cwd) return
     const sequence = ++loadSequence.current
+    const timeoutMessage = () => t('common:gitBoard.timeout')
+    // First paint: status + file list only (~200ms), so the Changes tab never waits on log/refs.
+    let quickOk = false
     try {
-      const result = await git<Overview>('gitBoard.overview', { cwd, skip: append ? data?.commits.length || 0 : 0, ...(!resetFilters && query.trim() ? { query: query.trim() } : {}), ...(!resetFilters && author.trim() ? { author: author.trim() } : {}) })
+      if (!append) {
+        setRestError('')
+        const quick = await withTimeout(
+          git<QuickChanges>('gitBoard.changes', { cwd }),
+          8000,
+        )
+        if (sequence !== loadSequence.current) return
+        if (!quick.ok) {
+          const absent = quick.error === 'not_repo'
+          setMissing(absent)
+          setLoadError(quick.ok || absent ? '' : quick.error || 'git_failed')
+          if (!quick.ok) return setData(null)
+        } else {
+          quickOk = true
+          setMissing(false)
+          setLoadError('')
+          setData((prev) => ({
+            status: quick.status,
+            files: quick.files,
+            operation: quick.operation,
+            branches: prev?.branches ?? [],
+            commits: prev?.commits ?? [],
+            hasMore: false,
+            stashes: prev?.stashes ?? [],
+            tags: prev?.tags ?? [],
+            remotes: prev?.remotes ?? [],
+            worktrees: prev?.worktrees ?? [],
+          }))
+        }
+      }
+      // Second pass: graph + branches + stashes + tags + remotes + worktrees.
+      const result = await withTimeout(
+        git<Overview>('gitBoard.overview', { cwd, skip: append ? data?.commits.length || 0 : 0, ...(!resetFilters && query.trim() ? { query: query.trim() } : {}), ...(!resetFilters && author.trim() ? { author: author.trim() } : {}) }),
+        20_000,
+      )
       if (sequence !== loadSequence.current) return
       const absent = !result.ok && result.error === 'not_repo'
       setMissing(absent)
-      setLoadError(result.ok || absent ? '' : result.error || 'git_failed')
-      if (!result.ok) return setData(null)
+      if (!result.ok) {
+        if (quickOk || (append && data)) {
+          setRestError(result.error || 'git_failed')
+          return
+        }
+        setLoadError(result.error || 'git_failed')
+        return setData(null)
+      }
+      setLoadError('')
+      setRestError('')
       setData(append && data ? { ...result, commits: [...data.commits, ...result.commits] } : result)
     } catch (error) {
-      if (sequence === loadSequence.current) setLoadError(error instanceof Error ? error.message : String(error))
+      if (sequence !== loadSequence.current) return
+      const message = error instanceof Error ? error.message : String(error)
+      const text = message === 'git_timeout' ? timeoutMessage() : message
+      if (quickOk) setRestError(text)
+      else setLoadError(text)
     }
-  }, [author, cwd, data, query])
+  }, [author, cwd, data, query, t])
   useEffect(() => {
     setData(null)
     setMissing(false)
     setLoadError('')
+    setRestError('')
     setDiff('')
     setDetail(null)
     setConflictPath('')
@@ -161,7 +221,16 @@ export function GitBoardPanel() {
     void load(false, true)
     return () => { loadSequence.current += 1 }
   }, [cwd])
-  useEffect(() => window.piDesktop?.onGitWorkspaceChanged?.(() => void load(false)) || (() => {}), [load])
+  const loadRef = useRef(load)
+  loadRef.current = load
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const off = window.piDesktop?.onGitWorkspaceChanged?.(() => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => void loadRef.current(false), 600)
+    })
+    return () => { if (timer) clearTimeout(timer); off?.() }
+  }, [cwd])
   // The header branch label opens the shared picker, so it needs the same status the status bar reads.
   // Failure is not fatal: the overview already knows branch / upstream / ahead / behind, and that
   // fallback keeps the picker usable when the extra round trip does not answer.
@@ -381,7 +450,23 @@ export function GitBoardPanel() {
   if (!cwd) return <p className="p-4 text-[12px] text-foreground-tertiary">{t('common:gitBoard.noWorkspace')}</p>
   if (loadError) return <div className="m-4 flex items-center gap-2 text-[12px]"><span className="text-destructive">{loadError}</span><button type="button" className="rounded border px-2 py-1" onClick={() => void load(false)}>{t('common:gitBoard.refresh')}</button></div>
   if (missing) return <div className="m-4 space-y-2"><p className="text-[12px] text-foreground-tertiary">{t('common:gitBoard.notRepo')}</p><button type="button" className="rounded border px-3 py-1.5 text-[12px]" onClick={() => void run('gitBoard.init')}>{t('common:gitBoard.init')}</button></div>
-  if (!data) return <p className="p-4 text-[12px] text-foreground-tertiary">{t('common:loading')}</p>
+  if (!data) return (
+    <div className="flex h-full min-h-0 flex-col text-[12px]">
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border/40 px-2">
+        <span className="h-4 w-24 animate-pulse rounded bg-muted" aria-hidden />
+        <span className="sr-only">{t('common:loading')}</span>
+        <div className="ml-auto">
+          <button type="button" className="rounded p-1.5 text-foreground-secondary hover:bg-muted hover:text-foreground" aria-label={t('common:gitBoard.refresh')} onClick={() => void load(false)}><RefreshCw className="h-3.5 w-3.5" /></button>
+        </div>
+      </div>
+      <div role="tablist" className="flex shrink-0 overflow-x-auto border-b border-border/50 bg-[var(--bg-1)]">{TABS.map((item) => <button key={item} type="button" role="tab" aria-selected={tab === item} className={cn('relative h-9 shrink-0 border-b-2 px-3 text-[12px] transition-colors', tab === item ? 'border-primary bg-[var(--bg-base)] font-medium text-foreground' : 'border-transparent text-foreground-secondary hover:bg-muted hover:text-foreground')} onClick={() => { setTab(item); try { localStorage.setItem(`pi-desktop:git-tab:${workspacePathKey(cwd)}`, item) } catch { void 0 } }}>{t(`common:gitBoard.${item}`)}</button>)}</div>
+      <div className="min-h-0 flex-1 overflow-auto p-2" aria-hidden={tab !== 'changes'}>
+        {tab === 'changes'
+          ? [0, 1, 2, 3, 4].map((index) => <div key={index} className="mb-1.5 h-7 animate-pulse rounded bg-muted" />)
+          : <p className="p-2 text-foreground-tertiary">{t('common:loading')}</p>}
+      </div>
+    </div>
+  )
   if (conflictPath) {
     return (
       <div className="flex h-full min-h-0 flex-col text-[12px]">
@@ -602,6 +687,7 @@ export function GitBoardPanel() {
       <div role="tablist" className="flex shrink-0 overflow-x-auto border-b border-border/50 bg-[var(--bg-1)]">{TABS.map((item) => <button key={item} type="button" role="tab" aria-selected={tab === item} className={cn('relative h-9 shrink-0 border-b-2 px-3 text-[12px] transition-colors', tab === item ? 'border-primary bg-[var(--bg-base)] font-medium text-foreground' : 'border-transparent text-foreground-secondary hover:bg-muted hover:text-foreground')} onClick={() => { setTab(item); try { localStorage.setItem(`pi-desktop:git-tab:${workspacePathKey(cwd)}`, item) } catch { void 0 } }}>{t(`common:gitBoard.${item}`)}{item === 'changes' && visibleChanges.length ? <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px]">{visibleChanges.length}</span> : null}</button>)}</div>
       {tab === 'advanced' && <div role="tablist" aria-label={t('common:gitBoard.advanced')} className="flex shrink-0 gap-1 overflow-x-auto border-b border-border/50 px-2 py-1">{REPOSITORY_TABS.map((item) => <button key={item} type="button" role="tab" aria-selected={repositoryTab === item} className={cn('shrink-0 rounded px-2 py-1 text-[12px]', repositoryTab === item ? 'bg-muted font-medium text-foreground' : 'text-foreground-secondary hover:bg-muted')} onClick={() => setRepositoryTab(item)}>{t(`common:gitBoard.${item}`)}</button>)}</div>}
       {tab === 'changes' && !data.status.upstream && !data.remotes.length ? <p className="border-b border-border/40 px-3 py-2 text-[11px] text-foreground-tertiary">{t('common:gitBoard.addRemoteBeforePush')}</p> : null}
+      {restError ? <div className="flex shrink-0 items-center gap-2 border-b border-border/40 px-3 py-1.5 text-[11px] text-destructive"><span className="min-w-0 flex-1 truncate">{restError}</span><button type="button" className="shrink-0 rounded border px-2 py-0.5 text-foreground-secondary hover:bg-muted" onClick={() => void load(false)}>{t('common:gitBoard.refresh')}</button></div> : null}
       {tab === 'changes' && !data.status.branch ? <p className="border-b border-border/40 px-3 py-2 text-[11px] text-foreground-tertiary">{t('common:gitBoard.detachedHead')}</p> : null}
       {tab === 'changes' && !data.status.upstream ? remotePicker() : null}
       {data.operation ? <div className="flex gap-1 border-b px-2 py-1"><button type="button" className="rounded border px-2 py-1 text-[12px]" onClick={() => void run('gitBoard.operation', { operation: data.operation, action: 'continue' })}>{t('common:gitBoard.continue')}</button><button type="button" className="rounded border px-2 py-1 text-[12px]" onClick={() => void run('gitBoard.operation', { operation: data.operation, action: 'abort' })}>{t('common:gitBoard.abort')}</button></div> : null}
@@ -633,7 +719,7 @@ export function GitBoardPanel() {
 </> : shouldShowPush ? <button type="button" disabled={busy || (!data.status.upstream && !effectivePushRemote)} className="ml-auto rounded bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground disabled:opacity-50" onClick={() => void pushCurrentBranch()}>{t(data.status.upstream ? 'common:gitBoard.push' : 'common:gitBoard.publish')}</button> : hasPendingChanges ? <span className="ml-auto text-[11px] text-foreground-tertiary">{t('common:gitBoard.stageFilesBeforeCommit')}</span> : <span className="ml-auto text-[11px] text-foreground-tertiary">{data.status.behind > 0 ? t('common:gitBoard.behind', { n: data.status.behind }) : t('common:gitBoard.clean')}</span>}
 </div></div></div>}
 
-      {tab === 'graph' && <div className="flex min-h-0 flex-1 flex-col"><div className="flex gap-1 border-b p-2"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('common:gitBoard.refFilter')} className="h-7 min-w-0 flex-1 rounded border bg-transparent px-2 text-[12px]" /><input value={author} onChange={(event) => setAuthor(event.target.value)} placeholder={t('common:gitBoard.authorFilter')} className="h-7 w-28 rounded border bg-transparent px-2 text-[12px]" /><button type="button" className="rounded border px-2 text-[12px]" onClick={() => void load(false)}>{t('common:gitBoard.filter')}</button></div><div className="relative min-h-0 flex-1 overflow-auto">{rows.map((row) => <div key={row.commit.hash} role="button" tabIndex={0} className="flex h-7 cursor-pointer items-center gap-2 pr-2 text-[12px] hover:bg-muted/50 focus-visible:outline focus-visible:outline-1 focus-visible:outline-primary" onClick={() => void openCommitDetail(row.commit.hash)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void openCommitDetail(row.commit.hash) } }} onContextMenu={(event) => { event.preventDefault(); setMenu({ x: event.clientX, y: event.clientY, commit: row.commit }) }}><GitLane lane={row.lane} passes={row.passes} links={row.links} columns={row.columns} fromAbove={row.fromAbove} /><CommitDate time={row.commit.time} /><span className="w-14 shrink-0 font-mono text-[10px] text-foreground-tertiary">{row.commit.short}</span><GitCommitHorizontal className="h-3 w-3" /><span className="min-w-0 flex-1 truncate">{row.commit.subject}</span><span className="max-w-[35%] truncate text-[10px] text-sky-600">{row.commit.decorations}</span></div>)}{data.hasMore ? <button type="button" className="m-2 rounded border px-2 py-1 text-[12px]" onClick={() => void load(true)}>{t('common:gitBoard.more')}</button> : null}</div>{detail && <CommitDetailDialog detail={detail} diff={diff} onClose={() => { setDetail(null); setDiff('') }} onOpenDiff={(path) => void openDiff(path, { commit: detail.hash })} onCheckout={async () => { const result = await run('gitBoard.checkoutCommit', { ref: detail.hash }); if (!result?.ok) return false; setDiff(''); await load(false); return true }} />}</div>}
+      {tab === 'graph' && <div className="flex min-h-0 flex-1 flex-col"><div className="flex gap-1 border-b p-2"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('common:gitBoard.refFilter')} className="h-7 min-w-0 flex-1 rounded border bg-transparent px-2 text-[12px]" /><input value={author} onChange={(event) => setAuthor(event.target.value)} placeholder={t('common:gitBoard.authorFilter')} className="h-7 w-28 rounded border bg-transparent px-2 text-[12px]" /><button type="button" className="rounded border px-2 text-[12px]" onClick={() => void load(false)}>{t('common:gitBoard.filter')}</button></div><div className="relative min-h-0 flex-1 overflow-auto">{rows.map((row) => <div key={row.commit.hash} role="button" tabIndex={0} className="flex h-7 cursor-pointer items-center gap-2 pr-2 text-[12px] hover:bg-muted/50 focus-visible:outline focus-visible:outline-1 focus-visible:outline-primary" onClick={() => void openCommitDetail(row.commit.hash)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void openCommitDetail(row.commit.hash) } }} onContextMenu={(event) => { event.preventDefault(); setMenu({ x: event.clientX, y: event.clientY, commit: row.commit }) }}><GitLane lane={row.lane} passes={row.passes} links={row.links} columns={row.columns} fromAbove={row.fromAbove} /><CommitDate time={row.commit.time} /><span className="w-24 shrink-0 truncate text-[11px] text-foreground-secondary" title={row.commit.author}>{row.commit.author}</span><span className="min-w-0 flex-1 truncate">{row.commit.subject}</span></div>)}{data.hasMore ? <button type="button" className="m-2 rounded border px-2 py-1 text-[12px]" onClick={() => void load(true)}>{t('common:gitBoard.more')}</button> : null}</div>{detail && <CommitDetailDialog detail={detail} diff={diff} onClose={() => { setDetail(null); setDiff('') }} onOpenDiff={(path) => void openDiff(path, { commit: detail.hash })} onCheckout={async () => { const result = await run('gitBoard.checkoutCommit', { ref: detail.hash }); if (!result?.ok) return false; setDiff(''); await load(false); return true }} />}</div>}
 
       {tab === 'branches' && <div className="flex min-h-0 flex-1 flex-col text-[12px]">
         <form className="shrink-0 border-b border-border/60 p-3" onSubmit={(event) => { event.preventDefault(); if (name.trim()) void run('gitBoard.branch', { action: 'create', name, ...(selectedBranchBase ? { from: selectedBranchBase } : {}) }).then((result) => { if (result?.ok) setName('') }) }}>

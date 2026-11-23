@@ -9,14 +9,15 @@ export type GraphRow<T extends GraphCommit> = {
   fromAbove: boolean
 }
 
-/** Compact commit date: MM-DD for the current year, YYYY-MM-DD otherwise. */
+/** Compact commit date: MM-DD HH:mm:ss for the current year, YYYY-MM-DD HH:mm:ss otherwise. */
 export function formatCommitDate(time: number, now: Date = new Date()): string {
   if (!time) return ''
   const date = new Date(time * 1000)
   if (Number.isNaN(date.getTime())) return ''
   const pad = (value: number) => String(value).padStart(2, '0')
   const monthDay = `${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
-  return date.getFullYear() === now.getFullYear() ? monthDay : `${date.getFullYear()}-${monthDay}`
+  const clock = `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+  return date.getFullYear() === now.getFullYear() ? `${monthDay} ${clock}` : `${date.getFullYear()}-${monthDay} ${clock}`
 }
 
 export function layoutCommitGraph<T extends GraphCommit>(commits: T[]): Array<GraphRow<T>> {

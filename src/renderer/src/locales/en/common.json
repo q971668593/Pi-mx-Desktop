@@ -503,6 +503,7 @@
     "branches": "Branches",
     "advanced": "More",
     "refresh": "Refresh",
+    "timeout": "Git loading timed out. Press Refresh to retry.",
     "noWorkspace": "Open a project first",
     "notRepo": "This folder is not a Git repository",
     "clean": "No changes to commit",

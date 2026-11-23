@@ -14,6 +14,7 @@ import { FileTextEditor } from './file-text-editor'
 import { FileImagePreview } from './file-image-preview'
 import { FilePreviewFind } from './file-preview-find'
 import { useUIStore } from '@renderer/stores/ui-store'
+import { getAttachmentKind } from '@renderer/features/composer/attachments'
 import { clearFileDraft, getFileDraft, putFileDraft } from './file-edit-guard'
 import { normalizeEol, withEolOf } from './file-text-eol'
 import { toast } from 'sonner'
@@ -233,6 +234,43 @@ export function FilePreviewRouter({
   const openExternal = () => void ipcClient.invoke('shell.openPath', { path: absPath }).then((result) => {
     if (!result?.ok) toast.error(t('common:sidebar.revealFailed'))
   }).catch(() => toast.error(t('common:sidebar.revealFailed')))
+  const contentRef = useRef<string | null>(null)
+  contentRef.current = content
+  const attachToChat = () => {
+    if (!relativePath) return
+    const name = relativePath.split('/').pop() || relativePath
+    window.dispatchEvent(
+      new CustomEvent('pi-desktop:composer-attach-files', {
+        detail: { files: [{ path: absPath, name, kind: getAttachmentKind(name) }] },
+      }),
+    )
+    toast.message(t('toast.attached'))
+  }
+  // VS Code 式实时更新：AI 在后台改了磁盘文件，正在查看时自动跟进（有未保存草稿时不覆盖）。
+  useEffect(() => {
+    if (!relativePath || !mode || mode === 'pdf' || mode === 'binary' || mode === 'sheet' || mode === 'image') return
+    if (gitDiff) return
+    let cancelled = false
+    const poll = async () => {
+      if (cancelled || document.hidden) return
+      if (dirtyRef.current) return
+      try {
+        const result = await readText(relativePath, { maxBytes })
+        if (cancelled || !result.ok || result.truncated) return
+        const next = result.content ?? ''
+        if (next !== contentRef.current) {
+          if (loadedPath.current === absPath) {
+            setContent(next)
+            if (editingRef.current) setDraft(next)
+          }
+        }
+      } catch { void 0 }
+    }
+    const onFocus = () => void poll()
+    window.addEventListener('focus', onFocus)
+    const timer = window.setInterval(() => void poll(), 2500)
+    return () => { cancelled = true; window.removeEventListener('focus', onFocus); window.clearInterval(timer) }
+  }, [absPath, workspaceRoot, relativePath, mode, maxBytes, gitDiff, readText])
   const wrap = (node: ReactNode) => (
     <div ref={previewRef} className={cn('flex min-h-0 min-w-0 flex-col', fill && 'flex-1')}>
       {gitDiff ? (
@@ -262,8 +300,13 @@ export function FilePreviewRouter({
         <button type="button" aria-pressed={!editing} className={cn('rounded px-2 py-1 text-foreground', !editing ? 'bg-muted font-semibold' : 'hover:bg-muted')} onClick={() => { if (editing && (!dirty || window.confirm(t('preview.discardEdits')))) { if (relativePath) clearFileDraft(workspaceRoot, relativePath); setEditing(false); if (dirty) setLocalRefresh((current) => current + 1) } }}>{t('preview.ready')}</button>
       </div>
       {dirty ? <span className="text-amber-600">{t('preview.unsaved')}</span> : null}
-      {editing ? <label className="ml-auto flex shrink-0 items-center gap-1 text-foreground-secondary"><input type="checkbox" checked={wordWrap} onChange={(event) => { const enabled = event.target.checked; setWordWrap(enabled); try { localStorage.setItem('pi-desktop:file-word-wrap', String(enabled)) } catch { void 0 } }} />{t('preview.wordWrap')}</label> : null}
+      <button type="button" className="ml-auto shrink-0 rounded px-2 py-1 text-accent hover:underline" title={t('preview.attachToChat')} onClick={attachToChat}>{t('preview.attachToChat')}</button>
+      {editing ? <label className="flex shrink-0 items-center gap-1 text-foreground-secondary"><input type="checkbox" checked={wordWrap} onChange={(event) => { const enabled = event.target.checked; setWordWrap(enabled); try { localStorage.setItem('pi-desktop:file-word-wrap', String(enabled)) } catch { void 0 } }} />{t('preview.wordWrap')}</label> : null}
       {editing ? <button type="button" className="text-accent hover:underline disabled:opacity-50" disabled={!dirty || saving} onClick={() => void save()}>{saving ? t('preview.saving') : t('preview.save')}</button> : null}
+    </div>
+  ) : relativePath ? (
+    <div className="flex shrink-0 items-center gap-2 border-b border-border/40 px-3 py-1.5 text-[11px]">
+      <button type="button" className="ml-auto shrink-0 rounded px-2 py-1 text-accent hover:underline" title={t('preview.attachToChat')} onClick={attachToChat}>{t('preview.attachToChat')}</button>
     </div>
   ) : null
 

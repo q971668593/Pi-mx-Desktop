@@ -4,6 +4,7 @@
   },
   "chrome": {
     "noFile": "No file selected",
+    "refresh": "Refresh preview and file tree",
     "collapseExplorer": "Collapse file tree",
     "expandExplorer": "Expand file tree",
     "expandPreview": "Expand preview into chat column",
@@ -64,6 +65,7 @@
     "saved": "Saved",
     "saveFailed": "Could not save the file. Try again.",
     "cancelEdit": "Cancel",
+    "attachToChat": "Add to references",
     "discardEdits": "This file has unsaved changes. Leave and discard them?",
     "externalChange": "The file changed elsewhere. Overwrite it with your edits?",
     "find": "Find",
