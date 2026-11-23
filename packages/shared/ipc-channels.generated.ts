@@ -109,6 +109,7 @@ export const IPC_INVOKE_CHANNELS = [
   'ipc:git.restoreStash',
   'ipc:git.switchBranch',
   'ipc:gitBoard.branch',
+  'ipc:gitBoard.changes',
   'ipc:gitBoard.checkout',
   'ipc:gitBoard.checkoutCommit',
   'ipc:gitBoard.cherryPick',

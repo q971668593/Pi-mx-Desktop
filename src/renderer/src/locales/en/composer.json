@@ -285,6 +285,7 @@
     "add": "Add",
     "cancel": "Cancel",
     "save": "Save",
+    "edit": "Edit snippet",
     "delete": "Delete snippet",
     "titlePlaceholder": "Snippet title (e.g. Code review)",
     "contentPlaceholder": "Prompt text to insert…",

@@ -4,7 +4,7 @@
 > 事实源：`src/main/**/*.ts` 中的 `registerHandler` / `registerHandlerWithSchema` 调用。
 > 手写文档在 `doc/IPC-CONTRACTS.md`；本文件保证「代码里注册了什么」与「文档里写了什么」不会漂移。
 
-- invoke 通道：**322** 个（唯一）
+- invoke 通道：**323** 个（唯一）
 - main → renderer 事件通道：**12** 个（唯一）
 - 非字面量注册：**0** 处
 - 动态事件通道（通道名非常量，未收录）：**7** 处
@@ -17,7 +17,7 @@
 | 域 | 通道数 |
 | --- | ---: |
 | `browser` | 35 |
-| `gitBoard` | 31 |
+| `gitBoard` | 32 |
 | `session` | 23 |
 | `workspace` | 21 |
 | `extensions` | 14 |
@@ -112,11 +112,12 @@
 | `ipc:browser.tabs.pin` | registerHandlerWithSchema | `src/main/ipc/handlers/browser.ts` |
 | `ipc:browser.viewBounds` | registerHandlerWithSchema | `src/main/ipc/handlers/browser.ts` |
 
-### gitBoard（31）
+### gitBoard（32）
 
 | 通道 | 注册方式 | 注册位置 |
 | --- | --- | --- |
 | `ipc:gitBoard.branch` | registerHandlerWithSchema | `src/main/ipc/handlers/git-board.ts` |
+| `ipc:gitBoard.changes` | registerHandlerWithSchema | `src/main/ipc/handlers/git-board.ts` |
 | `ipc:gitBoard.checkout` | registerHandlerWithSchema | `src/main/ipc/handlers/git-board.ts` |
 | `ipc:gitBoard.checkoutCommit` | registerHandlerWithSchema | `src/main/ipc/handlers/git-board.ts` |
 | `ipc:gitBoard.cherryPick` | registerHandlerWithSchema | `src/main/ipc/handlers/git-board.ts` |

@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Trash2, Zap } from '@renderer/components/icons'
+import { Plus, Pencil, Trash2, Zap } from '@renderer/components/icons'
 import { cn } from '@renderer/lib/utils'
 import { ComposerPopover } from './composer-popover'
 import { insertTextIntoComposer } from './composer-insert'
-import { addPromptSnippet, deletePromptSnippet, usePromptSnippets } from './prompt-snippets'
+import { addPromptSnippet, deletePromptSnippet, updatePromptSnippet, usePromptSnippets } from './prompt-snippets'
 
 /** Quick-access developer prompt snippet library right in the composer toolbar. */
 export function PromptSnippetsMenu({ disabled }: { disabled?: boolean }) {
@@ -12,10 +12,30 @@ export function PromptSnippetsMenu({ disabled }: { disabled?: boolean }) {
   const snippets = usePromptSnippets()
   const [open, setOpen] = useState(false)
   const [adding, setAdding] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
 
+  const resetForm = () => {
+    setAdding(false)
+    setEditingId(null)
+    setTitle('')
+    setContent('')
+  }
+
+  const startEditing = (id: string, displayTitle: string, displayContent: string) => {
+    setAdding(true)
+    setEditingId(id)
+    setTitle(displayTitle)
+    setContent(displayContent)
+  }
+
   const handleSave = () => {
+    if (editingId) {
+      if (!updatePromptSnippet(editingId, { title, content })) return
+      resetForm()
+      return
+    }
     const created = addPromptSnippet({ title, content })
     if (!created) return
     setTitle('')
@@ -49,7 +69,7 @@ export function PromptSnippetsMenu({ disabled }: { disabled?: boolean }) {
           label={t('composer:snippets.title')}
           onClose={() => {
             setOpen(false)
-            setAdding(false)
+            resetForm()
           }}
         >
           <div className="flex items-center justify-between border-b border-border/40 px-3 py-2">
@@ -58,7 +78,10 @@ export function PromptSnippetsMenu({ disabled }: { disabled?: boolean }) {
             </span>
             <button
               type="button"
-              onClick={() => setAdding((v) => !v)}
+              onClick={() => {
+                if (adding) resetForm()
+                else setAdding(true)
+              }}
               className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-primary hover:bg-[var(--bg-hover)]"
             >
               <Plus className="h-3 w-3" />
@@ -85,11 +108,7 @@ export function PromptSnippetsMenu({ disabled }: { disabled?: boolean }) {
               <div className="flex justify-end gap-1.5">
                 <button
                   type="button"
-                  onClick={() => {
-                    setAdding(false)
-                    setTitle('')
-                    setContent('')
-                  }}
+                  onClick={resetForm}
                   className="rounded-md px-2 py-1 text-[11px] text-foreground-secondary hover:bg-[var(--bg-hover)]"
                 >
                   {t('composer:snippets.cancel')}
@@ -128,7 +147,7 @@ export function PromptSnippetsMenu({ disabled }: { disabled?: boolean }) {
                       onClick={() => {
                         insertTextIntoComposer(displayContent, 'append')
                         setOpen(false)
-                        setAdding(false)
+                        resetForm()
                       }}
                       className="min-w-0 flex-1 rounded-md px-2 py-1.5 text-left hover:bg-[var(--bg-hover)]"
                     >
@@ -141,7 +160,19 @@ export function PromptSnippetsMenu({ disabled }: { disabled?: boolean }) {
                     </button>
                     <button
                       type="button"
-                      onClick={() => deletePromptSnippet(snippet.id)}
+                      onClick={() => startEditing(snippet.id, displayTitle, displayContent)}
+                      title={t('composer:snippets.edit')}
+                      aria-label={t('composer:snippets.edit')}
+                      className="mt-1.5 flex h-6 w-6 shrink-0 items-center justify-center rounded text-foreground-secondary/50 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 hover:bg-[var(--bg-hover)] hover:text-foreground"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (editingId === snippet.id) resetForm()
+                        deletePromptSnippet(snippet.id)
+                      }}
                       title={t('composer:snippets.delete')}
                       aria-label={t('composer:snippets.delete')}
                       className="mt-1.5 flex h-6 w-6 shrink-0 items-center justify-center rounded text-foreground-secondary/50 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 hover:bg-[var(--bg-hover)] hover:text-destructive"

@@ -98,6 +98,20 @@ export function deletePromptSnippet(id: string): void {
   if (next.length !== cachedSnippets.length) commitSnippets(next)
 }
 
+export function updatePromptSnippet(id: string, input: { title: string; content: string }): boolean {
+  const title = input.title.trim()
+  const content = input.content.trim()
+  if (!title || !content) return false
+  const index = cachedSnippets.findIndex((s) => s.id === id)
+  if (index < 0) return false
+  // Drop i18n keys: an edited snippet becomes a literal user override
+  // so it no longer follows locale text.
+  const next = [...cachedSnippets]
+  next[index] = { ...next[index], title, content, titleKey: undefined, contentKey: undefined }
+  commitSnippets(next)
+  return true
+}
+
 export function resetPromptSnippets(): void {
   commitSnippets(DEFAULT_PROMPT_SNIPPETS)
 }

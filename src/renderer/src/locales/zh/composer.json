@@ -285,6 +285,7 @@
     "add": "新增",
     "cancel": "取消",
     "save": "保存",
+    "edit": "编辑模板",
     "delete": "删除模板",
     "titlePlaceholder": "模板名称（如：代码审查）",
     "contentPlaceholder": "输入要插入对话的内容…",
