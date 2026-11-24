@@ -1,9 +1,9 @@
-/** Opt-in session capabilities (composer Tools menu). A new chat starts with the built-in browser on. */
+/** Session capabilities (composer Tools menu). New chats enable browser and web search. */
 export const CAPABILITY_IDS = ['pi-ui', 'browser', 'chrome', 'web-search', 'computer', 'work-team'] as const
 export type CapabilityId = (typeof CAPABILITY_IDS)[number]
 
-/** A conversation nobody switched anything in drives the built-in browser; the rest stay opt-in. */
-export const DEFAULT_CAPABILITIES: readonly CapabilityId[] = ['browser']
+/** Default choices for a conversation nobody has changed. */
+export const DEFAULT_CAPABILITIES: readonly CapabilityId[] = ['browser', 'web-search']
 
 export interface CapabilityInfo {
   id: CapabilityId

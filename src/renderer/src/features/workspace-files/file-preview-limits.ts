@@ -7,4 +7,4 @@ export const PREVIEW_SHIKI_MAX_CHARS = 80_000
 /** 超过则 Markdown 不走完整渲染 */
 export const PREVIEW_MD_MAX_CHARS = 120_000
 
-export const PREVIEW_MD_MAX_LINES = 800
+export const PREVIEW_MD_MAX_LINES = 4_000

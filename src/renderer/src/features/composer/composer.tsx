@@ -21,6 +21,7 @@ import { ComposerToolsMenu } from './composer-tools-menu'
 import { PromptSnippetsMenu } from './prompt-snippets-menu'
 import { ComposerMetricsInline } from './composer-metrics-inline'
 import { ComposerPendingQueue } from './composer-pending-queue'
+import { restoreQueuedToComposer } from '@renderer/lib/composer-queue-restore'
 import { ComposerAdapterWidgetHost } from './composer-adapter-widget-host'
 import { useComposerMetrics } from './use-composer-metrics'
 import { refreshComposerRunDisplay } from '@renderer/lib/composer-run-display'
@@ -199,6 +200,26 @@ export function Composer() {
     }
   }, [draftContextKey])
 
+  const activeDraftKey = useRef(draftContextKey)
+  activeDraftKey.current = draftContextKey
+  const restoreQueue = useCallback(async () => {
+    const key = draftContextKey
+    await restoreQueuedToComposer({ setText: (queued) => {
+      const el = editorRef.current
+      if (el && activeDraftKey.current === key) {
+        const segments = serializeRichInput(el).segments
+        renderRichFromSegments(el, [{ type: 'text', text: queued + (segments.length ? '\n' : '') }, ...segments])
+        syncRichInputEmpty(el)
+        updateFromEditor()
+        placeCaretAtEnd(el)
+        el.focus()
+      } else {
+        const segments = readTransientComposerDraft(key) ?? []
+        rememberTransientComposerDraft(key, [{ type: 'text', text: queued + (segments.length ? '\n' : '') }, ...segments])
+      }
+    } })
+  }, [draftContextKey, updateFromEditor])
+
   const setContent = useCallback(
     (plain: string) => {
       const el = editorRef.current
@@ -323,12 +344,14 @@ export function Composer() {
     const onRetry = (e: Event) => {
       const prompt = (e as CustomEvent<{ text?: string }>).detail?.text?.trim()
       if (!prompt) return
-      if (!canSendMessages || isRunning || showComposerStop) {
+      const existing = editorRef.current ? serializeRichInput(editorRef.current) : null
+      const hasDraft = Boolean(existing?.displayText.trim() || existing?.attachments.length || stagedImagesRef.current.length)
+      if (!canSendMessages || isRunning || showComposerStop || hasDraft) {
         useUIStore.setState({
           browserChatExpand: false,
           filesPreviewChatExpand: false,
           composerPrefill: prompt,
-          composerPrefillMode: 'replace',
+          composerPrefillMode: hasDraft ? 'append' : 'replace',
         })
         return
       }
@@ -464,7 +487,7 @@ export function Composer() {
       />
       <ComposerCompactionBanner />
       <ComposerRetryBanner />
-      <ComposerPendingQueue />
+      <ComposerPendingQueue onRestore={restoreQueue} />
       {sessionPreview && (
         <div className="mb-2 flex items-center gap-2 rounded-lg border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-[11px] text-amber-800 dark:text-amber-200/90">
           <span className="min-w-0 flex-1">{t('composer:subagentPreviewBanner')}</span>

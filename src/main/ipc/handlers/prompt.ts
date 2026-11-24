@@ -4,7 +4,7 @@ import { normalizeSessionKey } from '../../worker-session-key'
 import { registerHandler, registerHandlerWithSchema } from '../registry'
 import { readRemoteAttachment, writeClipboardTempImage } from '../../clipboard-temp-images'
 import { readActionableImage, resolveActionableImage } from '../../image-file-access'
-import { capabilityCatalog, setInstalledCapabilityTools } from '../../capabilities/catalog'
+import { capabilityCatalog } from '../../capabilities/catalog'
 import { applySessionCapabilities } from '../../capabilities/session-apply'
 import { clipboard, nativeImage } from 'electron'
 import { capabilityApplySchema, clipboardReadTempImageSchema, clipboardWriteTempImageSchema, dialogSaveImageSchema, promptAbortSchema, promptDequeueClearQueueSchema, promptFlushQueueSchema, promptTextSchema } from '../schemas'
@@ -51,11 +51,10 @@ export function registerPromptHandlers(): void {
     const cwd = workerManager.cwd || configStore.get('currentProject') || process.cwd()
     const runtime = await workerManager.getExtensionCapabilities(cwd).catch(() => null)
     const names = runtime?.extensions.flatMap((extension) => extension.tools) ?? []
-    setInstalledCapabilityTools({
+    return { capabilities: capabilityCatalog({
       computer: names.filter(isComputerCapabilityTool).length,
       'web-search': names.filter(isWebSearchCapabilityTool).length,
-    })
-    return { capabilities: capabilityCatalog() }
+    }) }
   })
 
   /**

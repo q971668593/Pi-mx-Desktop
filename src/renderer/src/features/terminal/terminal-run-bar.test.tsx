@@ -42,6 +42,27 @@ it('allows AI task detection with existing tasks and runs only the selected draf
   await waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('terminal.runTasks', expect.objectContaining({ tasks: [mocks.groups[1].tasks[0]] })))
 })
 
+it('restores an in-flight detection and its draft after the panel unmounts', async () => {
+  let resolve!: (result: { ok: boolean; content: string; groups: typeof mocks.groups }) => void
+  mocks.invoke.mockImplementation(async (method: string) => {
+    if (method === 'workspace.tasks.get') return { groups: [mocks.groups[0]] }
+    if (method === 'workspace.fs.listDir') return { entries: [] }
+    if (method === 'workspace.tasks.draft') return new Promise((done) => { resolve = done })
+    return { ok: false }
+  })
+  const view = render(<TerminalRunBar />)
+  await waitFor(() => expect(screen.getByText('common:terminal.run')).toBeTruthy())
+  act(() => window.dispatchEvent(new Event('pi-desktop:terminal-detect-tasks')))
+  await waitFor(() => expect(resolve).toBeDefined())
+  view.unmount()
+  render(<TerminalRunBar />)
+  expect(await screen.findByRole('status')).toHaveTextContent('common:terminal.detecting')
+  await act(async () => resolve({ ok: true, content: '{}', groups: mocks.groups }))
+  expect(await screen.findByRole('dialog')).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'common:terminal.saveAndRun' })).toBeEnabled()
+  fireEvent.click(screen.getByRole('button', { name: 'common:cancel' }))
+})
+
 it('lists tasks with a one-line description and can delete a group', async () => {
   mocks.invoke.mockClear()
   render(<TerminalRunBar />)

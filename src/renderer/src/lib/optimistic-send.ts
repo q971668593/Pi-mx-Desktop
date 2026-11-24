@@ -20,6 +20,8 @@ export type OptimisticSendOpts = {
 export type OptimisticSendToken = {
   sessionFile: string | null
   assistantId: string
+  sourceKey?: string | null
+  rows?: TimelineItem[]
 }
 
 function markOptimisticSessionRunning(sessionFile: string): void {
@@ -33,6 +35,32 @@ export function bindOptimisticOutgoingToSession(
   sessionFile: string | null,
 ): void {
   if (!token || !sessionFile) return
+  const store = useUIStore.getState()
+  const targetKey = sessionKeyOf(sessionFile)
+  const source = token.sourceKey ? store.sessionStates[token.sourceKey] : undefined
+  const target = store.sessionStates[targetKey]
+  // The first send may finish creating its file after the user has left the draft.
+  // Move only this turn, preserving any state already delivered to the new session.
+  if (token.rows?.length && !target?.timelineItems.some((item) => item.id === token.assistantId)) {
+    patchSessionState(targetKey, {
+      timelineItems: [...(target?.timelineItems ?? []), ...token.rows],
+      streamingAssistantId: token.assistantId,
+      optimisticPendingUserText: token.rows[0].text ?? null,
+      agentTurnBootstrapping: true,
+      pendingTurnStage: 'sending',
+      runState: { ...(target?.runState ?? store.runState), status: 'running' },
+    })
+  }
+  if (source && token.sourceKey !== targetKey && source.timelineItems.some((item) => item.id === token.assistantId)) {
+    patchSessionState(token.sourceKey!, {
+      timelineItems: removeOptimisticTurn(source.timelineItems, token.assistantId),
+      streamingAssistantId: null,
+      optimisticPendingUserText: null,
+      agentTurnBootstrapping: false,
+      pendingTurnStage: null,
+      runState: { ...source.runState, status: 'idle' },
+    })
+  }
   token.sessionFile = sessionFile
   markOptimisticSessionRunning(sessionFile)
 }
@@ -80,7 +108,12 @@ export function appendOptimisticOutgoingMessage(
   if (store.runState.status !== 'running') {
     store.setRunState({ status: 'running', startTime: ts })
   }
-  return { sessionFile: store.historySessionFile, assistantId }
+  return {
+    sessionFile: store.historySessionFile,
+    assistantId,
+    sourceKey: store.viewSessionKey,
+    rows: useUIStore.getState().timelineItems.filter((item) => item.id === userId || item.id === assistantId),
+  }
 }
 
 function removeOptimisticTurn(items: TimelineItem[], assistantId: string): TimelineItem[] {

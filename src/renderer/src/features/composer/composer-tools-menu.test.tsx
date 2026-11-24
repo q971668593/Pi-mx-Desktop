@@ -37,6 +37,7 @@ const CATALOG = {
     { id: 'pi-ui', available: true, promptTokens: 120, tools: 0 },
     { id: 'browser', available: true, promptTokens: 900, tools: 24, coreTools: 10 },
     { id: 'chrome', available: false, reason: 'chrome-off', promptTokens: 900, tools: 24 },
+    { id: 'web-search', available: true, promptTokens: 100, tools: 2 },
     { id: 'computer', available: true, promptTokens: 300, tools: 18 },
   ],
 }
@@ -68,6 +69,31 @@ it('a conversation nobody switched anything in shows the built-in browser', asyn
   expect(screen.getByRole('radio', { name: 'composer:tools.browserMode.off' })).toHaveAttribute('aria-checked', 'false')
 })
 
+it('keeps search and browser status in sync when availability changes', async () => {
+  invoke.mockImplementation(async (method: string) => {
+    if (method === 'capabilities.catalog') return { capabilities: CATALOG.capabilities.map((cap) =>
+      cap.id === 'web-search' || cap.id === 'browser' ? { ...cap, available: false, reason: cap.id === 'browser' ? 'browser-panel-off' : 'web-search-not-installed' } : cap) }
+    if (method === 'pi.settings.get') return { settings: { cacheWarming: 'streaming' } }
+    return { ok: true }
+  })
+  render(<ComposerToolsMenu location="status" />)
+  fireEvent.click(document.querySelector('[data-composer-tools]') as HTMLElement)
+  await waitFor(() => expect(screen.getByRole('switch', { name: 'composer:tools.items.web-search.name' })).toBeDisabled())
+  expect(screen.getByRole('switch', { name: 'composer:tools.items.web-search.name' })).toHaveAttribute('aria-checked', 'false')
+  expect(screen.getByRole('radio', { name: 'composer:tools.browserMode.off' })).toHaveAttribute('aria-checked', 'true')
+  expect(screen.getByText('composer:tools.items.web-search.name ○')).toBeInTheDocument()
+  expect(screen.getByText('composer:tools.browserMode.label ○')).toBeInTheDocument()
+})
+
+it('switches browser mode with one live update', async () => {
+  await open()
+  invoke.mockClear()
+  fireEvent.click(screen.getByRole('radio', { name: 'composer:tools.browserMode.off' }))
+  expect(invoke.mock.calls.filter(([method]) => method === 'capabilities.apply')).toEqual([
+    ['capabilities.apply', { sessionFile: '/s.jsonl', capabilities: ['web-search'] }],
+  ])
+})
+
 it('keeps the cost out of the row text so it cannot push the menu wider', async () => {
   await open()
   // The tool count still reaches the user, but as the row tooltip, not as a visible micro-label.
@@ -81,13 +107,13 @@ it('revokes a capability on the live worker as soon as its switch goes off', asy
   const computer = screen.getByRole('switch', { name: 'composer:tools.items.computer.name' })
   fireEvent.click(computer)
   await waitFor(() =>
-    expect(invoke).toHaveBeenCalledWith('capabilities.apply', { sessionFile: '/s.jsonl', capabilities: ['browser', 'computer'] }),
+    expect(invoke).toHaveBeenCalledWith('capabilities.apply', { sessionFile: '/s.jsonl', capabilities: ['browser', 'web-search', 'computer'] }),
   )
   fireEvent.click(computer)
   await waitFor(() =>
-    expect(invoke).toHaveBeenLastCalledWith('capabilities.apply', { sessionFile: '/s.jsonl', capabilities: ['browser'] }),
+    expect(invoke).toHaveBeenLastCalledWith('capabilities.apply', { sessionFile: '/s.jsonl', capabilities: ['browser', 'web-search'] }),
   )
-  expect(useSessionCapabilitiesStore.getState().byKey['/s.jsonl']).toEqual(['browser'])
+  expect(useSessionCapabilitiesStore.getState().byKey['/s.jsonl']).toEqual(['browser', 'web-search'])
 })
 
 it('keeps work team off for fresh conversations and applies it to this session only', async () => {
@@ -97,6 +123,6 @@ it('keeps work team off for fresh conversations and applies it to this session o
   fireEvent.click(toggle)
   expect(toggle).toHaveAttribute('aria-checked', 'true')
   await waitFor(() => expect(invoke).toHaveBeenCalledWith('capabilities.apply', {
-    sessionFile: '/s.jsonl', capabilities: ['browser', 'work-team'],
+    sessionFile: '/s.jsonl', capabilities: ['browser', 'web-search', 'work-team'],
   }))
 })

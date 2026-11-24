@@ -116,6 +116,9 @@
   "queued": "排队 · ",
   "queuedHint": "将在当前回合完成后自动发送",
   "queueHint": "Alt+↑ 拉回输入框 · Ctrl/⌘+Enter 立即发送 · 运行中 Esc 拉回并停止",
+  "queueRestore": "撤销排队",
+  "queueRestoring": "撤销中…",
+  "queueRestoreHint": "撤销全部排队消息并拉回输入框，当前任务继续运行",
   "queueFlush": "立即发送",
   "queueFlushing": "发送中…",
   "queueFlushHint": "按你的指令立刻送出队列（运行中会插到下一次模型调用前）；不点就按原来的时机自动送",
@@ -214,7 +217,7 @@
     "toolCount": "{{count}} 个工具",
     "toolCountDeferred": "{{count}} 个工具（{{core}} 个常驻，其余按需加载）",
     "tokens": "每次请求约 +{{n}} tokens",
-    "note": "下一条消息起对模型生效；关闭立即撤销。新对话默认开启内置浏览器。",
+    "note": "下一条消息起对模型生效；关闭立即撤销。新对话默认开启内置浏览器和网络搜索，可用性取决于设置与插件。",
     "noteRunning": "当前回合提示词不变；关闭的工具立刻失效。",
     "items": {
       "work-team": {

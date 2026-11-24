@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { create } from 'zustand'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { Archive, Check, ChevronDown, CloudDownload, FileText, FolderTree, GitBranch, GitBranchPlus, GitCommitHorizontal, Loader2, MoreHorizontal, RefreshCw, Rows2, Settings, Sparkles, X, Minus, Plus, Trash2 } from '@renderer/components/icons'
@@ -67,6 +68,13 @@ function joinChildPath(parent: string, child: string): string {
   return `${parent.replace(/[\\/]+$/, '')}${separator}${child}`
 }
 
+type CommitDraft = { message: string; suggesting: boolean }
+const EMPTY_COMMIT_DRAFT: CommitDraft = { message: '', suggesting: false }
+const useCommitDrafts = create<{ entries: Record<string, CommitDraft> }>(() => ({ entries: {} }))
+function updateCommitDraft(key: string, update: (draft: CommitDraft) => CommitDraft) {
+  useCommitDrafts.setState(({ entries }) => ({ entries: { ...entries, [key]: update(entries[key] || EMPTY_COMMIT_DRAFT) } }))
+}
+
 export function GitBoardPanel() {
   const { t } = useTranslation()
   const cwd = useUIStore((s) => s.currentWorkspace)
@@ -76,9 +84,11 @@ export function GitBoardPanel() {
   const [tab, setTab] = useState<Tab>('changes')
   const [changeViewByWorkspace, setChangeViewByWorkspace] = useState<Record<string, ChangeView>>({})
   const [repositoryTab, setRepositoryTab] = useState<RepositoryTab>('stash')
-  const [message, setMessage] = useState('')
+  const draftKey = workspacePathKey(cwd || '')
+  const commitDraft = useCommitDrafts((s) => s.entries[draftKey] || EMPTY_COMMIT_DRAFT)
+  const { message, suggesting } = commitDraft
+  const setMessage = (value: string | ((current: string) => string)) => updateCommitDraft(draftKey, (draft) => ({ ...draft, message: typeof value === 'function' ? value(draft.message) : value }))
   const [selectedPushRemote, setSelectedPushRemote] = useState('')
-  const [suggesting, setSuggesting] = useState(false)
   const [promptOpen, setPromptOpen] = useState(false)
   const [commitPrompt, setCommitPrompt] = useState(() => { try { return localStorage.getItem('pi-desktop:git-commit-prompt') || DEFAULT_COMMIT_PROMPT } catch { return DEFAULT_COMMIT_PROMPT } })
   const [promptDraft, setPromptDraft] = useState(commitPrompt)
@@ -208,7 +218,6 @@ export function GitBoardPanel() {
     setDetail(null)
     setConflictPath('')
     setCommandLog([])
-    setMessage('')
     setSelectedPushRemote('')
     setQuery('')
     setAuthor('')
@@ -346,13 +355,18 @@ export function GitBoardPanel() {
     }
   }
   const suggestCommit = async () => {
-    if (suggesting || busy) return
+    if (!cwd || busy || useCommitDrafts.getState().entries[draftKey]?.suggesting) return
     const original = message
-    setSuggesting(true)
+    updateCommitDraft(draftKey, (draft) => ({ ...draft, suggesting: true }))
     try {
-      const result = await run('gitBoard.suggestCommit', { prompt: commitPrompt.trim() })
-      if (result?.text) setMessage((current) => current === original ? result.text! : current)
-    } finally { setSuggesting(false) }
+      const result = await git<{ text?: string }>('gitBoard.suggestCommit', { cwd, prompt: commitPrompt.trim() })
+      if (!result.ok) throw new Error(result.error || 'git_failed')
+      if (result.text) setMessage((current) => current === original ? result.text! : current)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error))
+    } finally {
+      updateCommitDraft(draftKey, (draft) => ({ ...draft, suggesting: false }))
+    }
   }
   const commit = async (action: 'stage-and-commit' | 'commit-and-push') => {
     const submitted = message
@@ -714,8 +728,8 @@ export function GitBoardPanel() {
 <button type="button" disabled={busy || suggesting} className="rounded border px-2 py-1 text-[12px]" onClick={() => void suggestCommit()}>{suggesting ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : <Sparkles className="mr-1 inline h-3 w-3" />}{t(suggesting ? 'common:gitBoard.generating' : 'common:gitBoard.suggest')}</button>
 <button type="button" disabled={busy} aria-label={t('common:gitBoard.promptSettings')} title={t('common:gitBoard.promptSettings')} className="rounded border p-1.5 text-foreground-secondary hover:bg-muted" onClick={() => { setPromptDraft(commitPrompt); setPromptOpen(true) }}><Settings className="h-3.5 w-3.5" /></button>
 {hasCommitChanges ? <>
-<button type="button" disabled={busy || !message.trim()} className="ml-auto rounded bg-primary px-2.5 py-1.5 text-[12px] text-primary-foreground disabled:opacity-50" onClick={() => void commit('stage-and-commit')}>{commitAction === 'stage-and-commit' ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : commitComplete === 'stage-and-commit' ? <Check className="mr-1 inline h-3 w-3" /> : null}{t('common:gitBoard.commit')}</button>
-{data.status.branch ? <button type="button" disabled={busy || !message.trim()} className="rounded border border-primary/40 px-2.5 py-1.5 text-[12px] text-foreground hover:bg-primary/5 disabled:opacity-50" onClick={() => void commit('commit-and-push')}>{commitAction === 'commit-and-push' ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : commitComplete === 'commit-and-push' ? <Check className="mr-1 inline h-3 w-3" /> : null}{t('common:gitBoard.commitPush')}</button> : null}
+<button type="button" disabled={busy || suggesting || !message.trim()} className="ml-auto rounded bg-primary px-2.5 py-1.5 text-[12px] text-primary-foreground disabled:opacity-50" onClick={() => void commit('stage-and-commit')}>{commitAction === 'stage-and-commit' ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : commitComplete === 'stage-and-commit' ? <Check className="mr-1 inline h-3 w-3" /> : null}{t('common:gitBoard.commit')}</button>
+{data.status.branch ? <button type="button" disabled={busy || suggesting || !message.trim()} className="rounded border border-primary/40 px-2.5 py-1.5 text-[12px] text-foreground hover:bg-primary/5 disabled:opacity-50" onClick={() => void commit('commit-and-push')}>{commitAction === 'commit-and-push' ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : commitComplete === 'commit-and-push' ? <Check className="mr-1 inline h-3 w-3" /> : null}{t('common:gitBoard.commitPush')}</button> : null}
 </> : shouldShowPush ? <button type="button" disabled={busy || (!data.status.upstream && !effectivePushRemote)} className="ml-auto rounded bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground disabled:opacity-50" onClick={() => void pushCurrentBranch()}>{t(data.status.upstream ? 'common:gitBoard.push' : 'common:gitBoard.publish')}</button> : hasPendingChanges ? <span className="ml-auto text-[11px] text-foreground-tertiary">{t('common:gitBoard.stageFilesBeforeCommit')}</span> : <span className="ml-auto text-[11px] text-foreground-tertiary">{data.status.behind > 0 ? t('common:gitBoard.behind', { n: data.status.behind }) : t('common:gitBoard.clean')}</span>}
 </div></div></div>}
 

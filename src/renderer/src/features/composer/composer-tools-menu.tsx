@@ -11,6 +11,7 @@ import {
   loadSessionCapabilities,
   onCapabilityKeyChange,
   setSessionCapability,
+  setSessionBrowserMode,
   useSessionCapabilitiesStore,
   withAutoBrowserCapability,
 } from '@renderer/lib/session-capabilities'
@@ -92,8 +93,7 @@ function formatTokens(n: number): string {
 }
 
 /**
- * Composer "Tools" menu: per-session capability switches (the built-in browser is on for a new chat,
- * everything else is opt-in). An enabled capability adds its instructions/tools from the next message
+ * Composer "Tools" menu: per-session capability switches. An enabled capability adds its instructions/tools from the next message
  * on; switching it off revokes its tools at once.
  */
 type BrowserMode = 'off' | 'builtin' | 'chrome'
@@ -102,10 +102,7 @@ type BrowserMode = 'off' | 'builtin' | 'chrome'
 function BrowserModeRow({ builtin, chrome, enabled, sessionFile }: { builtin: CapabilityInfo; chrome?: CapabilityInfo; enabled: CapabilityId[]; sessionFile: string | null }) {
   const { t } = useTranslation()
   const mode: BrowserMode = enabled.includes('chrome') ? 'chrome' : enabled.includes('browser') ? 'builtin' : 'off'
-  const pick = (next: BrowserMode) => {
-    setSessionCapability(sessionFile, 'browser', next === 'builtin')
-    setSessionCapability(sessionFile, 'chrome', next === 'chrome')
-  }
+  const pick = (next: BrowserMode) => setSessionBrowserMode(sessionFile, next)
   // Only the choices this machine can actually switch on; the current one stays visible so it can be
   // turned off even if it just became unavailable (e.g. the Chrome extension was removed).
   const options: { id: BrowserMode; info?: CapabilityInfo }[] = (
@@ -114,7 +111,7 @@ function BrowserModeRow({ builtin, chrome, enabled, sessionFile }: { builtin: Ca
       { id: 'builtin', info: builtin },
       { id: 'chrome', info: chrome },
     ] as { id: BrowserMode; info?: CapabilityInfo }[]
-  ).filter((o) => !o.info || o.info.available || mode === o.id)
+  ).filter((o) => !o.info || o.info.available || mode === o.id || o.id === 'builtin')
   const active = mode === 'chrome' ? chrome : mode === 'builtin' ? builtin : undefined
   const cost = active
     ? [active.tools > 0 ? (active.coreTools ? t('composer:tools.toolCountDeferred', { count: active.tools, core: active.coreTools }) : t('composer:tools.toolCount', { count: active.tools })) : '', active.promptTokens > 0 ? t('composer:tools.tokens', { n: formatTokens(active.promptTokens) }) : '']
@@ -182,8 +179,7 @@ export function ComposerToolsMenu({ disabled, running, location = 'composer' }: 
   }, [key])
 
   useEffect(() => {
-    // Availability follows settings (e.g. the Browser panel experiment): refresh on every open.
-    if (!open) return
+    // Refresh on mount and whenever the menu opens.
     void ipcClient
       .invoke('capabilities.catalog')
       .then((res: { capabilities?: CapabilityInfo[] }) => {
@@ -191,13 +187,12 @@ export function ComposerToolsMenu({ disabled, running, location = 'composer' }: 
         setCatalog(catalogCache)
       })
       .catch(() => setCatalog([]))
-  }, [open])
+  }, [open, running])
 
   const label = (id: CapabilityId) => t(`composer:tools.items.${id}.name`)
-  const names = enabled.map(label).join('、')
-  // Only what this chat can switch on. Anything that cannot be enabled here (panel off, extension
-  // missing, wrong platform) is set up in Settings, so it is not a switch in this menu.
   const all = catalog ?? []
+  const effectiveEnabled = enabled.filter((id) => all.some((cap) => cap.id === id && cap.available))
+  const names = effectiveEnabled.map(label).join('、')
   const chrome = all.find((c) => c.id === 'chrome')
   const visible = all.filter((cap) => (cap.id === 'browser' ? cap.available || !!chrome?.available : cap.available))
 
@@ -211,28 +206,28 @@ export function ComposerToolsMenu({ disabled, running, location = 'composer' }: 
         disabled={disabled}
         aria-haspopup="dialog"
         aria-expanded={open}
-        aria-label={enabled.length ? t('composer:tools.enabledTitle', { names }) : t('composer:tools.button')}
-        title={enabled.length ? t('composer:tools.enabledTitle', { names }) : t('composer:tools.button')}
+        aria-label={effectiveEnabled.length ? t('composer:tools.enabledTitle', { names }) : t('composer:tools.button')}
+        title={effectiveEnabled.length ? t('composer:tools.enabledTitle', { names }) : t('composer:tools.button')}
         onClick={() => setOpen((o) => !o)}
         className={cn(
           location === 'status' ? 'workbench-status-trigger' : 'composer-toolbar-btn flex h-7 min-w-7 shrink-0 items-center justify-center gap-1 rounded-md px-1.5 text-foreground-secondary/75 disabled:opacity-30',
           open && 'bg-[var(--bg-active)] text-foreground',
-          enabled.length > 0 && 'text-primary',
+          effectiveEnabled.length > 0 && 'text-primary',
         )}
       >
         <SlidersHorizontal className="h-[14px] w-[14px]" />
-        {enabled.map((id) => (
+        {effectiveEnabled.map((id) => (
           <span key={id} className="composer-capability-chip hidden" data-capability={id} />
         ))}
         {location === 'status' && <span className="hidden items-center gap-1.5 lg:flex">
           {(['work-team', 'computer', 'pi-ui', 'web-search', 'browser'] as const).map((id) => {
-            const active = enabled.includes(id) || (id === 'browser' && enabled.includes('chrome'))
+            const active = effectiveEnabled.includes(id) || (id === 'browser' && effectiveEnabled.includes('chrome'))
             return <span key={id} className={cn('whitespace-nowrap', active ? 'text-primary' : 'text-muted-foreground/60')}>
               {id === 'browser' ? t('composer:tools.browserMode.label') : label(id)} {active ? '●' : '○'}
             </span>
           })}
         </span>}
-        {location === 'composer' && enabled.length > 0 ? <span className="text-[11px] tabular-nums">{enabled.length}</span> : null}
+        {location === 'composer' && effectiveEnabled.length > 0 ? <span className="text-[11px] tabular-nums">{effectiveEnabled.length}</span> : null}
       </button>
       {open ? (
         <ComposerPopover
@@ -252,25 +247,25 @@ export function ComposerToolsMenu({ disabled, running, location = 'composer' }: 
               .map((cap) => {
                 if (cap.id === 'chrome') return null
                 if (cap.id === 'browser') {
-                  if (!cap.available && !chrome?.available) return null
-                  return <BrowserModeRow key="browser" builtin={cap} chrome={chrome} enabled={enabled} sessionFile={sessionFile} />
+                  return <BrowserModeRow key="browser" builtin={cap} chrome={chrome} enabled={effectiveEnabled} sessionFile={sessionFile} />
                 }
-                if (!cap.available) return null
+                if (!cap.available && cap.id !== 'web-search') return null
                 const Icon = ICONS[cap.id]
-                const on = enabled.includes(cap.id)
+                const on = effectiveEnabled.includes(cap.id)
                 const cost = [cap.tools > 0 ? (cap.coreTools ? t('composer:tools.toolCountDeferred', { count: cap.tools, core: cap.coreTools }) : t('composer:tools.toolCount', { count: cap.tools })) : '', cap.promptTokens > 0 ? t('composer:tools.tokens', { n: formatTokens(cap.promptTokens) }) : '']
                   .filter(Boolean)
                   .join(' · ')
                 return (
                   <label
                     key={cap.id}
-                    title={[t(`composer:tools.items.${cap.id}.desc`), cost].filter(Boolean).join(' · ')}
+                    title={!cap.available && cap.reason ? t(`composer:tools.reasons.${cap.reason}`) : [t(`composer:tools.items.${cap.id}.desc`), cost].filter(Boolean).join(' · ')}
                     className="flex min-w-0 cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-[var(--bg-hover)]"
                   >
                     <Icon className="h-3.5 w-3.5 shrink-0 text-foreground-secondary" />
                     <span className="min-w-0 flex-1 truncate text-[12px] text-foreground">{label(cap.id)}</span>
                     <Switch
                       checked={on}
+                      disabled={!cap.available}
                       aria-label={label(cap.id)}
                       onCheckedChange={(next) => {
                         if (cap.id === 'computer' && next && !window.confirm(t('composer:tools.computerConfirm'))) return

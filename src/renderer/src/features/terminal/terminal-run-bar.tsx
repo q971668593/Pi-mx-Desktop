@@ -1,3 +1,4 @@
+import { create } from 'zustand'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
@@ -7,11 +8,17 @@ import { useUIStore } from '@renderer/stores/ui-store'
 import { toast } from 'sonner'
 import { spawnPane } from './terminal-bridge'
 import { terminalActions, useTerminalStore, type ShellProfile } from './terminal-store'
-import { workspacePathsEqual } from '@shared/workspace-path'
+import { workspacePathKey, workspacePathsEqual } from '@shared/workspace-path'
 
 type TaskLaunch = { label: string; command: string; args: string[]; cwd: string; background?: boolean; detail?: string }
 type TaskGroup = { kind: string; label: string; isDefault: boolean; tasks: TaskLaunch[] }
 type Draft = { content: string; groups: TaskGroup[] }
+type Detection = { detecting: boolean; draft: Draft | null; selectedTasks: Set<string> }
+const EMPTY_DETECTION: Detection = { detecting: false, draft: null, selectedTasks: new Set() }
+const useDetections = create<{ entries: Record<string, Detection> }>(() => ({ entries: {} }))
+function updateDetection(key: string, update: (current: Detection) => Detection) {
+  useDetections.setState(({ entries }) => ({ entries: { ...entries, [key]: update(entries[key] || EMPTY_DETECTION) } }))
+}
 
 const EMPTY_HINTS = ['package.json', 'pnpm-workspace.yaml', 'Cargo.toml', 'go.mod', 'pyproject.toml', 'composer.json', '*.csproj', '*.sln']
 
@@ -50,10 +57,13 @@ export function TerminalRunBar() {
   const workspace = useUIStore((s) => s.currentWorkspace)
   const profiles = useTerminalStore((s) => s.profiles)
   const [groups, setGroups] = useState<TaskGroup[]>([])
-  const [busy, setBusy] = useState(false)
-  const [detecting, setDetecting] = useState(false)
-  const [draft, setDraft] = useState<Draft | null>(null)
-  const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set())
+  const [localBusy, setBusy] = useState(false)
+  const detectionKey = workspacePathKey(workspace || '')
+  const detection = useDetections((s) => s.entries[detectionKey] || EMPTY_DETECTION)
+  const { detecting, draft, selectedTasks } = detection
+  const busy = localBusy || detecting
+  const setDraft = (draft: Draft | null) => updateDetection(detectionKey, (current) => ({ ...current, draft }))
+  const setSelectedTasks = (value: Set<string> | ((current: Set<string>) => Set<string>)) => updateDetection(detectionKey, (current) => ({ ...current, selectedTasks: typeof value === 'function' ? value(current.selectedTasks) : value }))
   const [taskLabels, setTaskLabels] = useState<string[] | null>(null)
   const [groupName, setGroupName] = useState('')
   const [groupTasks, setGroupTasks] = useState<Set<string>>(new Set())
@@ -99,9 +109,8 @@ export function TerminalRunBar() {
   }
 
   const detect = async () => {
-    if (!workspace) return
-    setBusy(true)
-    setDetecting(true)
+    if (!workspace || useDetections.getState().entries[detectionKey]?.detecting) return
+    updateDetection(detectionKey, (current) => ({ ...current, detecting: true }))
     try {
       const files = await projectHints(workspace)
       const result = await ipcClient.invoke('workspace.tasks.draft', { cwd: workspace, files }) as { ok?: boolean; content?: string; groups?: TaskGroup[]; error?: string; detail?: string }
@@ -113,8 +122,7 @@ export function TerminalRunBar() {
     } catch (error) {
       toast.error(t('common:terminal.detectFailed', { error: error instanceof Error ? error.message : String(error) }))
     } finally {
-      setDetecting(false)
-      setBusy(false)
+      updateDetection(detectionKey, (current) => ({ ...current, detecting: false }))
     }
   }
 

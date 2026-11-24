@@ -116,6 +116,9 @@
   "queued": "queued · ",
   "queuedHint": "Sent automatically after this turn settles",
   "queueHint": "Alt+↑ to pull back into the input · Ctrl/⌘+Enter sends the queue now · Esc while running pulls back and stops",
+  "queueRestore": "Undo queue",
+  "queueRestoring": "Restoring…",
+  "queueRestoreHint": "Pull all queued messages back into the input while the current task continues",
   "queueFlush": "Send now",
   "queueFlushing": "Sending…",
   "queueFlushHint": "Send the queued messages right away (while running they land before the next model call); leaving it alone keeps the automatic timing",
@@ -214,7 +217,7 @@
     "toolCount": "{{count}} tools",
     "toolCountDeferred": "{{count}} tools ({{core}} always loaded, rest on demand)",
     "tokens": "~{{n}} more tokens per request",
-    "note": "Applies from your next message; turning off takes effect at once. New chats start with the built-in browser on.",
+    "note": "Applies from your next message; turning off takes effect at once. New chats enable the built-in browser and web search when available.",
     "noteRunning": "The prompt of the running turn stays; tools you turn off stop at once.",
     "items": {
       "work-team": {

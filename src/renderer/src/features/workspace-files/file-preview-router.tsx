@@ -339,6 +339,7 @@ export function FilePreviewRouter({
   if (sourceLocation) return wrap(<FileSourcePreview code={content} lang={guessLangFromPath(relativePath)} path={relativePath} fill={fill} sourceLocation={sourceLocation} />)
   if (mode === 'html' && !truncated) return wrap(<><div>{editorBar}</div><iframe ref={frameRef} title="html-preview" sandbox="allow-scripts" referrerPolicy="no-referrer" srcDoc={htmlDocument} className="min-h-0 w-full flex-1 border-0 bg-[var(--bg-base)]" /></>)
   if (mode === 'markdown' && !truncated && content.length <= PREVIEW_MD_MAX_CHARS && content.split('\n').length <= PREVIEW_MD_MAX_LINES) return wrap(<><div>{editorBar}</div><FilePreviewScroll scrollClassName="px-4 py-3"><MarkdownView baseDirectory={joinWorkspacePath(workspaceRoot, relativePath.split('/').slice(0, -1).join('/'))}>{content}</MarkdownView></FilePreviewScroll></>)
+  if (mode === 'markdown' && !truncated) return wrap(<>{editorBar}<div role="status" className="shrink-0 border-b border-border/40 px-3 py-2 text-[11px] text-foreground-secondary">{t('preview.markdownPlainText')}</div><PlainTextFill content={content} /></>)
   if (mode === 'code') return wrap(<><div>{editorBar}</div><FileSourcePreview code={content} lang={guessLangFromPath(relativePath)} path={relativePath} fill={fill} /></>)
   return wrap(<><div>{editorBar}</div><PlainTextFill content={content} /></>)
 }

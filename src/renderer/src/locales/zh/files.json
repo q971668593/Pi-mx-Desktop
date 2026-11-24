@@ -49,6 +49,7 @@
     "openInSystem": "在系统中打开",
     "error": "无法读取文件",
     "truncated": "内容过长，仅显示前段",
+    "markdownPlainText": "文档较大，已显示完整纯文本以保持流畅。",
     "previewLimit": "已显示前 8MB；剩余内容请在系统中打开",
     "truncatedNoHighlight": "文件较大，已省略语法高亮",
     "expandAll": "展开全部（{{count}} 行）",

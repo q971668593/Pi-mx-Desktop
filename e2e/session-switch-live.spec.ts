@@ -1,6 +1,27 @@
 import { test, expect } from '@playwright/test'
 import { launchAgentApp, listen, startScriptedModel } from './helpers/scripted-agent'
 
+// Clicking the failure's retry starts a new request with the original prompt.
+test('retry on a failed turn sends the original prompt again', async () => {
+  let recover = false
+  const model = startScriptedModel((_first, _tools, last) =>
+    recover ? { text: `recovered ${last}` } : { errorStatus: 503, text: 'Request timed out.' }, [])
+  const agent = await launchAgentApp(await listen(model))
+  const { win } = agent
+  try {
+    await agent.newSession()
+    await agent.send('retry this task')
+    const retry = win.getByRole('button', { name: 'Retry turn' }).last()
+    await expect(retry).toBeVisible({ timeout: 90_000 })
+    recover = true
+    await retry.click()
+    await expect(win.getByText('recovered retry this task').first()).toBeVisible({ timeout: 30_000 })
+  } finally {
+    await agent.close()
+    model.close()
+  }
+})
+
 // A running conversation keeps updating after the user looks at another one and comes back.
 test('a running session shows its new tool calls and reply after switching away and back', async () => {
   const model = startScriptedModel((_first, tools, last) => {

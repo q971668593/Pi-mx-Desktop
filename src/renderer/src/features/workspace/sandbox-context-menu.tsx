@@ -56,23 +56,34 @@ export function SandboxContextMenuPortal({
   }
 
   const runDelete = async (path: string) => {
+    let deleted: boolean
     try {
       const r = await ipcClient.invoke('workspace.sandbox.delete', { path })
-      if (r?.ok) {
-        const cur = useUIStore.getState().currentWorkspace
-        if (cur === path) {
-          useUIStore.getState().setWorkspace(null)
-          useUIStore.getState().clearTimeline()
-          useUIStore.getState().setCurrentSession('')
-          useUIStore.getState().loadHistoryItems([])
-          useUIStore.getState().setHistoryMeta(0, 0, null)
-        }
-        toast.success(t('common:sidebar.deleted'))
-        onListChange()
-      } else toast.error(t('common:sidebar.deleteFailed'))
+      deleted = !!r?.ok
     } catch (e) {
       toast.error(t('common:sidebar.deleteFailed'))
+      onListChange()
+      return
     }
+    if (!deleted) {
+      toast.error(t('common:sidebar.deleteFailed'))
+      onListChange()
+      return
+    }
+    try {
+      const cur = useUIStore.getState().currentWorkspace
+      if (cur === path) {
+        useUIStore.getState().setWorkspace(null)
+        useUIStore.getState().clearTimeline()
+        useUIStore.getState().setCurrentSession('')
+        useUIStore.getState().loadHistoryItems([])
+        useUIStore.getState().setHistoryMeta(0, 0, null)
+      }
+    } catch (e) {
+      console.error('[SandboxContextMenu] cleanup after deletion failed:', e)
+    }
+    toast.success(t('common:sidebar.deleted'))
+    onListChange()
   }
 
   const itemClass = contextMenuItemClass

@@ -14,7 +14,7 @@ import { noteBrowserTarget } from '../browser/targets'
 import { readSessionMetaFromFile } from '../session-file-meta'
 import { capabilitySectionMap, capabilityToolFamilies } from './catalog'
 
-/** Same default as the composer: a chat nobody switched anything in drives the built-in browser. */
+/** Same defaults as the composer. */
 export { DEFAULT_CAPABILITIES }
 
 /** Stored switches for a session (an empty list is a remembered "all off"), or null if never touched. */
@@ -59,7 +59,7 @@ export async function resolveSessionCapabilities(
   const browserKey = await sessionBrowserKey(sessionFile)
   const host = peekBrowserHost()
   const hasTabs = browserKey ? host?.hasSessionTabs(browserKey) : host?.hasSessionTabs(sessionFile)
-  return hasTabs ? [...caps, 'browser'] : caps
+  return hasTabs && !caps.includes('browser') ? [...caps, 'browser'] : caps
 }
 
 export interface ApplyCapabilitiesResult {

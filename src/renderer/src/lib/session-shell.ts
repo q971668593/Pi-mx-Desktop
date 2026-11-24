@@ -290,6 +290,16 @@ function mergeDiskWithSessionRows(diskProjected: TimelineItem[], entry: SessionS
   const rows = entry?.timelineItems ?? []
   if (rows.length === 0) return diskProjected
   let merged = mergeLiveTimelineWithHistoryTail(diskProjected, rows)
+  // A disk read started before submission can contain a newer persisted prefix but miss the
+  // pending turn. Keep that turn until the matching user entry reaches disk.
+  const pendingIndex = entry?.optimisticPendingUserText
+    ? rows.findIndex((item) => item.type === 'user-message' && item.id.startsWith('opt-user-') && item.text === entry.optimisticPendingUserText)
+    : -1
+  if (pendingIndex >= 0 && !merged.some((item) => item.id === rows[pendingIndex].id)) {
+    const pending = rows[pendingIndex]
+    const persisted = merged.some((item) => item.type === 'user-message' && item.text === pending.text && item.timestamp >= pending.timestamp)
+    if (!persisted) merged = [...merged, ...rows.slice(pendingIndex)]
+  }
   merged = applyLiveStreamingTextToMergedTimeline(merged, rows, entry?.streamingAssistantId ?? null)
   return projectTimelineItems(merged) as TimelineItem[]
 }

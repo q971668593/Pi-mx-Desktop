@@ -246,7 +246,7 @@ export function TerminalPanel() {
       <TerminalRunBar />
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         {workspaceTabs.map((item, index) => <TerminalBlock key={item.id} tab={item} active={item.id === tab?.id} canResize={index > 0} onClose={closePane} />)}
-        {!workspaceTabs.length ? <button type="button" className="m-auto rounded-md px-3 py-1.5 text-[12px] text-foreground-tertiary hover:bg-muted hover:text-foreground" onClick={() => void openTerminalTab()}>{t('common:terminal.empty')}</button> : null}
+        {!workspaceTabs.length ? <button type="button" className="m-auto inline-flex items-center gap-2 rounded-lg border border-border bg-background px-5 py-3 text-[14px] font-medium text-foreground-secondary shadow-sm transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background active:bg-muted/70" onClick={() => { setError(null); void openTerminalTab() }}><Plus aria-hidden="true" className="h-4 w-4" />{t('common:terminal.empty')}</button> : null}
       </div>
       {menuFor === 'new' && newRef.current ? <ProfileMenu anchor={newRef.current} onPick={(profile) => { setError(null); void openTerminalTab(profile.id) }} onClose={() => setMenuFor(null)} /> : null}
       {restartPrompt ? createPortal(<div className="fixed inset-0 z-[600] flex items-center justify-center bg-black/40 p-4" onPointerDown={(event) => { if (event.target === event.currentTarget) setRestartPrompt(null) }}>

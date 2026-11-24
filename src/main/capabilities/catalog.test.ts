@@ -6,9 +6,17 @@ const prefs: { browser?: boolean } = {}
 
 const { capabilityCatalog, capabilitySectionMap, capabilitySections, capabilityToolFamilies, configureCapabilities } = await import('./catalog')
 let defer = false
-configureCapabilities({ browserPanelEnabled: () => !!prefs.browser, deferTools: () => defer })
+configureCapabilities({ browserPanelEnabled: () => !!prefs.browser, webSearchEnabled: () => true, deferTools: () => defer })
 
 describe('capability catalog', () => {
+  it('keeps workspace catalog results independent from session activation', () => {
+    expect(capabilityCatalog({ 'web-search': 2 }).find((c) => c.id === 'web-search')).toMatchObject({ available: true, tools: 2 })
+    expect(capabilityCatalog({ 'web-search': 0 }).find((c) => c.id === 'web-search')).toMatchObject({ available: false, tools: 0 })
+    expect(capabilityToolFamilies(['web-search'])).toEqual(['web-search'])
+    expect(capabilitySectionMap(['web-search'])).toHaveProperty('web-search')
+    expect(capabilityCatalog({ 'web-search': 2 }).find((c) => c.id === 'web-search')?.available).toBe(true)
+  })
+
   it('yields nothing when no capability is on', () => {
     expect(capabilitySections([])).toEqual([])
     expect(capabilitySections(undefined)).toEqual([])

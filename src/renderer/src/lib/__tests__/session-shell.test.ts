@@ -68,6 +68,25 @@ describe('session-shell', () => {
     })
   })
 
+  it('keeps a pending outgoing turn when a stale disk tail has a newer persisted prefix', async () => {
+    const { fetchSessionHistoryTail } = await import('@renderer/lib/session-history')
+    const user = { id: 'u', type: 'user-message' as const, text: 'old', timestamp: 1, sessionEntryId: 'u' }
+    const diskReply = { id: 'a', type: 'assistant-message' as const, text: 'finished', timestamp: 2, sessionEntryId: 'a' }
+    vi.mocked(fetchSessionHistoryTail).mockResolvedValueOnce({
+      items: [user, diskReply], totalCount: 2, sourceCount: 2,
+    } as never)
+    useUIStore.setState({
+      currentSessionId: 's', historySessionFile: '/tmp/pending.jsonl',
+      timelineItems: [user, { id: 'opt-user-1', type: 'user-message', text: 'new task', timestamp: 3 },
+        { id: 'opt-asst-1', type: 'assistant-message', text: '', timestamp: 4 }],
+      optimisticPendingUserText: 'new task', streamingAssistantId: 'opt-asst-1',
+      agentTurnBootstrapping: true,
+    })
+    await hydrateSessionView('/tmp/pending.jsonl', 's')
+    expect(useUIStore.getState().timelineItems.map((item) => item.text)).toEqual(['old', 'finished', 'new task', ''])
+    expect(useUIStore.getState().streamingAssistantId).toBe('opt-asst-1')
+  })
+
   it('instant focus binds cached items without requiring historyLoading', () => {
     useUIStore.setState({
       currentSessionId: 's1',

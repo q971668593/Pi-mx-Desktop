@@ -49,6 +49,7 @@
     "openInSystem": "Open in system",
     "error": "Could not read file",
     "truncated": "Showing an excerpt only",
+    "markdownPlainText": "Large document: showing the complete text without Markdown formatting for performance.",
     "previewLimit": "Showing the first 8MB. Open in the system app to view the remainder.",
     "truncatedNoHighlight": "Large file — plain text, no highlighting",
     "expandAll": "Show all ({{count}} lines)",

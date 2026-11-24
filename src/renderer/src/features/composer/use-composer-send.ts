@@ -14,6 +14,11 @@ import { currentSessionCapabilities } from '@renderer/lib/session-capabilities'
 import { getSessionNavigationToken, isSessionNavigationCurrent } from '@renderer/lib/session-navigation'
 import { sessionFilesEqual } from '@renderer/lib/session-file-key'
 import { applyTitleFromLatestMessage } from '@renderer/lib/session-title-follow'
+import { afterPromptSent } from '@renderer/lib/after-prompt-sent'
+import { composerTurnActive } from '@renderer/lib/session-worker-sync'
+import { hideAllDelayedTooltips } from './delayed-tooltip'
+import { renderRichTextFromPlain } from './attachments'
+import { appendOptimisticOutgoingMessage, bindOptimisticOutgoingToSession, clearOptimisticOutgoing } from '@renderer/lib/optimistic-send'
 import {
   composerDraftContextKey,
   readTransientComposerDraft,
@@ -117,24 +122,19 @@ export function useComposerSend(opts: {
         let sessionFile = store.historySessionFile ?? undefined
         /** 发送前已有会话文件 = 不是这条消息新建的会话（新建时 SDK 已用首条消息命名） */
         const hadSessionFile = !!sessionFile
-        const { composerTurnActive } = await import('@renderer/lib/session-worker-sync')
         const running = composerTurnActive({
           historySessionFile: store.historySessionFile,
           workerLiveSnapshot: store.workerLiveSnapshot,
           sessionRuntimeRunning: store.sessionRuntimeRunning,
         })
         if (displayText.trim()) inputHistory.recordSent(displayText.trim())
-        const { hideAllDelayedTooltips } = await import('./delayed-tooltip')
         hideAllDelayedTooltips()
-        const { renderRichTextFromPlain } = await import('./attachments')
         renderRichTextFromPlain(el, '')
         setStagedImages([])
         updateFromEditor()
         editorRef.current?.focus()
         const pendingNew = store.pendingNewSessionPlaceholder
         const homeMode = !store.currentSessionId && store.timelineItems.length === 0
-        const { appendOptimisticOutgoingMessage, bindOptimisticOutgoingToSession } =
-          await import('@renderer/lib/optimistic-send')
         let optimisticToken: ReturnType<typeof appendOptimisticOutgoingMessage> = null
         let draftKey = composerDraftContextKey(store)
         rememberTransientComposerImages(draftKey, [])
@@ -152,7 +152,6 @@ export function useComposerSend(opts: {
         }
         const pendMsg = trimmed
         try {
-          const { afterPromptSent } = await import('@renderer/lib/after-prompt-sent')
           const updateSentView = async (bind: Parameters<typeof afterPromptSent>[0]) => {
             if (sessionFilesEqual(useUIStore.getState().historySessionFile, sessionFile)) {
               await afterPromptSent(bind)
@@ -240,7 +239,6 @@ export function useComposerSend(opts: {
           await updateSentView(bind)
         } catch (e) {
           console.error('Send failed:', e)
-          const { clearOptimisticOutgoing } = await import('@renderer/lib/optimistic-send')
           if (!promptAccepted) {
             if (clearOptimisticOutgoing(optimisticToken)) {
               useUIStore.getState().setRunState({ status: 'idle' })

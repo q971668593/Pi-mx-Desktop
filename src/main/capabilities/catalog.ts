@@ -4,11 +4,7 @@ import { BROWSER_CORE_TOOLS, BROWSER_DEFERRED_TOOLS, BROWSER_TOOL_DEFS, BROWSER_
 import piUiPrompt from './pi-ui.md?raw'
 
 const BROWSER_TOOL_COUNT = BROWSER_TOOL_NAMES.length
-let extensionToolCounts: Record<'web-search' | 'computer', number> = { 'web-search': 0, computer: 0 }
-
-export function setInstalledCapabilityTools(counts: Partial<Record<'web-search' | 'computer', number>>): void {
-  extensionToolCounts = { ...extensionToolCounts, ...counts }
-}
+type ExtensionToolCounts = Partial<Record<'web-search' | 'computer', number>>
 
 /** Rough token estimate (~4 characters per token for English text and JSON). */
 const estimateTokens = (chars: number) => Math.round(chars / 4)
@@ -117,24 +113,24 @@ export function supportsComputerControl(): boolean {
   return process.platform === 'win32' && process.arch === 'x64' && build >= 19041
 }
 
-function available(id: CapabilityId): { ok: boolean; reason?: string } {
+function available(id: CapabilityId, counts?: ExtensionToolCounts): { ok: boolean; reason?: string } {
   if (id === 'browser' && !browserPanelEnabled()) return { ok: false, reason: 'browser-panel-off' }
   if (id === 'chrome' && !chromeBridgeEnabled()) return { ok: false, reason: 'chrome-off' }
-  if (id === 'web-search' && (!webSearchEnabled() || extensionToolCounts['web-search'] === 0)) return { ok: false, reason: 'web-search-not-installed' }
+  if (id === 'web-search' && (!webSearchEnabled() || (counts && !counts['web-search']))) return { ok: false, reason: 'web-search-not-installed' }
   if (id === 'computer' && !supportsComputerControl()) return { ok: false, reason: 'computer-use-platform' }
-  if (id === 'computer' && (!computerUseEnabled() || extensionToolCounts.computer === 0)) return { ok: false, reason: 'computer-use-not-installed' }
+  if (id === 'computer' && (!computerUseEnabled() || (counts && !counts.computer))) return { ok: false, reason: 'computer-use-not-installed' }
   return { ok: true }
 }
 
-export function capabilityCatalog(): CapabilityInfo[] {
+export function capabilityCatalog(counts: ExtensionToolCounts = {}): CapabilityInfo[] {
   return CAPABILITY_IDS.map((id) => {
-    const a = available(id)
+    const a = available(id, counts)
     return {
       id,
       available: a.ok,
       ...(a.reason ? { reason: a.reason } : {}),
       promptTokens: (promptFor(id) ? estimateTokens(promptFor(id)!.length) + SECTION_WRAPPER_TOKENS : 0) + TOOL_DEF_TOKENS(id),
-      tools: id === 'browser' || id === 'chrome' ? BROWSER_TOOL_COUNT : id === 'web-search' || id === 'computer' ? extensionToolCounts[id] : id === 'work-team' ? 1 : 0,
+      tools: id === 'browser' || id === 'chrome' ? BROWSER_TOOL_COUNT : id === 'web-search' || id === 'computer' ? counts[id] ?? 0 : id === 'work-team' ? 1 : 0,
       ...((id === 'browser' || id === 'chrome') && deferTools() ? { coreTools: BROWSER_CORE_TOOLS.length } : {}),
     }
   })

@@ -24,6 +24,36 @@ const findEditor = (container: HTMLElement) => {
   return host ? EditorView.findFromDOM(host) : null
 }
 describe('file preview', () => {
+  it('renders Markdown beyond 800 lines with formatting', async () => {
+    const content = Array.from({ length: 1000 }, (_, i) => `line ${i + 1}`).join('\n')
+    const readText = vi.fn().mockResolvedValue({ ok: true, content, truncated: false })
+    render(<FilePreviewRouter workspaceRoot="/ws" relativePath="long.md" readText={readText} />)
+    expect(await screen.findByText(/line 1000/)).toHaveTextContent('line 1000')
+    expect(screen.queryByText('preview.markdownPlainText')).toBeNull()
+  })
+  it('shows the entire Markdown as plain text with an explanation when rendering limits are exceeded', async () => {
+    const content = Array.from({ length: 4001 }, (_, i) => `line ${i + 1}`).join('\n')
+    const readText = vi.fn().mockResolvedValue({ ok: true, content, truncated: false })
+    const { container } = render(<FilePreviewRouter workspaceRoot="/ws" relativePath="long.md" readText={readText} />)
+    await screen.findByText('preview.markdownPlainText')
+    expect(container.querySelector('pre')?.textContent).toBe(content)
+  })
+  it.each(['long.ts', 'long.txt', 'long.unknown'])('keeps all lines in %s', async (path) => {
+    const content = Array.from({ length: 1000 }, (_, i) => `line ${i + 1}`).join('\n')
+    const readText = vi.fn().mockResolvedValue({ ok: true, content, truncated: false })
+    const { container } = render(<FilePreviewRouter workspaceRoot="/ws" relativePath={path} readText={readText} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'preview.ready' }))
+    await screen.findByText(/line 1000/)
+    expect(container.querySelector('pre')?.textContent).toBe(content)
+  })
+  it('explains when the maximum read limit is reached', async () => {
+    const readText = vi.fn().mockResolvedValue({ ok: true, content: 'prefix', truncated: true, size: WORKSPACE_TEXT_MAX_BYTES + 1 })
+    render(<FilePreviewRouter workspaceRoot="/ws" relativePath="large.html" readText={readText} />)
+    await screen.findByText('preview.previewLimit')
+    expect(screen.getByText('prefix')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'preview.openInSystem' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'preview.tryExpandRead' })).toBeNull()
+  })
   it('opens Markdown line references as source and reads beyond the usual preview prefix', async () => {
     const readText = vi.fn().mockResolvedValue({ ok: true, content: '# heading\nsource line' })
     const { container } = render(<FilePreviewRouter workspaceRoot="/ws" relativePath="readme.md" readText={readText} sourceLocation={{ line: 2 }} />)

@@ -62,7 +62,7 @@ export async function restoreQueuedToComposer(options?: {
     })
     const n = res?.restoredCount ?? 0
     const combined = res?.combinedText ?? ''
-    if (!options?.abort) useUIStore.getState().clearPendingQueue()
+    // clearQueue emits the authoritative queue update; a later message may already be queued.
     if (combined && options?.setText) options.setText(combined)
     if (!options?.quiet) {
       if (n > 0 && !options?.abort) toast.info(`已拉回 ${n} 条排队消息到输入框`)

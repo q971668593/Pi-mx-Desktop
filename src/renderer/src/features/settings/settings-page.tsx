@@ -16,6 +16,7 @@ import {
   SlidersHorizontal,
   Smartphone,
   X,
+  Zap,
   type AppIconComponent,
 } from '@renderer/components/icons'
 import {
@@ -102,13 +103,14 @@ type SettingsPageId =
   | 'models'
   | 'resources'
   | 'pi'
+  | 'purge'
   | 'rightPanels'
   | 'mobile'
   | 'usage'
 
 type ModelsTab = 'models' | 'imageGen' | 'routing' | 'voice'
 type ResourcesTab = 'skills' | 'prompts' | 'promptInject' | 'extensions' | 'mcp' | 'adapters'
-type PiTab = 'pi' | 'runtimeEnv' | 'purge'
+type PiTab = 'pi' | 'runtimeEnv'
 
 type NavGroup = {
   key: string
@@ -133,6 +135,7 @@ const NAV_GROUPS: NavGroup[] = [
     pages: [
       { key: 'resources', icon: Puzzle },
       { key: 'pi', icon: Cpu },
+      { key: 'purge', icon: Zap },
     ],
   },
   {
@@ -146,7 +149,7 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ]
 
-const WIDE_PAGES: SettingsPageId[] = ['rightPanels', 'pi', 'models', 'resources']
+const WIDE_PAGES: SettingsPageId[] = ['rightPanels', 'pi', 'purge', 'models', 'resources']
 
 const MODELS_TABS: { key: ModelsTab; labelKey: string; searchNamespaces: string[] }[] = [
   { key: 'models', labelKey: 'settings:nav.modelsTab', searchNamespaces: ['models'] },
@@ -167,7 +170,6 @@ const RESOURCES_TABS: { key: ResourcesTab; labelKey: string; searchNamespaces: s
 const PI_TABS: { key: PiTab; labelKey: string; searchNamespaces: string[] }[] = [
   { key: 'pi', labelKey: 'settings:nav.piTab', searchNamespaces: ['pi'] },
   { key: 'runtimeEnv', labelKey: 'settings:nav.runtimeEnv', searchNamespaces: ['runtime', 'python'] },
-  { key: 'purge', labelKey: 'settings:nav.purge', searchNamespaces: ['purge'] },
 ]
 
 function SettingsPanelSkeleton() {
@@ -259,7 +261,11 @@ export function SettingsPage() {
       if (resolved && RESOURCES_TABS.some((x) => x.key === resolved)) setResourcesTab(resolved)
       return
     }
-    if (reqPage === 'pi' || reqPage === 'runtimeEnv' || reqPage === 'purge') {
+    if (reqPage === 'purge' || (reqPage === 'pi' && reqTab === 'purge')) {
+      setPage('purge')
+      return
+    }
+    if (reqPage === 'pi' || reqPage === 'runtimeEnv') {
       setPage('pi')
       const resolved = reqPage === 'pi' ? (reqTab as PiTab | undefined) : reqPage
       if (resolved && PI_TABS.some((x) => x.key === resolved)) setPiTab(resolved)
@@ -480,9 +486,9 @@ export function SettingsPage() {
                 />
                 {piTab === 'pi' && <PiSettings />}
                 {piTab === 'runtimeEnv' && <RuntimeSettingsPage />}
-                {piTab === 'purge' && <PurgeSettings />}
               </>
             )}
+            {page === 'purge' && <PurgeSettings />}
             {page === 'rightPanels' && <RightPanelsSettings />}
             {page === 'mobile' && <MobileSettingsPanel />}
             {page === 'usage' && <UsageSettingsPanel />}

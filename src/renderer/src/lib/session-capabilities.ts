@@ -11,8 +11,7 @@ export const DRAFT_CAPABILITY_KEY = '\u0000draft'
 const MAX_REMEMBERED = 300
 
 /**
- * A conversation nobody switched anything in starts with the built-in browser on; every other
- * capability stays opt-in. Turning the browser off stores an empty list, which is an explicit
+ * A conversation nobody switched anything in starts with browser and web search on. Turning the browser off stores an empty list, which is an explicit
  * "off" (an absent entry means "never touched" = this default), so the choice is remembered.
  */
 export { DEFAULT_CAPABILITIES }
@@ -101,9 +100,22 @@ export function adoptDraftCapabilities(byKey: Record<string, CapabilityId[]>, se
   return out
 }
 
+export function setSessionBrowserMode(sessionFile: string | null | undefined, mode: 'off' | 'builtin' | 'chrome'): void {
+  const key = capabilityKey(sessionFile)
+  const current = capabilitiesFor(useSessionCapabilitiesStore.getState().byKey, key)
+  const next: CapabilityId[] = current.filter((id) => id !== 'browser' && id !== 'chrome')
+  if (mode !== 'off') next.push(mode === 'builtin' ? 'browser' : 'chrome')
+  updateSessionCapabilities(sessionFile, key, next)
+}
+
 export function setSessionCapability(sessionFile: string | null | undefined, id: CapabilityId, on: boolean): void {
   const key = capabilityKey(sessionFile)
   const byKey = toggleCapabilityIn(useSessionCapabilitiesStore.getState().byKey, key, id, on)
+  updateSessionCapabilities(sessionFile, key, byKey[key])
+}
+
+function updateSessionCapabilities(sessionFile: string | null | undefined, key: string, next: CapabilityId[]): void {
+  const byKey = { ...useSessionCapabilitiesStore.getState().byKey, [key]: next }
   useSessionCapabilitiesStore.setState({ byKey })
   persist(byKey)
   // Switching off must take effect now, not on the next message: the live worker drops the tools

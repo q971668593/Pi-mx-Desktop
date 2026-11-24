@@ -16,16 +16,16 @@ import { useUIStore } from '@renderer/stores/ui-store'
 describe('session capabilities', () => {
   it('starts from the built-in browser and keeps an explicit "all off"', () => {
     // Nothing stored yet: the conversation runs the built-in browser.
-    expect(capabilitiesFor({}, '/a.jsonl')).toEqual(['browser'])
+    expect(capabilitiesFor({}, '/a.jsonl')).toEqual(['browser', 'web-search'])
     let byKey = toggleCapabilityIn({}, '/a.jsonl', 'pi-ui', true)
     byKey = toggleCapabilityIn(byKey, '/a.jsonl', 'pi-ui', true)
-    expect(byKey).toEqual({ '/a.jsonl': ['browser', 'pi-ui'] })
+    expect(byKey).toEqual({ '/a.jsonl': ['browser', 'web-search', 'pi-ui'] })
     // Turning everything off is remembered, not treated as "never touched".
-    expect(toggleCapabilityIn(byKey, '/a.jsonl', 'browser', false)).toEqual({ '/a.jsonl': ['pi-ui'] })
+    expect(toggleCapabilityIn(byKey, '/a.jsonl', 'browser', false)).toEqual({ '/a.jsonl': ['web-search', 'pi-ui'] })
     expect(toggleCapabilityIn({ '/a.jsonl': ['pi-ui'] }, '/a.jsonl', 'pi-ui', false)).toEqual({ '/a.jsonl': [] })
     expect(capabilitiesFor({ '/a.jsonl': [] }, '/a.jsonl')).toEqual([])
     expect(capabilitiesFor({ '/a.jsonl': ['pi-ui'] }, '/a.jsonl')).toEqual(['pi-ui'])
-    expect(capabilitiesFor({}, '/b.jsonl')).toEqual(['browser'])
+    expect(capabilitiesFor({}, '/b.jsonl')).toEqual(['browser', 'web-search'])
   })
 
   it('moves draft switches to the new session once, including an explicit off', () => {
@@ -61,7 +61,7 @@ describe('session capabilities', () => {
   it('a new conversation carries the built-in browser without any switch being touched', () => {
     useSessionCapabilitiesStore.setState({ byKey: {} })
     useUIStore.setState({ currentWorkspace: 'F:\\proj\\demo', historySessionFile: '/fresh.jsonl' })
-    expect(currentSessionCapabilities()).toEqual(['browser'])
+    expect(currentSessionCapabilities()).toEqual(['browser', 'web-search'])
     useUIStore.setState({ currentWorkspace: null, historySessionFile: null })
   })
 
@@ -87,16 +87,16 @@ describe('session capabilities', () => {
       activeTabId: 't1',
     })
     // Untouched sessions follow the project's tabs.
-    expect(currentSessionCapabilities()).toEqual(['browser'])
+    expect(currentSessionCapabilities()).toEqual(['browser', 'web-search'])
     useUIStore.setState({ historySessionFile: '/other-conversation.jsonl' })
-    expect(currentSessionCapabilities()).toEqual(['browser'])
+    expect(currentSessionCapabilities()).toEqual(['browser', 'web-search'])
 
     // Explicit off for the current conversation is respected even though tabs are open
     setSessionCapability('/other-conversation.jsonl', 'browser', false)
-    expect(currentSessionCapabilities()).toEqual([])
+    expect(currentSessionCapabilities()).toEqual(['web-search'])
     // …and a different conversation of the same project still has it on
     useUIStore.setState({ historySessionFile: '/third.jsonl' })
-    expect(currentSessionCapabilities()).toEqual(['browser'])
+    expect(currentSessionCapabilities()).toEqual(['browser', 'web-search'])
 
     useBrowserStore.setState({ tabs: {}, order: [], activeTabId: null })
     useUIStore.setState({ currentWorkspace: null })

@@ -342,6 +342,22 @@ const TimelineItemBase = memo(function TimelineItem({
         <div className={cn('timeline-status-line', isAbort ? 'timeline-status-line--warn' : 'timeline-status-line--error')}>
           <AlertCircle className="h-3.5 w-3.5 shrink-0 opacity-80" />
           <span className="text-[12px] font-medium">{title}</span>
+          {!isAbort && !agentRunning && (
+            <button
+              type="button"
+              className="text-[11px] font-medium text-primary hover:underline"
+              onClick={() => {
+                const prompt = findRetryPromptBeforeItem(
+                  useUIStore.getState().timelineItems,
+                  String(item.id),
+                  t('timeline:continueAnswering'),
+                )
+                window.dispatchEvent(new CustomEvent('pi-desktop:composer-retry', { detail: { text: prompt } }))
+              }}
+            >
+              {t('timeline:failed.retry')}
+            </button>
+          )}
         </div>
         {item.text != null && String(item.text) && (
           <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words border-l-2 border-transparent pl-2.5 font-mono text-[11px] leading-relaxed timeline-text-quiet">
