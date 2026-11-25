@@ -88,6 +88,7 @@ import { Send16Regular as F84 } from '@fluentui/react-icons/svg/send'
 import { Settings16Regular as F85 } from '@fluentui/react-icons/svg/settings'
 import { ShieldCheckmark16Regular as F86 } from '@fluentui/react-icons/svg/shield-checkmark'
 import { Sparkle16Regular as F87 } from '@fluentui/react-icons/svg/sparkle'
+import { LeafOne16Regular as FLeaf } from '@fluentui/react-icons/svg/leaf-one'
 import { SpinnerIos16Regular as F88 } from '@fluentui/react-icons/svg/spinner-ios'
 import { Square16Regular as F89 } from '@fluentui/react-icons/svg/square'
 import { Stack16Regular as F90 } from '@fluentui/react-icons/svg/stack'
@@ -214,6 +215,7 @@ export const fluentIcons = {
   'shield-check': F86,
   'sliders-horizontal': F71,
   'sparkles': F87,
+  'sprout': FLeaf,
   'square': Square16Filled,
   'sun': F97,
   'target': F93,

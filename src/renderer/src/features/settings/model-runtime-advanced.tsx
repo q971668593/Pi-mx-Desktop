@@ -52,7 +52,7 @@ export function changedModelAdvancedSettings(draft: Advanced, baseline: Advanced
 /**
  * Settings → Models → advanced (collapsed by default).
  *
- * 默认模型 / 默认思考等级不在这里：每个会话自己挑，新会话由 SDK 自动取第一个可用模型。
+ * 默认模型在上面的 ModelDefaultSection 里选；
  * 这里只留两样「按模型/按范围」的东西 —— 快捷切换的范围（pi `enabledModels`）和
  * 逐模型绑定的思考等级（pi `modelThinkingLevels`，与终端 pi ≥ 0.84 共用）。
  */

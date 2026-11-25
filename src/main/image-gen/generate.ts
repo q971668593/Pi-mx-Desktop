@@ -407,6 +407,39 @@ export async function generateImages(input: {
   return { ok: true, provider: config.provider, model: produced.model, images, warnings, prompt: promptReport }
 }
 
+/** 自定义中转的可用模型：GET {baseUrl}/models，拉不到就返回空，由调用方退回已填模型。 */
+export async function listCustomModels(
+  baseUrl: string,
+  apiKey: string,
+  send: FetchLike = fetch,
+): Promise<{ models: string[]; error?: string; raw?: string }> {
+  const url = `${baseUrl.replace(/\/+$/, '')}/models`
+  try {
+    const response = await send(url, {
+      headers: {
+        ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
+      },
+      signal: AbortSignal.timeout(15_000),
+    })
+    const text = await response.text().catch(() => '')
+    const raw = text.slice(0, 2000)
+    if (!response.ok) {
+      return { models: [], error: `拉取失败（HTTP ${response.status}）${text ? `：${text.slice(0, 200)}` : ''}`, raw }
+    }
+    let payload: { data?: Array<{ id?: string }> } = {}
+    try {
+      payload = JSON.parse(text) as { data?: Array<{ id?: string }> }
+    } catch {
+      return { models: [], error: '返回的不是 JSON，原样贴在下面', raw }
+    }
+    const rows = Array.isArray(payload.data) ? payload.data : []
+    const ids = [...new Set(rows.map((row) => String(row?.id || '').trim()).filter(Boolean))]
+    return { models: ids, raw }
+  } catch (error) {
+    return { models: [], error: String((error as Error)?.message || error) }
+  }
+}
+
 /** 订阅侧可用模型：拉不到就退回内置清单，不阻塞使用。 */
 export async function listCodexImageModels(send: FetchLike = fetch): Promise<string[]> {
   const grant = await readCodexGrant()

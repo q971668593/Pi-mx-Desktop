@@ -1,7 +1,5 @@
 {
   "bar": {
-    "pauseAutoRun": "暂停自动继续",
-    "enableAutoRun": "自动继续",
     "placeholder": "这个会话要达成什么？（一句话）",
     "set": "设定目标",
     "edit": "编辑目标",
@@ -15,11 +13,25 @@
     "copied": "已复制",
     "loopStalled": "自动循环已暂停：连续几轮没有进展，还剩 {{count}} 项未达成",
     "loopCapped": "自动循环已到轮数上限，还剩 {{count}} 项未达成",
-    "running": "进行中",
+    "running": "本轮进行中",
+    "waiting": "等待续跑",
     "paused": "已暂停",
-    "stop": "终止",
+    "stopped": "已停手",
+    "waitingHint": "自动推进开着，这一轮跑完会自动发下一轮",
+    "pausedHint": "自动推进关着，点「开始」才会继续",
+    "rounds": "第 {{count}}/{{max}} 轮",
+    "roundsHint": "到 {{max}} 轮会自动停下",
+    "lastAdvanced": "上次推进 {{time}}",
+    "timeJustNow": "刚刚",
+    "timeMinutes": "{{count}} 分钟前",
+    "timeHours": "{{count}} 小时前",
+    "stop": "终止本轮",
     "stopping": "正在终止…",
-    "start": "再次启动",
-    "starting": "启动中…"
+    "start": "开始",
+    "starting": "启动中…",
+    "pause": "暂停",
+    "wakeFailed": "这一轮没能发出去：会话没起来（可能 worker 已退出）。点「开始」重试。",
+    "startFailed": "这一轮没能发出去，稍后点「开始」再试。",
+    "dismissHint": "知道了"
   }
 }

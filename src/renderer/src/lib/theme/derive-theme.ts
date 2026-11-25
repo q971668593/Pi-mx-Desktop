@@ -140,6 +140,8 @@ export function deriveThemeVariables(variant: ThemeVariant): ThemeVar[] {
   // 侧栏在明暗两侧都比主面暗一档，故朝黑混而非朝 ink 混
   const sidebar = over.sidebar ?? mixColors(surface, '#000000', 0.045)
   const textSecondary = mixColors(ink, surface, 0.38 - 0.1 * (k - 1))
+  // tertiary 比 secondary 再往 surface 退一档（对标 globals.css 里 37% → 50% 的明度差）。
+  const textTertiary = mixColors(ink, surface, 0.56 - 0.1 * (k - 1))
   const textDisabled = mixColors(ink, surface, 0.72 - 0.1 * (k - 1))
 
   const hex = (name: string, value: string): ThemeVar => ({ name, value, format: 'hex' })
@@ -242,6 +244,10 @@ export function deriveThemeVariables(variant: ThemeVariant): ThemeVar[] {
     hsl('--surface-2', bg2),
     hsl('--surface-3', bg3),
     hsl('--text-secondary-hsl', textSecondary),
+    hsl('--text-tertiary-hsl', textTertiary),
+    // 自定义主题以前没派生这个色：文件预览里「添加到引用/保存」这类可点文字会退回成
+    // 近白的 --accent，亮色主题下等于白底白字。跟随 accent 往 ink 压暗/提亮，保证可读。
+    hsl('--text-action-hsl', mixColors(accent, ink, isDarkSurface(surface) ? 0.12 : 0.62)),
   )
 
   return vars

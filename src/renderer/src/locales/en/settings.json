@@ -33,7 +33,8 @@
     "voice": "Voice",
     "mobile": "Mobile",
     "usage": "Usage",
-    "purge": "Purge"
+    "purge": "Purge",
+    "lessons": "Lessons"
   },
   "general": {
     "title": "General",
@@ -952,7 +953,7 @@
     "ctrlEnterHint": "Ctrl+Enter to confirm",
     "advanced": {
       "title": "Advanced: cycling scope and thinking bindings",
-      "description": "The default model is not set here — each conversation picks its own, and new sessions start with the first available model.",
+      "description": "The default model is picked in the Default model section above; only quick-switch and per-model bindings live here.",
       "cycleScope": "Model cycling scope",
       "cycleScopeDesc": "Quick switch cycles only through these models; comma separated, wildcards allowed.",
       "cycleScopePlaceholder": "e.g. anthropic/*, openai/gpt-6*",
@@ -975,6 +976,21 @@
         "xhigh": "Extra high",
         "max": "Max"
       }
+    },
+    "default": {
+      "title": "Default model",
+      "description": "New conversations start with it; you can still switch inside any conversation.",
+      "current": "Current default: {{value}}",
+      "auto": "Not set (first available model)",
+      "autoOption": "Auto",
+      "provider": "Default provider",
+      "providerDesc": "Only providers you signed in with a subscription.",
+      "model": "Default model",
+      "modelDesc": "New conversations start with this model.",
+      "pickModel": "Pick a model…",
+      "thinking": "Thinking strength",
+      "thinkingDesc": "How hard it thinks by default; adjustable per conversation.",
+      "pickLevel": "Pick a strength…"
     },
     "modelCount_one": "{{count}} model",
     "modelCount_other": "{{count}} models",
@@ -1570,7 +1586,7 @@
     "recheck": "Recheck",
     "model": "Image model",
     "modelHintCodex": "Leave empty for the subscription default (gpt-image-2.6); 2.6 / 2.5 / 2 all work. Use Sync models to pull the account list.",
-    "modelHintCustom": "A model name your endpoint supports, e.g. gpt-image-1.",
+    "modelHintCustom": "Type any model your endpoint supports, e.g. gpt-image-1.5 / Nano-banana. Suggestions only.",
     "syncModels": "Sync models",
     "baseUrl": "Endpoint",
     "baseUrlHint": "OpenAI-compatible root, e.g. https://host/v1 (/images/generations is appended).",
@@ -1602,5 +1618,28 @@
     "promptEnhanceHint": "A one-line request is auto-completed into nine aspects (subject, composition, style, palette, lighting, texture, typography, output spec, negative constraints); the result lists what was added. Turn it off to send the prompt verbatim.",
     "promptEnhanceAuto": "Auto-complete (recommended)",
     "promptEnhanceOff": "Send as written"
+  },
+  "lessons": {
+    "description": "Rules settled from your criticism live here: view, delete, add manually, and control auto-injection into every turn.",
+    "rulesTitle": "Active rules",
+    "rulesDesc": "These rules ride along with every message; a fresh conversation carries them from the first message.",
+    "rulesEmpty": "No rules yet: worth-keeping criticism settles here automatically, or add one manually below.",
+    "addRuleTitle": "Add manually",
+    "addRuleTitlePh": "Title (optional)",
+    "addRuleBodyPh": "Rule body",
+    "polarity": "Type",
+    "negative": "Don’t do this",
+    "positive": "Do this",
+    "addRule": "Add rule",
+    "injectLabel": "Auto-inject into conversation",
+    "injectDesc": "When on, active rules are sent to the model with every message; when off they are only kept.",
+    "lessonsTitle": "Lesson records",
+    "lessonsDesc": "{{count}} in total: raw criticism and judge reasons are view-only, never injected.",
+    "lessonsEmpty": "No records yet.",
+    "status_pending": "Pending",
+    "status_kept": "Kept",
+    "status_dropped": "Ignored",
+    "sourceManual": "Manual",
+    "sourceModel": "Model"
   }
 }

@@ -19,7 +19,7 @@ function scenarioEnabled(kind: DesktopAlertKind, background?: boolean): boolean 
   if (background) {
     return (
       configStore.get('alertOnRunIdle') !== false &&
-      configStore.get('alertOnBackgroundRunIdle') === true
+      configStore.get('alertOnBackgroundRunIdle') !== false
     )
   }
   return configStore.get('alertOnRunIdle') !== false

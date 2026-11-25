@@ -14,6 +14,11 @@ export type RefreshWorkspaceSessionListsOptions = {
    * workspace is listed (never every recent project).
    */
   workspaceIds?: string[]
+  /**
+   * 强制重新拉取：删除/归档/还原之后必须绕过在途请求。
+   * 否则回调会复用一个「改动之前就已发出」的列表请求，侧栏先闪回旧数据再跳回来。
+   */
+  force?: boolean
 }
 
 /** In-flight session.list promises, one per workspace (single-flight). */
@@ -30,10 +35,13 @@ function resolveWorkspaceIds(options?: RefreshWorkspaceSessionListsOptions): str
   return []
 }
 
-export async function loadWorkspaceSessionList(workspaceId: string): Promise<SessionItem[] | null> {
+export async function loadWorkspaceSessionList(
+  workspaceId: string,
+  options?: { force?: boolean },
+): Promise<SessionItem[] | null> {
   const key = workspacePathKey(workspaceId)
   const existingInFlight = inFlightByWorkspace.get(key)
-  if (existingInFlight) {
+  if (existingInFlight && !options?.force) {
     return existingInFlight
   }
 
@@ -77,7 +85,7 @@ export async function refreshWorkspaceSessionLists(
 ): Promise<void> {
   const workspaceIds = resolveWorkspaceIds(options)
   if (workspaceIds.length === 0) return
-  for (const workspaceId of workspaceIds) await loadWorkspaceSessionList(workspaceId)
+  for (const workspaceId of workspaceIds) await loadWorkspaceSessionList(workspaceId, { force: options?.force })
 }
 
 /** Test-only: clear single-flight bookkeeping between cases. */

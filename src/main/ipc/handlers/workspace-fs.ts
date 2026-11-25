@@ -2,7 +2,7 @@ import { open, stat } from 'node:fs/promises'
 import { extname } from 'path'
 import { shell } from 'electron'
 import log from 'electron-log'
-import { workspaceFsCopyFile, workspaceFsCreate, workspaceFsListDir, workspaceFsReadText, workspaceFsRename, workspaceFsWriteText } from '../../workspace-fs'
+import { workspaceFsCopyFile, workspaceFsCreate, workspaceFsListDir, workspaceFsReadText, workspaceFsRename, workspaceFsTrash, workspaceFsWriteText } from '../../workspace-fs'
 import { resolveActionableImage } from '../../image-file-access'
 import { locateWorkspaceFile } from '../../workspace-file-locate'
 import { invalidateWorkspaceFileSearchIndex, primeWorkspaceFileSearchIndex, workspaceFsResolveFileNames, workspaceFsSearch } from '../../workspace-file-search'
@@ -20,6 +20,7 @@ import {
   workspaceFsReadTextSchema,
   workspaceFsWriteTextSchema,
   workspaceFsRenameSchema,
+  workspaceFsTrashSchema,
   workspaceFsCreateSchema,
   workspaceFsCopyFileSchema,
   workspaceFsClipboardDebugSchema,
@@ -133,6 +134,15 @@ export function registerWorkspaceFsHandlers(): void {
       workspaceRoot: req.workspaceRoot,
       relativePath: req.relativePath,
       newName: req.newName,
+    })
+    if (result.ok) invalidateWorkspaceFileSearchIndex(req.workspaceRoot)
+    return result
+  })
+
+  registerHandlerWithSchema('ipc:workspace.fs.trash', workspaceFsTrashSchema, async (req) => {
+    const result = await workspaceFsTrash({
+      workspaceRoot: req.workspaceRoot,
+      relativePath: req.relativePath,
     })
     if (result.ok) invalidateWorkspaceFileSearchIndex(req.workspaceRoot)
     return result

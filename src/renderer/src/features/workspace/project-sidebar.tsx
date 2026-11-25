@@ -11,6 +11,8 @@ import { useSandboxContextMenu } from './use-sandbox-context-menu'
 import { SessionContextMenuPortal } from './session-context-menu'
 import { useSessionContextMenu } from './use-session-context-menu'
 import { ProjectContextMenuPortal } from './project-context-menu'
+import { SessionArchiveDialog } from './session-archive-dialog'
+import { SessionTrashDialog } from './session-trash-dialog'
 import { useProjectContextMenu } from './use-project-context-menu'
 import { enterBlankSession } from '@renderer/lib/blank-session-transition'
 import { refreshWorkspaceSessionLists } from '@renderer/lib/refresh-workspace-session-lists'
@@ -124,6 +126,10 @@ export function ProjectSidebar({
   const setHiddenProjects = useUIStore((s) => s.setHiddenProjects)
   const [manualOrder, setManualOrder] = useState(() => readPathList(MANUAL_PROJECT_ORDER_KEY))
   const [hiddenOpen, setHiddenOpen] = useState(false)
+  /** 回收站全屏列表（所有项目）。 */
+  const [trashOpen, setTrashOpen] = useState(false)
+  /** 归档全屏列表：null 关着，'' 表示全部项目，其它值是只看这个项目。 */
+  const [archiveScope, setArchiveScope] = useState<{ path?: string } | null>(null)
   /** 用户当场隐藏了「正在打开的那个项目」：只有这种情况才允许当前项目从侧栏消失。 */
   const [explicitlyHiddenWhileActive, setExplicitlyHiddenWhileActive] = useState<Set<string>>(() => new Set())
   const fixedOrderRef = useRef(false)
@@ -694,6 +700,7 @@ export function ProjectSidebar({
         if (willExpand && !mergedSessionsByWorkspace[key]?.length) void loadWorkspaceSessions(path)
       }}
       onNewSession={() => void handleNewSessionInProject(path)}
+      onOpenTrash={() => setTrashOpen(true)}
       dragSource={!filterActive && sortKey ? { draggable: true, onDragStart: (event) => projectDrag.start(event, sortKey, 'projects'), onDragEnd: projectDrag.end } : undefined}
       dropTarget={!filterActive && sortKey ? projectDrag.target(sortKey, 'projects') : undefined}
       onProjectContextMenu={(event) =>
@@ -742,8 +749,8 @@ export function ProjectSidebar({
   }
 
   return (
-    <div className="flex flex-col pb-1">
-      <div className="sidebar-search-block border-b border-border/40 px-3 py-3">
+    <div className="flex min-h-0 flex-1 flex-col pb-1">
+      <div className="sidebar-search-block sticky top-[-4px] z-20 border-b border-border/40 bg-[var(--surface-sidebar)] px-3 py-3">
         <div className="workbench-search sidebar-search">
           <Search className="h-3.5 w-3.5 shrink-0" aria-hidden />
           <input
@@ -887,6 +894,7 @@ export function ProjectSidebar({
         onClose={projectMenu.close}
         onListChange={handleProjectListChange}
         onHide={hideProjects}
+        onViewArchive={(path) => setArchiveScope({ path })}
       />
 
       <div className="mt-3 px-3" hidden={filterActive && visiblePaths.length === 0}>
@@ -907,6 +915,33 @@ export function ProjectSidebar({
             <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
           </button>
         </div>
+        {archiveScope && (
+          <SessionArchiveDialog
+            workspacePath={archiveScope.path}
+            projectName={(path) => resolveProjectDisplayName(projectDisplayNames, path, diskProjectName(path))}
+            onClose={() => setArchiveScope(null)}
+            onChanged={(workspaceId) => {
+              // 归档里可能有别的项目的对话：按回调带回来的项目强制重拉，
+              // 否则侧栏会先闪回改动前的旧列表。
+              void refreshWorkspaceSessionLists({
+                workspaceIds: [workspaceId, currentWorkspace].filter((path): path is string => !!path),
+                force: true,
+              })
+            }}
+          />
+        )}
+        {trashOpen && (
+          <SessionTrashDialog
+            projectName={(path) => resolveProjectDisplayName(projectDisplayNames, path, diskProjectName(path))}
+            onClose={() => setTrashOpen(false)}
+            onChanged={(workspaceId) => {
+              void refreshWorkspaceSessionLists({
+                workspaceIds: [workspaceId, currentWorkspace].filter((path): path is string => !!path),
+                force: true,
+              })
+            }}
+          />
+        )}
         {hiddenOpen && <HiddenProjectsDialog paths={hiddenProjects} name={(path) => resolveProjectDisplayName(projectDisplayNames, path, diskProjectName(path))} onRestore={restoreProject} onClose={() => setHiddenOpen(false)} />}
         {worktrees.failed && <div role="status" className="px-3 pb-2 text-xs text-foreground-secondary">{t('common:sidebar.worktreeReadFailed')}</div>}
         {worktrees.missingPaths.size > 0 && (

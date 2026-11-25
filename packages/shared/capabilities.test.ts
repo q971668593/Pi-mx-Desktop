@@ -7,8 +7,8 @@ import {
 } from './capabilities'
 
 describe('session capability ids', () => {
-  it('defaults a new conversation to the built-in browser', () => {
-    expect(DEFAULT_CAPABILITIES).toEqual(['browser'])
+  it('defaults a new conversation to the built-in browser and web search', () => {
+    expect(DEFAULT_CAPABILITIES).toEqual(['browser', 'web-search'])
   })
 
   it('keeps known ids once and drops unknown ones', () => {

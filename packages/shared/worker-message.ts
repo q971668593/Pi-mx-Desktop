@@ -1,4 +1,5 @@
 import { stripAnsi } from './ansi.ts'
+import { sanitizeLeakedToolCallText } from './leaked-tool-call.ts'
 
 /** Narrow shapes for Pi SDK session messages at the Worker → AppEvent boundary. */
 
@@ -54,14 +55,15 @@ export function normalizeUserMessageDisplayText(text: string): string {
 
 export function extractTextFromPiMessage(message: PiSessionMessage | string | null | undefined): string {
   if (!message) return ''
-  if (typeof message === 'string') return message
-  if (typeof message.content === 'string' && message.content.length > 0) return message.content
+  if (typeof message === 'string') return sanitizeLeakedToolCallText(message).text
+  if (typeof message.content === 'string' && message.content.length > 0)
+    return sanitizeLeakedToolCallText(message.content).text
   if (Array.isArray(message.content)) {
     const joined = message.content
       .filter((c): c is PiTextBlock => c.type === 'text')
       .map((c) => c.text || '')
       .join('')
-    if (joined.length > 0) return joined
+    if (joined.length > 0) return sanitizeLeakedToolCallText(joined).text
   }
   // Pi 1.0 SystemMessage keeps empty content and stores section text in sections (matching getSystemMessageText).
   if (message.sections && typeof message.sections === 'object') {

@@ -50,4 +50,18 @@ describe('files context menu', () => {
     expect(buttons[0].textContent).toBe('menu.addToChat')
     expect(buttons[1].textContent).toBe('menu.preview')
   })
+
+  it('shows delete only for real entries, and confirms through onDelete', () => {
+    const onDelete = vi.fn()
+    const { onClose } = renderMenu({ onDelete })
+    const del = screen.getByRole('button', { name: 'menu.delete' })
+    fireEvent.click(del)
+    expect(onDelete).toHaveBeenCalledTimes(1)
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('hides delete for the workspace root, which must never be trashed', () => {
+    renderMenu({ menu: { ...menu, abs: 'C:/proj', name: 'proj', rel: '', isDirectory: true }, onDelete: vi.fn() })
+    expect(screen.queryByRole('button', { name: 'menu.delete' })).toBeNull()
+  })
 })

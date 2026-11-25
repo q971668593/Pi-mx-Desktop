@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import {
+  contextMenuDangerItemClass,
   contextMenuItemClass,
   contextMenuPanelClass,
   useDismissContextMenu,
@@ -28,6 +29,7 @@ type Props = {
   onNewFolder?: () => void
   onSearchInFolder?: () => void
   onRename: () => void
+  onDelete?: () => void
   onReveal: () => void
   onOpenInNewTab?: () => void
   onNewTerminal?: () => void
@@ -56,6 +58,7 @@ export function FilesContextMenuPortal({
   onNewFolder,
   onSearchInFolder,
   onRename,
+  onDelete,
   onReveal,
   onOpenInNewTab,
   onNewTerminal,
@@ -168,6 +171,17 @@ export function FilesContextMenuPortal({
         }}
       >
         {t('menu.rename')}
+      </button> : null}
+      {menu.rel && onDelete ? <button
+        type="button"
+        className={contextMenuDangerItemClass}
+        onPointerDown={stop}
+        onClick={() => {
+          onClose()
+          onDelete()
+        }}
+      >
+        {t('menu.delete')}
       </button> : null}
       <button
         type="button"

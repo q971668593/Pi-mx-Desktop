@@ -131,6 +131,22 @@ export function FileTree({
     }
   }, [load, workspaceRoot])
 
+  useEffect(() => {
+    if (!selectedPath) return
+    const parts = selectedPath.replace(/\\/g, '/').split('/').filter(Boolean)
+    const folders = parts.slice(0, -1).map((_, index) => parts.slice(0, index + 1).join('/'))
+    if (!folders.length) return
+    let cancelled = false
+    setExpanded((previous) => new Set([...previous, ...folders]))
+    void Promise.all(folders.map(async (path) => {
+      const { entries, meta } = await load(path)
+      if (cancelled) return
+      setChildrenMap((current) => ({ ...current, [path]: entries }))
+      if (meta) setChildrenMeta((current) => ({ ...current, [path]: meta }))
+    }))
+    return () => { cancelled = true }
+  }, [selectedPath, load])
+
   const toggleFolder = useCallback(
     (dirPath: string) => {
       if (expanded.has(dirPath)) {

@@ -66,6 +66,10 @@ import { AttachmentChip } from '@renderer/features/composer/attachment-chip'
 import { ClipboardImageChip } from './clipboard-image-chip'
 import { type AttachmentMeta, type Segment } from '@renderer/features/composer/attachments'
 import { formatQuotedReply, insertTextIntoComposer } from '@renderer/features/composer/composer-insert'
+import { extractGrowRounds } from '@renderer/features/grow/grow-round'
+import { GrowRoundCards } from '@renderer/features/grow/grow-round-card'
+import { GrowPrdProposalCard } from '@renderer/features/grow/grow-prd-proposal-card'
+import { parseGrowPrdProposals } from '@renderer/features/grow/grow-prd-proposal-parser'
 
 const MarkdownView = lazy(() => import('./markdown-view'))
 
@@ -229,6 +233,21 @@ const TimelineItemBase = memo(function TimelineItem({
       )
     }
 
+    const growRawText = String(item.text ?? '')
+    // 用户消息早已提前 return，这里只剩 assistant 分支；先做 includes 短路避免无意义的正则
+    const growParsed = growRawText.includes('grow-round')
+      ? extractGrowRounds(growRawText)
+      : { cleanText: growRawText, rounds: [] as import('@renderer/features/grow/grow-round').GrowRound[] }
+    const growHasRounds = growParsed.rounds.length > 0
+    const growDisplayText = growHasRounds ? growParsed.cleanText : growRawText
+    // PRD 候选只在完成消息里解析展示；JSON 原文不进正文，只进审阅卡。
+    const prdProposals = !streaming && growRawText.includes('grow-prd-proposal')
+      ? parseGrowPrdProposals(growRawText).filter((segment) => segment.type === 'proposal')
+      : []
+    let prdDisplayText = growDisplayText
+    for (const segment of prdProposals) prdDisplayText = prdDisplayText.replace(segment.raw, '')
+    prdDisplayText = prdDisplayText.trim()
+
     const proseBody = (
       <>
         {hasThinking && (
@@ -247,8 +266,8 @@ const TimelineItemBase = memo(function TimelineItem({
               streaming && 'assistant-stream-live',
             )}
           >
-            <Suspense fallback={<p className="whitespace-pre-wrap break-words">{String(item.text ?? '')}</p>}>
-              <MarkdownView streaming={streaming}>{String(item.text ?? '')}</MarkdownView>
+            <Suspense fallback={<p className="whitespace-pre-wrap break-words">{prdDisplayText}</p>}>
+              <MarkdownView streaming={streaming}>{prdDisplayText}</MarkdownView>
             </Suspense>
             {streaming && <StreamingCaret />}
           </div>
@@ -257,6 +276,10 @@ const TimelineItemBase = memo(function TimelineItem({
             {t('timeline:interruptedPartial', { defaultValue: '回复未完成（已中断）' })}
           </div>
         ) : null}
+        {!streaming && growHasRounds && <GrowRoundCards rounds={growParsed.rounds} />}
+            {!streaming && prdProposals.map((segment) => segment.type === 'proposal'
+              ? <GrowPrdProposalCard key={segment.proposal.treeSessionId + segment.raw.length} proposal={segment.proposal} />
+              : null)}
       </>
     )
 
@@ -490,6 +513,28 @@ export function Timeline() {
     return () => window.removeEventListener(TIMELINE_VIEW_ENTRY_EVENT, onViewEntry)
   }, [followLiveRef])
 
+  // Keep the question target while the timeline reveals an older, virtualized message.
+  const growJumpRef = useRef<string | null>(null)
+  useEffect(() => {
+    const onJump = (e: Event) => {
+      const { sessionId, nodeId } = (e as CustomEvent<{ sessionId?: string; nodeId?: string }>).detail ?? {}
+      if (!sessionId || !nodeId) return
+      const target = `grow-q-${sessionId}-${nodeId}`
+      const question = document.getElementById(target)
+      followLiveRef.current = false
+      if (question) { question.scrollIntoView({ behavior: 'smooth', block: 'center' }); return }
+      const item = useUIStore.getState().timelineItems.find((entry) => entry.type === 'assistant-message' && entry.text?.includes('```grow-round') && extractGrowRounds(entry.text).rounds.some((round) => round.session === sessionId && round.questions.some((q) => q.id === nodeId)))
+      if (!item) return
+      growJumpRef.current = target
+      viewSeqRef.current += 1
+      viewLandedRef.current = null
+      viewTailSnapshotRef.current = useUIStore.getState().timelineItems.at(-1) ?? null
+      setViewTarget(item.sessionEntryId || item.id)
+    }
+    window.addEventListener('grow:jump-to-question', onJump)
+    return () => window.removeEventListener('grow:jump-to-question', onJump)
+  }, [followLiveRef])
+
   // Reveal a pending view target: scroll when rendered, expand the virtual
   // window when loaded, or fetch a bounded read-only chunk when not loaded.
   // Any user interaction (wheel, sending a message, a newer request) cancels it.
@@ -503,7 +548,9 @@ export function Timeline() {
       const row = el.querySelector(`[data-session-entry-id="${escaped}"]`)
       if (row) {
         followLiveRef.current = false
-        row.scrollIntoView({ block: 'center' })
+        const question = growJumpRef.current ? document.getElementById(growJumpRef.current) : null
+        growJumpRef.current = null
+        ;(question ?? row).scrollIntoView({ block: 'center' })
         window.dispatchEvent(new Event('timeline-scroll'))
         viewSeqRef.current += 1
         // Remember the landing: if a later store replacement (e.g. a late
@@ -531,7 +578,9 @@ export function Timeline() {
         : null
       if (anchor) {
         followLiveRef.current = false
-        anchor.scrollIntoView({ block: 'center' })
+        const question = growJumpRef.current ? document.getElementById(growJumpRef.current) : null
+        growJumpRef.current = null
+        ;(question ?? anchor).scrollIntoView({ block: 'center' })
         window.dispatchEvent(new Event('timeline-scroll'))
         viewSeqRef.current += 1
         viewLandedRef.current = { entryId: viewTarget, seq: viewSeqRef.current }

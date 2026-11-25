@@ -35,6 +35,9 @@ vi.mock('./image-gen-settings', () => ({ ImageGenSettings: () => null }))
 // Advanced runtime tuning (cycle scope / thinking bindings) has its own slice and ipc cadence.
 vi.mock('./model-runtime-advanced', () => ({ ModelRuntimeAdvanced: () => null }))
 
+// Default-model picking has its own slice and ipc cadence; covered by model-default-section.test.tsx.
+vi.mock('./model-default-section', () => ({ ModelDefaultSection: () => null }))
+
 vi.mock('./models-provider-card', () => ({
   ModelsProviderCard: ({
     onUpdateProvider,

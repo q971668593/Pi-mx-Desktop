@@ -285,9 +285,9 @@ export function FilePreviewRouter({
         <div role="status" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border/40 px-3 py-2 text-[11px] text-foreground-secondary">
           <span>{t(maxBytes < WORKSPACE_TEXT_MAX_BYTES ? 'preview.truncated' : 'preview.previewLimit')}</span>
           {maxBytes < WORKSPACE_TEXT_MAX_BYTES && (
-            <button type="button" className="text-accent hover:underline" onClick={() => setFullReadPath(absPath)}>{t('preview.tryExpandRead')}</button>
+            <button type="button" className="font-medium text-text-action hover:underline" onClick={() => setFullReadPath(absPath)}>{t('preview.tryExpandRead')}</button>
           )}
-          <button type="button" className="text-accent hover:underline" onClick={openExternal}>{t('preview.openInSystem')}</button>
+          <button type="button" className="font-medium text-text-action hover:underline" onClick={openExternal}>{t('preview.openInSystem')}</button>
         </div>
       )}
       {node}
@@ -300,13 +300,13 @@ export function FilePreviewRouter({
         <button type="button" aria-pressed={!editing} className={cn('rounded px-2 py-1 text-foreground', !editing ? 'bg-muted font-semibold' : 'hover:bg-muted')} onClick={() => { if (editing && (!dirty || window.confirm(t('preview.discardEdits')))) { if (relativePath) clearFileDraft(workspaceRoot, relativePath); setEditing(false); if (dirty) setLocalRefresh((current) => current + 1) } }}>{t('preview.ready')}</button>
       </div>
       {dirty ? <span className="text-amber-600">{t('preview.unsaved')}</span> : null}
-      <button type="button" className="ml-auto shrink-0 rounded px-2 py-1 text-accent hover:underline" title={t('preview.attachToChat')} onClick={attachToChat}>{t('preview.attachToChat')}</button>
+      <button type="button" className="ml-auto shrink-0 rounded px-2 py-1 font-medium text-text-action hover:underline" title={t('preview.attachToChat')} onClick={attachToChat}>{t('preview.attachToChat')}</button>
       {editing ? <label className="flex shrink-0 items-center gap-1 text-foreground-secondary"><input type="checkbox" checked={wordWrap} onChange={(event) => { const enabled = event.target.checked; setWordWrap(enabled); try { localStorage.setItem('pi-desktop:file-word-wrap', String(enabled)) } catch { void 0 } }} />{t('preview.wordWrap')}</label> : null}
-      {editing ? <button type="button" className="text-accent hover:underline disabled:opacity-50" disabled={!dirty || saving} onClick={() => void save()}>{saving ? t('preview.saving') : t('preview.save')}</button> : null}
+      {editing ? <button type="button" className="font-medium text-text-action hover:underline disabled:opacity-50" disabled={!dirty || saving} onClick={() => void save()}>{saving ? t('preview.saving') : t('preview.save')}</button> : null}
     </div>
   ) : relativePath ? (
     <div className="flex shrink-0 items-center gap-2 border-b border-border/40 px-3 py-1.5 text-[11px]">
-      <button type="button" className="ml-auto shrink-0 rounded px-2 py-1 text-accent hover:underline" title={t('preview.attachToChat')} onClick={attachToChat}>{t('preview.attachToChat')}</button>
+      <button type="button" className="ml-auto shrink-0 rounded px-2 py-1 font-medium text-text-action hover:underline" title={t('preview.attachToChat')} onClick={attachToChat}>{t('preview.attachToChat')}</button>
     </div>
   ) : null
 
@@ -315,10 +315,10 @@ export function FilePreviewRouter({
   if (loading) return wrap(<p className="px-3 py-6 text-[12px] text-foreground-secondary/80">{t('preview.loading')}</p>)
   if (loadError) {
     const key = loadError === 'too_large' ? 'tooLarge' : loadError === 'binary' ? 'binary' : loadError === 'not_found' ? 'deleted' : 'error'
-    return wrap(<div className="space-y-2 px-3 py-6 text-[12px] text-foreground-secondary"><p>{t(`preview.${key}`)}</p><button type="button" className="text-accent hover:underline" onClick={openExternal}>{t('preview.openInSystem')}</button></div>)
+    return wrap(<div className="space-y-2 px-3 py-6 text-[12px] text-foreground-secondary"><p>{t(`preview.${key}`)}</p><button type="button" className="font-medium text-text-action hover:underline" onClick={openExternal}>{t('preview.openInSystem')}</button></div>)
   }
   if (mode === 'image') return wrap(imageUrl ? <FileImagePreview src={imageUrl} name={relativePath} /> : null)
-  if (mode === 'pdf' || mode === 'binary' || mode === 'sheet') return wrap(<div className="space-y-2 px-3 py-6 text-[12px] text-foreground-secondary"><p>{t(mode === 'pdf' ? 'preview.pdf' : 'preview.binary')}</p><button type="button" className="text-accent hover:underline" onClick={openExternal}>{t('preview.openInSystem')}</button></div>)
+  if (mode === 'pdf' || mode === 'binary' || mode === 'sheet') return wrap(<div className="space-y-2 px-3 py-6 text-[12px] text-foreground-secondary"><p>{t(mode === 'pdf' ? 'preview.pdf' : 'preview.binary')}</p><button type="button" className="font-medium text-text-action hover:underline" onClick={openExternal}>{t('preview.openInSystem')}</button></div>)
   if (content == null) return wrap(null)
   const conflictPreview = conflict && (
     <div role="alert" className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs">

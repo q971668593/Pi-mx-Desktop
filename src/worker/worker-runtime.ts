@@ -28,11 +28,13 @@ import { translateEventPaths } from './worker-path-bridge.js'
 import { prepareAdapterCatalog, installAdapterCatalog } from '../extension-compat/adapter-loader.js'
 import { capabilitiesExtension, resetCapabilities } from './worker-capabilities.js'
 import { goalExtension, setGoalSection } from './worker-goal.js'
+import { lessonsExtension } from './worker-lessons.js'
 import { runtimeBudgetExtension } from './worker-budget.js'
 import { modelRoutersExtension } from './worker-model-routers.js'
 import { browserToolsExtension } from './worker-browser-tools.js'
 import { terminalToolsExtension } from './worker-terminal-tools.js'
 import { teamToolsExtension } from './worker-team-tools.js'
+import { growToolsExtension } from './worker-grow-tools.js'
 import { imageToolsExtension } from './worker-image-tools.js'
 import { askToolsExtension } from './worker-ask-tools.js'
 
@@ -239,7 +241,7 @@ function buildRuntimeFactory(): CreateAgentSessionRuntimeFactory {
       resourceLoaderOptions: {
         eventBus: st.sharedEventBus!,
         ...(st.builtinExtensionPaths.length > 0 ? { additionalExtensionPaths: [...st.builtinExtensionPaths] } : {}),
-        extensionFactories: [...piBuiltinExtensions(sdk), capabilitiesExtension, goalExtension, runtimeBudgetExtension, browserToolsExtension, terminalToolsExtension, teamToolsExtension, imageToolsExtension, askToolsExtension, modelRoutersExtension(agentDir)],
+        extensionFactories: [...piBuiltinExtensions(sdk), capabilitiesExtension, goalExtension, lessonsExtension, runtimeBudgetExtension, browserToolsExtension, terminalToolsExtension, teamToolsExtension, growToolsExtension, imageToolsExtension, askToolsExtension, modelRoutersExtension(agentDir)],
         extensionsOverride: (result) => guardExtensionCapabilityTools(decorateQuestionnaireTools(result, cwd)),
         skillsOverride: applySkillsOverride as never,
       },

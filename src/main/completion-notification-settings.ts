@@ -16,7 +16,7 @@ export function readCompletionNotificationSettings(now = Date.now()): Completion
     soundVolume: normalizeAlertSoundVolume(configStore.get('alertSoundVolume')),
     notificationEnabled: configStore.get('alertNotificationEnabled') !== false,
     alertOnRunIdle: configStore.get('alertOnRunIdle') !== false,
-    alertOnBackgroundRunIdle: configStore.get('alertOnBackgroundRunIdle') === true,
+    alertOnBackgroundRunIdle: configStore.get('alertOnBackgroundRunIdle') !== false,
     alertOnRunFailed: configStore.get('alertOnRunFailed') !== false,
     alertOnCancelled: false,
     timeoutSeconds: normalizeCompletionTimeoutSeconds(configStore.get('completionNotificationTimeoutSeconds')),

@@ -75,7 +75,7 @@ vi.mock('../../session-display-names', () => ({
 }))
 vi.mock('../../pi-rewind-read', () => ({ listRewindCheckpoints: vi.fn() }))
 vi.mock('../../session-branch-anchors', () => ({ listMessageAnchorsFromSessionFile: vi.fn() }))
-vi.mock('../../session-file-meta', () => ({ readSessionIdFromFile: vi.fn() }))
+vi.mock('../../session-file-meta', () => ({ readSessionIdFromFile: vi.fn(), sessionFilePathForFs: (f: string) => f }))
 vi.mock('../../rename-pi-session', () => ({ renamePiSessionOnDisk: vi.fn() }))
 vi.mock('../../sandbox-workspaces', () => ({
   bindSandboxSession: vi.fn(),

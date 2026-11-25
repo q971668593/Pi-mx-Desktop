@@ -1,7 +1,7 @@
 import { requestOpenInPane, startSessionDrag } from '@renderer/features/split/split-dnd'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronRight, GitFork, Plus, Users } from '@renderer/components/icons'
+import { ChevronRight, GitFork, Plus, Trash2, Users } from '@renderer/components/icons'
 import { cn } from '@renderer/lib/utils'
 import { activateWorkspace, switchSessionInPlace } from '@renderer/lib/activate-workspace'
 import { guardSessionSwitch } from '@renderer/lib/session-switch-guard'
@@ -453,6 +453,7 @@ export function ProjectDiskRow({
   onToggleOpen,
   onOpenProject,
   onNewSession,
+  onOpenTrash,
   onProjectContextMenu,
   dragSource,
   dropTarget,
@@ -468,6 +469,8 @@ export function ProjectDiskRow({
   onToggleOpen: () => void
   onOpenProject?: () => void
   onNewSession: () => void
+  /** 打开回收站（全屏列表）：项目头部的小垃圾桶图标。 */
+  onOpenTrash?: () => void
   onProjectContextMenu: (e: React.MouseEvent) => void
   dragSource?: Pick<React.HTMLAttributes<HTMLDivElement>, 'draggable' | 'onDragStart' | 'onDragEnd'>
   dropTarget?: ReturnType<ReturnType<typeof useSidebarReorder>['target']>
@@ -505,6 +508,20 @@ export function ProjectDiskRow({
         </button>
         {!open && attention !== 'idle' ? (
           <SessionAttentionDot attention={attention} className="mr-0.5 shrink-0" />
+        ) : null}
+        {onOpenTrash ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpenTrash()
+            }}
+            aria-label={t('common:sidebar.trashTitle')}
+            title={t('common:sidebar.trashTitle')}
+            className="sidebar-section-action sidebar-project-trash"
+          >
+            <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+          </button>
         ) : null}
         <button
           type="button"

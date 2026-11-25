@@ -216,8 +216,16 @@ export interface UIState {
   appendComposerPrefill: (text: string) => void
   activePanel: string
   setActivePanel: (p: string) => void
+  /** 从对话里主动打开某个右侧面板：该面板在设置里被关掉时也先就地启用再切过去。 */
+  focusRightPanel: (p: string) => void
   rightPanelCatalog: RightPanelCatalogItem[]
   rightPanelPrefs: RightPanelPrefs
+  /**
+   * 本次运行内被 focusRightPanel 主动打开的面板（设置里原本是关的）。
+   * 只存运行时：applyRightPanelRuntime 用主进程配置覆盖 prefs 时要把这些重新并回去，
+   * 否则切 workspace / 保存设置后正在看的面板会被弹回 files。
+   */
+  rightPanelForced: Record<string, true>
   rightPanelOrder: string[]
   applyRightPanelRuntime: (catalog: RightPanelCatalogItem[], prefs: RightPanelPrefs, order?: string[]) => void
   rewindKey: string

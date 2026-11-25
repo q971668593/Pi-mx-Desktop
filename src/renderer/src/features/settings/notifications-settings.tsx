@@ -35,7 +35,8 @@ export function NotificationsSettings() {
   } = useSettingsDraft()
 
   const searchQuery = useContext(SettingsSearchContext).trim().toLocaleLowerCase()
-  const [rulesOpen, setRulesOpen] = useState(false)
+  // 规则区块默认展开：这些开关就是用户要的「都通知」的具体项，藏起来等于默认看不见。
+  const [rulesOpen, setRulesOpen] = useState(true)
   const [testingAlert, setTestingAlert] = useState(false)
   const [previewingGlow, setPreviewingGlow] = useState(false)
   const [glowPreviewFailed, setGlowPreviewFailed] = useState(false)

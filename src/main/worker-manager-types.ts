@@ -44,3 +44,12 @@ export type WorkerAppEventForward = {
   sessionFile: string | null
   agentTurnActive: boolean
 }
+
+/**
+ * 「按目标再跑一轮」的结果。冷会话会先唤醒再发，唤醒失败要如实回报给 UI，
+ * 不能像以前那样静默什么也不做。
+ */
+export type GoalRoundStart = {
+  started: boolean
+  reason?: 'wake_failed'
+}

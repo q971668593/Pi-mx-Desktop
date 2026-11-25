@@ -19,6 +19,7 @@ import { BranchStatusTrigger } from '@renderer/features/git/branch-status'
 import { ShellPopover } from './shell-popover'
 import { StatusSpeed } from './status-speed'
 import { ComposerToolsMenu } from '@renderer/features/composer/composer-tools-menu'
+import { FeedbackInboxButton } from '@renderer/features/feedback/feedback-inbox-button'
 
 type WorkerRow = { sessionFile: string; running: boolean; cwd: string }
 type MemoryKind = 'main' | 'ui' | 'sessions' | 'browser' | 'gpu' | 'other'
@@ -192,6 +193,8 @@ export function StatusBar() {
       <div className="hidden min-w-0 items-center overflow-hidden md:flex">
         <StatusSpeed />
         <ComposerToolsMenu location="status" running={runRunning} />
+        {/* 教训档案入口：我批评过的点、让模型判断该不该沉淀成规则，都在这里攒着 */}
+        <FeedbackInboxButton />
       </div>
       <div className="ml-auto flex shrink-0 items-center">
         <button type="button" className="workbench-status-trigger" aria-pressed={!rightHidden && activePanel === 'terminal'} title={t('common:terminal.toggle')} aria-label={t('common:terminal.toggle')} onClick={() => {

@@ -1,0 +1,195 @@
+/* 归档 / 回收站：全屏列表弹窗。配色全部走主题变量，亮暗色都跟得上。 */
+.session-vault-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  padding: 24px;
+  background: rgb(8 12 18 / 55%);
+  backdrop-filter: blur(2px);
+}
+
+.session-vault {
+  display: flex;
+  flex-direction: column;
+  width: min(1080px, 100%);
+  min-height: 0;
+  border: 1px solid var(--border-base);
+  border-radius: 14px;
+  background: hsl(var(--popover));
+  color: var(--text-primary);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 32%);
+  overflow: hidden;
+}
+
+.session-vault-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--border-base);
+}
+
+.session-vault-header h2 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.session-vault-header p {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.session-vault-count {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: var(--text-secondary);
+  background: hsl(var(--bg-hover, 240 5% 92%));
+}
+
+.session-vault-tile {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  color: hsl(var(--text-action-hsl));
+  background: hsl(var(--text-action-hsl) / 12%);
+}
+
+.session-vault-tile-danger {
+  color: hsl(var(--destructive, 0 72% 48%));
+  background: hsl(var(--destructive, 0 72% 48%) / 12%);
+}
+
+.session-vault-close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  color: var(--text-secondary);
+}
+
+.session-vault-close:hover {
+  color: var(--text-primary);
+  background: hsl(var(--bg-hover, 240 5% 92%));
+}
+
+.session-vault-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 18px 0;
+  padding: 7px 10px;
+  border: 1px solid var(--border-base);
+  border-radius: 9px;
+  color: var(--text-secondary);
+}
+
+.session-vault-search input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  font-size: 13px;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.session-vault-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  grid-auto-rows: min-content;
+  gap: 6px;
+  padding: 12px 18px 18px;
+}
+
+.session-vault-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--border-base);
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.session-vault-card:hover {
+  background: hsl(var(--bg-hover, 240 5% 96%) / 60%);
+}
+
+.session-vault-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 550;
+}
+
+.session-vault-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.session-vault-expiry {
+  color: hsl(var(--text-action-hsl));
+}
+
+.session-vault-button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-base);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--text-primary);
+  background: transparent;
+}
+
+.session-vault-button:hover:not(:disabled) {
+  background: hsl(var(--bg-hover, 240 5% 92%));
+}
+
+.session-vault-button:disabled {
+  opacity: 0.5;
+}
+
+.session-vault-button-danger {
+  color: hsl(var(--destructive, 0 72% 48%));
+  border-color: hsl(var(--destructive, 0 72% 48%) / 35%);
+}
+
+.session-vault-empty {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  padding: 48px 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.session-vault-empty strong {
+  color: var(--text-primary);
+  font-weight: 550;
+}

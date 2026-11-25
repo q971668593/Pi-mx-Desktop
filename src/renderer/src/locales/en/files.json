@@ -93,6 +93,7 @@
     "newFolder": "New folder",
     "reveal": "Reveal in folder",
     "rename": "Rename",
+    "delete": "Delete",
     "openInNewTab": "Open in new tab",
     "searchInFolder": "Search in this folder"
     ,"newTerminal": "New terminal here"
@@ -102,11 +103,19 @@
     "confirm": "OK",
     "cancel": "Cancel"
   },
+  "delete": {
+    "title": "Delete",
+    "message": "Move \"{{name}}\" to the trash?",
+    "confirm": "Yes, delete"
+  },
   "toast": {
     "attached": "Attached to composer",
     "copied": "Path copied",
     "renamed": "Renamed",
     "renameFailed": "Rename failed",
+    "deleted": "Moved to trash",
+    "deleteFailed": "Delete failed",
+    "deleteMissing": "That file is already gone; try refreshing",
     "fileCopied": "File copied. Select a folder and press Ctrl+V to paste",
     "pastedOne": "File pasted",
     "pastedMany": "Pasted {{count}} files",

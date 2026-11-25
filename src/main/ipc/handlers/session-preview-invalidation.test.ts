@@ -79,7 +79,7 @@ vi.mock('../../sandbox-workspaces', () => ({
 }))
 vi.mock('../../pi-rewind-read', () => ({ listRewindCheckpoints: vi.fn() }))
 vi.mock('../../session-branch-anchors', () => ({ listMessageAnchorsFromSessionFile: vi.fn() }))
-vi.mock('../../session-file-meta', () => ({ readSessionIdFromFile: vi.fn() }))
+vi.mock('../../session-file-meta', () => ({ readSessionIdFromFile: vi.fn(), sessionFilePathForFs: (f: string) => f }))
 vi.mock('../../session-leaf-override', () => ({
   getSessionLeafOverride: vi.fn(),
   setSessionLeafOverride: vi.fn(),

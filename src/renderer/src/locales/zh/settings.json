@@ -33,7 +33,8 @@
     "voice": "语音",
     "mobile": "手机连接",
     "usage": "用量",
-    "purge": "破甲"
+    "purge": "破甲",
+    "lessons": "教训档案"
   },
   "general": {
     "title": "通用",
@@ -952,7 +953,7 @@
     "ctrlEnterHint": "Ctrl+Enter 确认",
     "advanced": {
       "title": "高级：快捷切换与思考绑定",
-      "description": "默认模型不在这里设置 —— 每个对话自己挑，新会话自动用第一个可用模型。",
+      "description": "默认模型在上面“默认模型”一节里选；这里只留快捷切换和按模型绑定。",
       "cycleScope": "模型切换范围",
       "cycleScopeDesc": "快捷切换只在这些模型间循环，逗号分隔，支持通配符。",
       "cycleScopePlaceholder": "例如 anthropic/*, openai/gpt-6*",
@@ -975,6 +976,21 @@
         "xhigh": "超高",
         "max": "最高"
       }
+    },
+    "default": {
+      "title": "默认模型",
+      "description": "新会话自动用它发言；会话里随时还能再换。",
+      "current": "当前默认：{{value}}",
+      "auto": "没指定（自动用第一个可用模型）",
+      "autoOption": "不指定（自动）",
+      "provider": "默认供应商",
+      "providerDesc": "只列你订阅登录过的供应商。",
+      "model": "默认模型",
+      "modelDesc": "新会话一上来就用这个模型。",
+      "pickModel": "选择模型…",
+      "thinking": "思考强度",
+      "thinkingDesc": "默认想多深；会话里随时还能再调。",
+      "pickLevel": "选择强度…"
     },
     "fillFromTemplate": "从模板填充…",
     "groupBasics": "基本",
@@ -1565,7 +1581,7 @@
     "recheck": "重新检查",
     "model": "生图模型",
     "modelHintCodex": "留空用订阅默认（gpt-image-2.6）；2.6 / 2.5 / 2 都能用，点「同步模型」拉取账户可用列表。",
-    "modelHintCustom": "填中转支持的模型名，例如 gpt-image-1。",
+    "modelHintCustom": "直接输入中转支持的模型名，例如 gpt-image-1.5 / Nano-banana，下拉只做提示。",
     "syncModels": "同步模型",
     "baseUrl": "中转地址",
     "baseUrlHint": "OpenAI 兼容根地址，例如 https://host/v1（会自动拼 /images/generations）。",
@@ -1597,5 +1613,28 @@
     "promptEnhanceHint": "你的一句话需求会自动补成九维提示词（主体／构图／风格／配色／光线／质感／文字／规格／负向约束），补了什么会写在结果里；关掉就原样发送。",
     "promptEnhanceAuto": "自动补齐（推荐）",
     "promptEnhanceOff": "原样发送"
+  },
+  "lessons": {
+    "description": "你批评、驳回、纠正后沉淀下来的规则在这里管：看、删、手动加，以及要不要自动带进每轮对话。",
+    "rulesTitle": "生效中的规则",
+    "rulesDesc": "这些规则会跟着每一轮消息进上下文新开对话发第一句就带上。",
+    "rulesEmpty": "还没有规则：在对话里批评、驳回、纠正后值得留的会自动沉淀也可以在下面手动加一条。",
+    "addRuleTitle": "手动加一条",
+    "addRuleTitlePh": "标题（选填比如报销流程别用表格）",
+    "addRuleBodyPh": "规则正文比如涉及报销一律用列表不准用表格",
+    "polarity": "类型",
+    "negative": "不要这样做",
+    "positive": "要这样做",
+    "addRule": "加入规则",
+    "injectLabel": "自动进入对话上下文",
+    "injectDesc": "打开后生效中的规则跟着每一轮消息发给模型；关掉就只攒着不再喂给模型。",
+    "lessonsTitle": "教训记录",
+    "lessonsDesc": "共 {{count}} 条：批评原话与模型的判断理由只留着看不进上下文。",
+    "lessonsEmpty": "还没有记录。",
+    "status_pending": "待确认",
+    "status_kept": "已留存",
+    "status_dropped": "已忽略",
+    "sourceManual": "手动",
+    "sourceModel": "模型归纳"
   }
 }

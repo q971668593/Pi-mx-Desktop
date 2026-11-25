@@ -10,6 +10,7 @@ import {
   ChevronDown,
 } from '@renderer/components/icons'
 import type { TimelineItem } from '@renderer/stores/ui-store-types'
+import { averageTokenSpeed, formatTokenSpeed } from '@renderer/lib/token-speed-stats'
 import { useComposerMetrics } from '@renderer/features/composer/use-composer-metrics'
 import {
   ContextDonutChart,
@@ -93,17 +94,18 @@ export function RunPanel() {
     activeTool: runState.activeTool,
     thinkingLevel,
   })
-  const tokPerSec = isRunning
-    ? (metrics.tps != null && metrics.tps > 0 ? Math.round(metrics.tps / 4) : null)
-    : (runState.runOutputTokens != null && runState.runOutputTokens > 0 && runState.lastRunDurationMs
-      ? Math.round(runState.runOutputTokens * 1000 / runState.lastRunDurationMs) : null)
+  const liveTps = isRunning && metrics.tps != null && metrics.tps > 0 ? metrics.tps / 4 : null
+  const settledTps =
+    !isRunning && runState.runOutputTokens != null && runState.runOutputTokens > 0 && runState.lastRunDurationMs
+      ? runState.runOutputTokens * 1000 / runState.lastRunDurationMs
+      : null
+  // 本次 run 没有得出可用速率时，用历史样本平均兜底，界面始终给出一个数字。
+  const historyTps = averageTokenSpeed()?.tps ?? null
   /** Live estimate while streaming, provider-reported output averaged across the settled run. */
-  const speedLabel =
-    tokPerSec != null
-      ? `${isRunning ? '~' : ''}${tokPerSec} tok/s`
-      : isRunning
-        ? t('run:waitingOutput')
-        : '—'
+  const live = isRunning ? liveTps : settledTps
+  const fromHistory = live == null && historyTps != null
+  const speedLabel = formatTokenSpeed(live ?? historyTps, liveTps != null ? '~' : '')
+  const speedHint = t(fromHistory ? 'run:genSpeedHistoryHint' : 'run:genSpeedHint')
 
   const roleSlices = useMemo(
     () =>
@@ -182,8 +184,8 @@ export function RunPanel() {
         </div>
         <dl className="mt-2">
           <div className="panel-kv">
-            <dt title={t('run:genSpeedHint')}>{t('run:genSpeed')}</dt>
-            <dd title={t('run:genSpeedHint')}>{speedLabel}</dd>
+            <dt title={speedHint}>{t('run:genSpeed')}</dt>
+            <dd title={speedHint}>{speedLabel}</dd>
           </div>
           {runState.usage ? (
             <div className="panel-kv">

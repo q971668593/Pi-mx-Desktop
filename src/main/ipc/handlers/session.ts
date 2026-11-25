@@ -1,5 +1,5 @@
 import { app } from 'electron'
-import { copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -27,9 +27,20 @@ import {
   setPendingWorkerSessionFile,
 } from '../../session-bind-state'
 import { setVisibleSessionFile } from '../../completion-notification-events'
+import { sessionFilePathForFs } from '../../session-file-meta'
+
 import { sessionPreviewProcess } from '../../session-preview-process'
 import { listForkCandidatesFromSessionFile } from '../../session-fork-candidates'
 import { getSessionLeafOverride, setSessionLeafOverride } from '../../session-leaf-override'
+import { dropSessionUndo, listSessionTrash, restoreSessionFromUndo, stashSessionForUndo } from '../../session-trash-store'
+import {
+  archiveSession,
+  archivedSessionKeys,
+  listSessionArchive,
+  removeArchiveEntryById,
+  unarchiveSession,
+  unarchiveSessionFile,
+} from '../../session-archive-store'
 import type { SessionOnDiskRow } from '../sdk-session'
 import { sessionPreviewText } from '@shared/session-preview-text'
 import type { PiSessionMessage } from '@shared/worker-message'
@@ -74,62 +85,6 @@ function timeMs(value: unknown): number {
   return 0
 }
 
-/** 撤销副本目录：测试里 electron.app 可能没有 getPath，退回临时目录。 */
-function sessionUndoDir(): string {
-  try {
-    return join(app.getPath('userData'), 'session-undo')
-  } catch {
-    return join(tmpdir(), 'pi-session-undo')
-  }
-}
-const SESSION_UNDO_TTL_MS = 10 * 60_000
-
-/** Copy a session file aside so the delete can be undone; returns the handle used by `ipc:session.restore`. */
-function stashSessionForUndo(sessionFile: string): string | null {
-  try {
-    mkdirSync(sessionUndoDir(), { recursive: true })
-    const id = randomUUID()
-    copyFileSync(sessionFile, join(sessionUndoDir(), `${id}.jsonl`))
-    writeFileSync(join(sessionUndoDir(), `${id}.json`), JSON.stringify({ sessionFile, at: Date.now() }), 'utf8')
-    // 顺手清掉过期副本，别无限长
-    for (const name of readdirSync(sessionUndoDir())) {
-      if (!name.endsWith('.json')) continue
-      const metaPath = join(sessionUndoDir(), name)
-      try {
-        const meta = JSON.parse(readFileSync(metaPath, 'utf8')) as { at?: number }
-        if (Date.now() - (meta.at ?? 0) > SESSION_UNDO_TTL_MS) {
-          rmSync(metaPath, { force: true })
-          rmSync(metaPath.replace(/\.json$/, '.jsonl'), { force: true })
-        }
-      } catch {
-        /* ignore a corrupt sidecar */
-      }
-    }
-    return id
-  } catch {
-    return null
-  }
-}
-
-function dropSessionUndo(trashId: string): void {
-  rmSync(join(sessionUndoDir(), `${trashId}.json`), { force: true })
-  rmSync(join(sessionUndoDir(), `${trashId}.jsonl`), { force: true })
-}
-
-function restoreSessionFromUndo(trashId: string): { sessionFile: string; workspaceId: string } | null {
-  try {
-    const metaPath = join(sessionUndoDir(), `${trashId}.json`)
-    const meta = JSON.parse(readFileSync(metaPath, 'utf8')) as { sessionFile?: string; at?: number }
-    if (!meta.sessionFile || Date.now() - (meta.at ?? 0) > SESSION_UNDO_TTL_MS) return null
-    mkdirSync(dirname(meta.sessionFile), { recursive: true })
-    copyFileSync(join(sessionUndoDir(), `${trashId}.jsonl`), meta.sessionFile)
-    dropSessionUndo(trashId)
-    return { sessionFile: meta.sessionFile, workspaceId: dirname(meta.sessionFile) }
-  } catch {
-    return null
-  }
-}
-
 /**
  * 停掉某个项目里起的终端。
  * 按需加载：terminal-service 会拉起 electron 的 window 模块，静态引入会污染这些 handler 的测试依赖图。
@@ -143,6 +98,13 @@ async function stopTerminalsOf(path: string): Promise<void> {
   }
 }
 
+/** 两个会话文件是不是同一个（大小写 / 分隔符 / symlink 归一后比较）。 */
+function sameSessionFile(a: string | null | undefined, b: string | null | undefined): boolean {
+  const ka = a ? normalizeSessionKey(a) : ''
+  const kb = b ? normalizeSessionKey(b) : ''
+  return !!ka && ka === kb
+}
+
 export function registerSessionHandlers(): void {
   registerHandlerWithSchema('ipc:session.list', sessionListSchema, async (req) => {
     const workspaceId = req.workspaceId || workerManager.cwd || configStore.get('currentProject') || ''
@@ -151,11 +113,16 @@ export function registerSessionHandlers(): void {
     }
     const sessions = workspaceId ? await sessionPreviewProcess.listSessions(workspaceId) : []
     const runtime = getAgentRuntimeConfig()
-    const ownedSessions = sessions.filter((s) => {
+    let ownedSessions = sessions.filter((s) => {
       if (!s.cwd || workspacePathsEqual(s.cwd, workspaceId)) return true
       return runtime.mode === 'wsl' && !!runtime.distro
         && workspacePathsEqual(wslPathToWindows(runtime.distro, s.cwd), workspaceId)
     })
+    // 归档过的会话不占侧栏位置，只在「查看归档对话」里出现。
+    const archivedKeys = archivedSessionKeys()
+    if (archivedKeys.size > 0) {
+      ownedSessions = ownedSessions.filter((s) => !archivedKeys.has(normalizeSessionKey(s.path)))
+    }
     const interrupted = new Map(workerManager.listInterruptedRuns().map((row) => [row.sessionFile, row.orphanedAt]))
     // 侧栏要知道哪些会话是工作团队开出来的（角色会话 / 派发会话），好加个小标记。
     const teamRoles = new Map<string, { role: string; kind: 'role' | 'run' }>()
@@ -738,13 +705,27 @@ export function registerSessionHandlers(): void {
   registerHandlerWithSchema('ipc:session.delete', sessionDeleteSchema, async (req) => {
     const authorized = await authorizeTrustedSessionFile(req.workspaceId, req.sessionFile)
     if (!authorized.ok) return { ok: false, error: authorized.error }
-    // 删除前留一份副本：撤销条（几秒内点「撤销」）能把对话原样放回去。
-    const trashId = stashSessionForUndo(authorized.sessionFile)
+    // 删除不再直接销毁：副本放进回收站（保留 5 天），撤销条与回收站面板共用同一条记录。
+    // 文件本来就不在磁盘上（只剩索引残留）时没有可备份的东西，直接走删除即可。
+    // 存在性判断必须走转换后路径：UNC/WSL 会话是 `//…` 形态，授权与真正删除用的都是
+    // sessionFilePathForFs 转换后的路径，这里用原始路径判会 fail-open（文件在却判不在）。
+    const sourceExists = existsSync(sessionFilePathForFs(authorized.sessionFile))
+    const trashId = sourceExists
+      ? stashSessionForUndo(authorized.sessionFile, { workspaceId: authorized.cwd, title: req.title })
+      : null
+    // fail-closed：文件在、但副本进不了回收站时绝不动原文件，
+    // 否则会出现「对话没了、回收站里也没有」的不可恢复删除。
+    if (sourceExists && !trashId) return { ok: false, error: 'trash_failed' }
     const r = await workerManager.deleteSessionFile(authorized.sessionFile)
     if (r.ok) {
       clearSessionDisplayName(authorized.sessionFile)
+      // 待绑定指针还指着这个已删除的文件时清掉，否则下一次发送会往不存在的会话里写。
+      if (sameSessionFile(getPendingWorkerSessionFile(), authorized.sessionFile)) setPendingWorkerSessionFile(null)
+      unarchiveSessionFile(authorized.sessionFile)
       await sessionPreviewProcess.invalidateListSessions(authorized.cwd)
-    } else if (trashId) dropSessionUndo(trashId)
+    } else if (trashId) {
+      dropSessionUndo(trashId)
+    }
     return { ok: !!r.ok, error: r.error, ...(r.ok && trashId ? { trashId } : {}) }
   })
 
@@ -752,8 +733,86 @@ export function registerSessionHandlers(): void {
   registerHandlerWithSchema('ipc:session.restore', z.object({ trashId: z.string().min(1) }).strict(), async (req) => {
     const restored = restoreSessionFromUndo(req.trashId)
     if (!restored) return { ok: false, error: 'undo expired' }
-    await sessionPreviewProcess.invalidateListSessions(dirname(restored.sessionFile)).catch(() => {})
+    // 列表缓存按 workspaceId 失效；还原时目标路径可能被改名为 .restored-xxx.jsonl，
+    // 拿 dirname 猜项目目录会失效错 key，导致侧栏迟迟不出现还原的对话。
+    await sessionPreviewProcess
+      .invalidateListSessions(restored.workspaceId || dirname(restored.sessionFile))
+      .catch(() => {})
     return { ok: true, sessionFile: restored.sessionFile, workspaceId: restored.workspaceId }
+  })
+
+  /** 回收站列表（全屏弹窗用）：返回所有项目里删掉的对话，新的在前。 */
+  registerHandler('ipc:session.trash.list', async (req) => {
+    const workspaceId = typeof req?.workspaceId === 'string' ? req.workspaceId.trim() : ''
+    return { entries: listSessionTrash(workspaceId || undefined) }
+  })
+
+  /** 从回收站彻底删掉一条（不用等 5 天自动清空）。 */
+  registerHandler('ipc:session.trash.purge', async (req) => {
+    const id = typeof req?.trashId === 'string' ? req.trashId.trim() : ''
+    if (!id) return { ok: false, error: 'missing trashId' }
+    dropSessionUndo(id)
+    return { ok: true }
+  })
+
+  /** 归档对话：会话文件留在磁盘，只是从侧栏列表里收起来。 */
+  registerHandler('ipc:session.archive', async (req) => {
+    const sessionFile = typeof req?.sessionFile === 'string' ? req.sessionFile.trim() : ''
+    const workspaceId = typeof req?.workspaceId === 'string' ? req.workspaceId.trim() : ''
+    const title = typeof req?.title === 'string' ? req.title.trim() : ''
+    if (!sessionFile) return { ok: false, error: 'no session file' }
+    if (!workspaceId) return { ok: false, error: 'no workspace' }
+    const authorized = await authorizeTrustedSessionFile(workspaceId, sessionFile)
+    if (!authorized.ok) return { ok: false, error: authorized.error }
+    const entry = archiveSession({ sessionFile: authorized.sessionFile, workspaceId: authorized.cwd, title })
+    if (!entry) return { ok: false, error: 'archive failed' }
+    if (sameSessionFile(getPendingWorkerSessionFile(), authorized.sessionFile)) setPendingWorkerSessionFile(null)
+    await sessionPreviewProcess.invalidateListSessions(authorized.cwd).catch(() => {})
+    return { ok: true, entry }
+  })
+
+  /** 归档列表：项目右键「查看归档对话」用；不传 workspaceId 就返回全部。 */
+  registerHandler('ipc:session.archive.list', async (req) => {
+    const workspaceId = typeof req?.workspaceId === 'string' ? req.workspaceId.trim() : ''
+    return { entries: listSessionArchive(workspaceId || undefined) }
+  })
+
+  /** 取消归档：会话重新回到侧栏。id 或 sessionFile 给一个就行。 */
+  registerHandler('ipc:session.archive.restore', async (req) => {
+    const id = typeof req?.id === 'string' ? req.id.trim() : ''
+    const sessionFile = typeof req?.sessionFile === 'string' ? req.sessionFile.trim() : ''
+    let sessionFileToRestore = ''
+    let workspace = ''
+    if (id) {
+      const entry = unarchiveSession(id)
+      if (entry) {
+        sessionFileToRestore = entry.sessionFile
+        workspace = entry.workspaceId || dirname(entry.sessionFile)
+      }
+    }
+    if (!sessionFileToRestore && sessionFile) {
+      if (unarchiveSessionFile(sessionFile)) {
+        sessionFileToRestore = sessionFile
+        workspace = dirname(sessionFile)
+      }
+    }
+    if (!sessionFileToRestore) return { ok: false, error: 'not archived' }
+    // 归档记录还在但文件已经没了：记录前面已经摘掉，直接告诉调用方文件不在，
+    // 别让侧栏拿着一个不存在的路径去加载。
+    if (!existsSync(sessionFilePathForFs(sessionFileToRestore))) {
+      await sessionPreviewProcess.invalidateListSessions(workspace).catch(() => {})
+      return { ok: false, error: 'session_file_missing', sessionFile: sessionFileToRestore, workspaceId: workspace }
+    }
+    await sessionPreviewProcess.invalidateListSessions(workspace).catch(() => {})
+    return { ok: true, sessionFile: sessionFileToRestore, workspaceId: workspace }
+  })
+
+  /** 归档记录显式清理：只删记录、不碰磁盘文件（文件确认没了之后用）。 */
+  registerHandler('ipc:session.archive.drop', async (req) => {
+    const id = typeof req?.id === 'string' ? req.id.trim() : ''
+    if (!id) return { ok: false, error: 'missing id' }
+    const ok = removeArchiveEntryById(id)
+    return { ok }
   })
 
   registerHandlerWithSchema('ipc:session.reloadFromDisk', sessionFileOnlySchema, async (req) => {

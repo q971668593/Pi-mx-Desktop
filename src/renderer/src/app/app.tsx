@@ -8,6 +8,7 @@ import { MainColRightPanelToggle } from '@renderer/components/app/main-col-right
 import { MainColumnWithTimelineScroll } from '@renderer/components/app/main-column-with-timeline-scroll'
 import { GoalBar } from '@renderer/features/goal/goal-bar'
 import { SubAgentStrip } from '@renderer/features/team-board/sub-agent-strip'
+import { DelegateAgentStrip } from '@renderer/features/team-board/delegate-agent-strip'
 import { TeamBoardAutoSettle } from '@renderer/features/team-board/team-board-auto-settle'
 import { InterruptedRunBanner } from '@renderer/features/run/interrupted-run-banner'
 import { installGoalAutoLoop } from '@renderer/features/goal/goal-auto-loop'
@@ -541,6 +542,8 @@ export default function App() {
                 {/* 会话目标：贴着输入框的一条窄条，进行中可终止、可再次启动、可删除。 */}
                                 {/* 派出去的子 Agent：有在跑的才显示点开跳到它的会话看细节。 */}
                 {!showHome ? <SubAgentStrip /> : null}
+                {/* acp_delegate 子 Agent：底部条点进去看它自己的会话（思考 + 进度）。 */}
+                {!showHome ? <DelegateAgentStrip /> : null}
                 {!showHome ? <GoalBar /> : null}
                 {/* 确认问题不再整屏弹窗：贴在输入框上方，可折叠，答完自动收起。 */}
                 <QuestionnaireDock />

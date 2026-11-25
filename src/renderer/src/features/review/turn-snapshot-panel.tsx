@@ -13,8 +13,7 @@ export function openTurnReview(options: { runId?: string; path?: string } = {}):
   const store = useUIStore.getState()
   if (!store.historySessionFile) return
   useTurnReviewRequest.setState({ request: { ...options, sessionFile: store.historySessionFile } })
-  store.setActivePanel('review')
-  store.revealRightPanel()
+  store.focusRightPanel('review')
 }
 
 type SnapshotProps = {

@@ -1,9 +1,13 @@
 import { isAbortQueueIgnoreActive, isAbortUiHoldActive } from '@renderer/lib/abort-ui-hold'
 import { isViewingWorkerBoundSession } from '@renderer/lib/session-worker-sync'
 import { alertTrace } from '@renderer/lib/alert-trace'
+import { recordTokenSpeedSample } from '@renderer/lib/token-speed-stats'
 import type { RunEvent, StoreApi } from '@renderer/stores/apply-app-event-types'
 import { flushStreamPendingSync } from '@renderer/stores/ui-store-stream'
 import { eventSessionFile } from '@renderer/stores/apply-app-event-background'
+
+/** 上一次已采样速率的 runId：一次 run 可能先 cancelled 再 idle 两次结算，只记一次。 */
+let lastSpeedSampleRunId: string | null = null
 
 /**
  * Whether a run.idle should be ignored as "too early" (race before agent_start).
@@ -115,6 +119,16 @@ export function handleRun(event: RunEvent, api: StoreApi): boolean {
     const wasActive = rs.status === 'running' || rs.status === 'failed'
     const prevRun = rs.activeRunId
     const durationMs = rs.startTime ? Math.max(0, Date.now() - rs.startTime) : rs.lastRunDurationMs
+    // 结算时把这次真实速率记成样本：下一次碰上「没有 usage / 耗时不足」的 run 时，
+    // 状态栏和 Run 面板就能用样本平均给出一个大致速度，而不是一条横线。
+    // 一次 run 可能结算两次（点 Stop 时先 cancelled 再 idle），而 setRunState 不清 startTime，
+    // 第二次会用「更长的耗时 ÷ 同一批 token」记成更慢的样本，把平均值系统性拉低。
+    // 所以只在本会话还处于 running/failed 时采样，并按 runId 去重。
+    const sampleKey = event.runId ? String(event.runId) : null
+    if (wasActive && (sampleKey === null || sampleKey !== lastSpeedSampleRunId)) {
+      lastSpeedSampleRunId = sampleKey
+      recordTokenSpeedSample(rs.runOutputTokens, durationMs)
+    }
     state.setRunState({
       status: 'idle',
       lastRunId: prevRun ?? rs.lastRunId,
@@ -122,6 +136,8 @@ export function handleRun(event: RunEvent, api: StoreApi): boolean {
       activeRunId: undefined,
       activeTool: undefined,
       activeToolStatus: undefined,
+      // 结算后清掉 startTime，避免下一次结算把整段时间重复算进 durationMs。
+      startTime: undefined,
     })
     markViewIdle(state)
     state.clearPendingQueue()

@@ -14,6 +14,7 @@ import { sessionPreviewProcess } from '../../session-preview-process'
 import { contextPreviewSchema, modelListSchema, modelSetSchema, runtimeGetStateSchema, thinkingLevelSetSchema } from '../schemas'
 import type { ModelEntry } from '../../active-sdk-models'
 import { modelThinkingLevels, MODEL_THINKING_LEVELS } from '@shared/model-thinking-levels'
+import { errorMessage } from '@shared/error-message'
 import { getSessionModelOverrides } from '../../session-model-overrides-instance'
 import { normalizeSessionKey } from '../../worker-session-key'
 import { readPiAgentGlobalSettingsFromDisk } from '../../pi-agent-settings-read'
@@ -136,6 +137,40 @@ export function registerModelRuntimeHandlers(): void {
       onSdkError: (error) => console.error('[IPC] model.list failed:', error),
     })
     return { models }
+  })
+
+  /**
+   * 手动刷新模型列表（输入框模型下拉右上角的刷新按钮）。
+   *
+   * 光重发 model.list 不够：worker 池里每个活着的 slot 各持一份模型注册表，设置里新加/改过的
+   * provider 只有 reloadModels 之后才会进它们手里。所以这里先让所有 slot 重载，再把磁盘上
+   * 最新的可用列表回给渲染层，一次往返就把「设置里改了模型，正在聊的对话没跟上」抹平。
+   */
+  registerHandler('ipc:model.reload', async () => {
+    try {
+      await workerManager.reloadModels()
+    } catch (error) {
+      console.warn('[IPC] model.reload worker reload failed:', error)
+    }
+    try {
+      const models = await listModelsOffThread('available')
+      return {
+        ok: true,
+        models: models.map((m) => ({
+          id: m.id,
+          name: m.name || m.id,
+          provider: m.provider || '',
+          contextWindow: m.contextWindow || 0,
+          maxOutput: m.maxOutput || m.maxTokens || 0,
+          available: m.available ?? true,
+          availableThinkingLevels: m.availableThinkingLevels ?? modelThinkingLevels(m),
+          managedBy: m.managedBy,
+          auth: m.auth,
+        })),
+      }
+    } catch (error) {
+      return { ok: false, models: [], error: errorMessage(error) || 'model_reload_failed' }
+    }
   })
 
   /**

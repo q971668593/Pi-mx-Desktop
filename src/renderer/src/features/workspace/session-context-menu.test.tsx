@@ -61,18 +61,37 @@ describe('SessionContextMenuPortal mutations refresh the owning workspace', () =
     workspaceMocks.activateWorkspace.mockClear()
   })
 
-  it('should_activate_owning_workspace_when_continuing_a_foreign_session', async () => {
+  // 「继续」已从右键菜单移除：打开对话靠单击行，菜单只留管理动作。
+  it('no longer offers the continue item', () => {
     render(<SessionContextMenuPortal menu={MENU} onClose={() => {}} onSessionsChange={() => {}} />)
+    expect(screen.queryByText('common:sidebar.continue')).toBeNull()
+    expect(workspaceMocks.activateWorkspace).not.toHaveBeenCalled()
+  })
+
+  it('archive hides the session from the sidebar and refreshes the owning workspace', async () => {
+    invokeMock.mockResolvedValue({ ok: true, entry: { id: 'a1' } })
+    const onSessionsChange = vi.fn()
+    const onSessionRemoved = vi.fn()
+    render(
+      <SessionContextMenuPortal
+        menu={MENU}
+        onClose={() => {}}
+        onSessionsChange={onSessionsChange}
+        onSessionRemoved={onSessionRemoved}
+      />,
+    )
 
     await act(async () => {
-      fireEvent.click(screen.getByText('common:sidebar.continue'))
+      fireEvent.click(screen.getByText('common:sidebar.archiveSession'))
     })
 
-    expect(workspaceMocks.activateWorkspace).toHaveBeenCalledWith('/proj/a', {
-      sessionId: 's1',
+    expect(invokeMock).toHaveBeenCalledWith('session.archive', {
       sessionFile: '/proj/a/s1.jsonl',
+      workspaceId: '/proj/a',
+      title: '旧标题',
     })
-    expect(workspaceMocks.switchSessionInPlace).not.toHaveBeenCalled()
+    expect(onSessionRemoved).toHaveBeenCalledWith({ sessionFile: '/proj/a/s1.jsonl', workspacePath: '/proj/a' })
+    expect(onSessionsChange).toHaveBeenCalledWith('/proj/a')
   })
 
   // #94: a native window.confirm leaves Windows Electron pages untypable until alt-tab
@@ -106,6 +125,7 @@ describe('SessionContextMenuPortal mutations refresh the owning workspace', () =
     expect(invokeMock).toHaveBeenCalledWith('session.delete', {
       sessionFile: '/proj/a/s1.jsonl',
       workspaceId: '/proj/a',
+      title: '旧标题',
     })
     expect(onSessionsChange).toHaveBeenCalledWith('/proj/a')
   })

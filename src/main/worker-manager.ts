@@ -29,9 +29,10 @@ import {
   remapSessionWorkerSlot,
   slotRequest,
 } from './worker-manager-pool'
-import type { WorkerInitResult, WorkerSlot } from './worker-manager-types'
+import type { GoalRoundStart, WorkerInitResult, WorkerSlot } from './worker-manager-types'
 import { normalizeSessionKey, workspacePoolKey } from './worker-session-key'
 import { getSessionGoalStore } from './session-goals-instance'
+import { buildLessonRulesSection } from './feedback-lessons-store'
 import { isWslWindowsPath } from '@shared/wsl-path'
 import { getAgentRuntimeConfig, isWslRuntimeActive } from './wsl/runtime-config'
 import { normalizeWorkspaceCwd } from './wsl/workspace-path'
@@ -658,6 +659,42 @@ export class WorkerManager {
     await this.dispatchPrompt('prompt', text, sessionFile)
   }
 
+  /**
+   * 把沉淀下来的教训规则推给 live worker（下一轮 before_agent_start 进 system section）。
+   * 跟 setGoal 同样的三不原则：worker 不在不拉起、slot 对不上不硬推、失败只记日志。
+   */
+  async setLessonRules(rules: string | null, sessionFile?: string): Promise<void> {
+    const sk = sessionFile ? normalizeSessionKey(sessionFile) : null
+    const slot = sk ? this.pool.get(sk) : this.foregroundSlot()
+    if (!slot || slot.stopping) return
+    if (sk && slot.sessionFile && normalizeSessionKey(slot.sessionFile) !== sk) return
+    try {
+      await this.requestOnSlot(slot, 'setLessonRules', { rules, sessionFile: sk ?? undefined })
+    } catch (error) {
+      console.warn('[WorkerManager] lesson rules push failed:', error)
+    }
+  }
+
+  /**
+   * 让某会话按当前目标再跑一轮（目标条的「开始」和自动续跑都走这里）。
+   *
+   * 冷会话先唤醒再发：以前冷会话直接返回 "cold" 什么也不做，用户看到按钮点了没反应，
+   * 又没有任何提示。这里把「唤醒」也归到 manager 里，IPC 层只管调用与回报结果。
+   */
+  async startGoalRound(sessionFile: string, text: string): Promise<GoalRoundStart> {
+    if (!this.hasLiveSessionWorker(sessionFile)) {
+      try {
+        await this.loadSession(sessionFile)
+      } catch (error) {
+        console.warn('[WorkerManager] goal round could not wake a cold session:', error)
+        return { started: false, reason: 'wake_failed' }
+      }
+    }
+    if (!this.hasLiveSessionWorker(sessionFile)) return { started: false, reason: 'wake_failed' }
+    await this.sendPrompt(text, sessionFile)
+    return { started: true }
+  }
+
   async continueGoal(sessionFile: string, runId: string, text: string, expectedUpdatedAt: number): Promise<boolean> {
     const key = normalizeSessionKey(sessionFile)
     const slot = this.pool.get(key)
@@ -683,6 +720,7 @@ export class WorkerManager {
     const slot = await this.resolveSlotForRpc(sessionFile)
     const key = normalizeSessionKey(slot.sessionFile || sessionFile || '')
     await this.pushGoalBeforeTurn(key || undefined)
+    await this.pushLessonsBeforeTurn(key || undefined)
     const claim = key && !slot.stopping && !slot.agentTurnActive && !this.activeRuns.has(key)
       ? this.claimRun(key, slot)
       : null
@@ -699,10 +737,20 @@ export class WorkerManager {
   }
 
   /**
-   * Every turn starts with the session's current goal in the worker's system prompt section.
-   * Doing it here (not in the IPC handler) covers the remote host and queued steering too.
+   * 每轮都把最新的教训规则带上：跟 pushGoalBeforeTurn 放一起，
+   * 远程主机和排队消息走的也是这两条路，不会漏。规则文本稳定时 worker 侧不重复追加。
    */
+  private async pushLessonsBeforeTurn(sessionFile?: string): Promise<void> {
+    if (!sessionFile) return
+    try {
+      await this.setLessonRules(buildLessonRulesSection(), sessionFile)
+    } catch (error) {
+      console.warn('[WorkerManager] lesson rules push before prompt failed:', error)
+    }
+  }
   private async pushGoalBeforeTurn(sessionFile?: string): Promise<void> {
+    // Every turn starts with the session's current goal in the worker's system prompt section.
+    // Doing it here (not in the IPC handler) covers the remote host and queued steering too.
     if (!sessionFile) return
     try {
       await this.setGoal(getSessionGoalStore().promptSection(sessionFile), sessionFile)
@@ -725,6 +773,7 @@ export class WorkerManager {
   }
   async steer(text: string, sessionFile?: string): Promise<void> {
     await this.pushGoalBeforeTurn(sessionFile)
+    await this.pushLessonsBeforeTurn(sessionFile)
     await this.request('steer', { text, sessionFile })
   }
   async followUp(text: string, sessionFile?: string): Promise<void> {

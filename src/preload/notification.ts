@@ -10,6 +10,14 @@ const api = {
   hover(paused: boolean): void {
     ipcRenderer.send('notification:hover', { paused: paused === true })
   },
+  /**
+   * 卡片自己量到的总高度：主进程据此把悬浮窗撑到刚好装下全文。
+   * 不传时窗口回落到单卡默认高度。
+   */
+  resize(height: number): void {
+    if (typeof height !== 'number' || !Number.isFinite(height)) return
+    ipcRenderer.send('notification:resize', { height: Math.round(height) })
+  },
   onFocus(callback: () => void): () => void {
     const handler = (): void => callback()
     ipcRenderer.on('notification:focus', handler)

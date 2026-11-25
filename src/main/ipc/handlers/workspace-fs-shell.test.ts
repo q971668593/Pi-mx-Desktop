@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   handlers: new Map<string, (req: { path: string }) => Promise<unknown>>(),
   runtime: { mode: 'wsl', distro: 'Ubuntu' },
 }))
-vi.mock('electron', () => ({ shell: { openPath: vi.fn(), showItemInFolder: vi.fn() } }))
+vi.mock('electron', () => ({ shell: { openPath: vi.fn(), showItemInFolder: vi.fn(), trashItem: vi.fn() } }))
 vi.mock('../registry', () => ({
   registerHandlerWithSchema: (name: string, _schema: unknown, handler: (req: { path: string }) => Promise<unknown>) => mocks.handlers.set(name, handler),
 }))
@@ -54,5 +54,30 @@ describe('workspace shell file operations', () => {
     mocks.runtime.mode = 'host'
     await mocks.handlers.get('ipc:shell.openPath')!({ path: 'C:\\report.pdf' })
     expect(shell.openPath).toHaveBeenLastCalledWith('C:\\report.pdf')
+  })
+
+  it('refuses to trash the workspace root itself', async () => {
+    await expect(mocks.handlers.get('ipc:workspace.fs.trash')!({ workspaceRoot: 'C:\\proj', relativePath: '.' }))
+      .resolves.toEqual({ ok: false, error: 'refuse_root' })
+    expect(shell.trashItem).not.toHaveBeenCalled()
+  })
+
+  it('reports missing files instead of trashing', async () => {
+    await expect(mocks.handlers.get('ipc:workspace.fs.trash')!({ workspaceRoot: 'C:\\proj', relativePath: 'nope.txt' }))
+      .resolves.toEqual({ ok: false, error: 'not_found' })
+    expect(shell.trashItem).not.toHaveBeenCalled()
+  })
+
+  it('trashes a real file through the OS recycle bin', async () => {
+    const { mkdtemp, writeFile } = await import('node:fs/promises')
+    const { tmpdir } = await import('node:os')
+    const { join, basename } = await import('node:path')
+    const dir = await mkdtemp(join(tmpdir(), 'trash-test-'))
+    await writeFile(join(dir, 'a.txt'), 'x')
+    vi.mocked(shell.trashItem).mockResolvedValue(undefined)
+    await expect(mocks.handlers.get('ipc:workspace.fs.trash')!({ workspaceRoot: dir, relativePath: 'a.txt' }))
+      .resolves.toEqual({ ok: true })
+    expect(shell.trashItem).toHaveBeenCalledWith(join(dir, 'a.txt'))
+    expect(basename(dir)).toMatch(/^trash-test-/)
   })
 })

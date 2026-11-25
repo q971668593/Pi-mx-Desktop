@@ -13,12 +13,13 @@ import { ensureAvailableModels } from '@renderer/lib/available-models-cache'
 import { commitSessionDisplayMeta } from '@renderer/lib/session-display-meta'
 import { sessionFilesEqual } from '@renderer/lib/session-file-key'
 import { enterBlankSession } from '@renderer/lib/blank-session-transition'
+import { composerTurnActive } from '@renderer/lib/session-worker-sync'
 import { draftModelThinking } from './thinking-level-actions'
 
 /** App-native builtins handled directly in the renderer (not forwarded as plain prompt text). */
 const APP_BUILTIN = new Set([
   'model', 'thinking', 'clear', 'compact', 'new', 'fork', 'clone',
-  'help', 'settings', 'review', 'run', 'tree', 'skills', 'prompts', 'purge',
+  'help', 'settings', 'review', 'run', 'tree', '澄清', 'clarify', 'skills', 'prompts', 'purge',
 ])
 
 export function isExecutableBuiltin(input: string): boolean {
@@ -194,9 +195,67 @@ export async function executeSlashCommand(
       }
       return true
     }
-    case 'review': { setActivePanel('review'); toast.info('已切换到 Review 面板'); return true }
+    case 'review': { useUIStore.getState().focusRightPanel('review'); toast.info('已切换到 Review 面板'); return true }
     case 'run': { setActivePanel('run'); toast.info('已切换到 Run 面板'); return true }
-    case 'tree': { setActivePanel('tree'); return true }
+    case 'tree': { useUIStore.getState().focusRightPanel('tree'); return true }
+    case '澄清':
+    case 'clarify': {
+      const workspaceId = store.currentWorkspace || ''
+      if (!workspaceId) {
+        toast.error(i18n.t('composer:toast.needWorkspace'))
+        return true
+      }
+      if (!arg.trim()) {
+        toast.error(i18n.t('composer:toast.growNeedText'))
+        return true
+      }
+      if (composerTurnActive(store)) {
+        toast.info(i18n.t('composer:toast.growBusy'))
+        return true
+      }
+      try {
+        const currentFile = store.historySessionFile
+        if (currentFile) {
+          const { resolveGrowTarget, growDraftPrefix, hasGrowMemoryDraft } = await import('@renderer/features/grow/use-grow-target')
+          const { findGrowSessionId } = await import('@renderer/features/grow/grow-round')
+          const currentTree = await resolveGrowTarget(workspaceId, currentFile, findGrowSessionId(store.timelineItems))
+          if (currentTree) {
+            const prefix = growDraftPrefix(workspaceId, currentFile, currentTree)
+            if (hasGrowMemoryDraft(prefix) || Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)).some((key) => key?.startsWith(prefix))) {
+              toast.error('当前需求树有未保存的题卡草稿，请先保存或取消修改。')
+              return true
+            }
+          }
+        }
+        const res = (await ipcClient.invoke('grow:startSession', { workspaceId, requirement: arg })) as {
+          ok?: boolean; sessionId?: string; error?: string
+        }
+        if (!res?.ok || !res.sessionId) {
+          toast.error(i18n.t('composer:toast.growFailed', { reason: res?.error ?? 'unknown' }))
+          return true
+        }
+        const [{ buildGrowKickoff }, { sendComposerPrompt }] = await Promise.all([
+          import('@renderer/features/grow/grow-kickoff'),
+          import('@renderer/lib/send-composer-prompt'),
+        ])
+        const view = useUIStore.getState()
+        if (view.viewSessionKey !== store.viewSessionKey || view.currentWorkspace !== workspaceId || view.historySessionFile !== currentFile) return true
+        if (currentFile) {
+          const binding = await ipcClient.invoke('grow:listSessions', { workspaceId, action: 'setBinding', sessionFile: currentFile, sessionId: res.sessionId })
+          if (!binding?.ok) throw new Error('需求树绑定失败')
+          window.dispatchEvent(new CustomEvent('grow:binding-changed'))
+        }
+        view.focusRightPanel('grow')
+        const sent = await sendComposerPrompt(buildGrowKickoff(res.sessionId, arg))
+        if (!sent) throw new Error('The clarification request was not sent')
+        toast.success(i18n.t('composer:toast.growStarted'))
+      } catch (e) {
+        console.error('/澄清 failed:', e)
+        const detail = e instanceof Error && e.message ? `：${e.message}` : ''
+        toast.error(`${i18n.t('composer:toast.growFailed', { reason: 'exception' })}${detail}`)
+      }
+      return true
+    }
     case 'settings': { toast.info('请从左侧栏打开设置'); return true }
     case 'purge': {
       const workspaceId = useUIStore.getState().currentWorkspace || ''

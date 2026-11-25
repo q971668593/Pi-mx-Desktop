@@ -11,7 +11,7 @@ import { workerManager } from './worker-manager'
 import { sessionPreviewProcess } from './session-preview-process'
 import { guardAppQuit, setRunningTerminalsProbe } from './window-close-guard'
 import { runningTerminalCount, shutdownTerminals } from './terminal/terminal-service'
-import { configStore } from './config-store'
+import { configStore, migrateNotificationDefaultsV2 } from './config-store'
 import { scheduleStartupWarmupFallback } from './startup-warmup'
 import { bindWslPersistence } from './wsl/wsl-env'
 import { is } from '@electron-toolkit/utils'
@@ -90,7 +90,14 @@ app.whenReady().then(() => {
     })
   }
   createMenu()
+  // 回收站只留最近 5 天：启动时先清一遍，用户打开列表时还会再清。
+  void import('./session-trash-store').then(({ purgeExpiredSessionTrash }) => {
+    const purged = purgeExpiredSessionTrash()
+    if (purged > 0) console.log(`[session-trash] purged ${purged} expired session(s)`)
+  })
   const closeToTray = ensureAppTray() !== null
+  // 通知默认值统一到「都通知」：老盘里的旧默认值先搬一次，再按新规则读设置。
+  migrateNotificationDefaultsV2()
   initializeCompletionNotifications()
 
   // CSP: inject Content-Security-Policy header in production (skip dev for Vite HMR)

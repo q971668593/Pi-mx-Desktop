@@ -4,7 +4,7 @@
 > 事实源：`src/main/**/*.ts` 中的 `registerHandler` / `registerHandlerWithSchema` 调用。
 > 手写文档在 `doc/IPC-CONTRACTS.md`；本文件保证「代码里注册了什么」与「文档里写了什么」不会漂移。
 
-- invoke 通道：**323** 个（唯一）
+- invoke 通道：**360** 个（唯一）
 - main → renderer 事件通道：**12** 个（唯一）
 - 非字面量注册：**0** 处
 - 动态事件通道（通道名非常量，未收录）：**7** 处
@@ -18,16 +18,19 @@
 | --- | ---: |
 | `browser` | 35 |
 | `gitBoard` | 32 |
-| `session` | 23 |
-| `workspace` | 21 |
+| `session` | 29 |
+| `workspace` | 22 |
 | `extensions` | 14 |
 | `teamBoard` | 14 |
 | `remote` | 12 |
 | `desktop` | 11 |
+| `grow` | 9 |
+| `grow-prd` | 9 |
 | `mcp` | 9 |
-| `model` | 8 |
+| `model` | 9 |
+| `sessionGoal` | 9 |
+| `feedback` | 8 |
 | `app` | 7 |
-| `sessionGoal` | 7 |
 | `asr` | 6 |
 | `pi` | 6 |
 | `prompt` | 6 |
@@ -63,6 +66,7 @@
 | `wsl` | 2 |
 | `aiActivityGlow` | 1 |
 | `context` | 1 |
+| `delegate` | 1 |
 | `link` | 1 |
 | `prompts` | 1 |
 | `registry` | 1 |
@@ -149,10 +153,14 @@
 | `ipc:gitBoard.unstageAll` | registerHandlerWithSchema | `src/main/ipc/handlers/git-board.ts` |
 | `ipc:gitBoard.worktree` | registerHandlerWithSchema | `src/main/ipc/handlers/git-board.ts` |
 
-### session（23）
+### session（29）
 
 | 通道 | 注册方式 | 注册位置 |
 | --- | --- | --- |
+| `ipc:session.archive` | registerHandler | `src/main/ipc/handlers/session.ts` |
+| `ipc:session.archive.drop` | registerHandler | `src/main/ipc/handlers/session.ts` |
+| `ipc:session.archive.list` | registerHandler | `src/main/ipc/handlers/session.ts` |
+| `ipc:session.archive.restore` | registerHandler | `src/main/ipc/handlers/session.ts` |
 | `ipc:session.branchAnchors` | registerHandlerWithSchema | `src/main/ipc/handlers/session.ts` |
 | `ipc:session.clone` | registerHandlerWithSchema | `src/main/ipc/handlers/session.ts` |
 | `ipc:session.compact` | registerHandlerWithSchema | `src/main/ipc/handlers/session.ts` |
@@ -174,10 +182,12 @@
 | `ipc:session.setEphemeralDraft` | registerHandlerWithSchema | `src/main/ipc/handlers/session.ts` |
 | `ipc:session.setPendingBind` | registerHandlerWithSchema | `src/main/ipc/handlers/session.ts` |
 | `ipc:session.setVisible` | registerHandlerWithSchema | `src/main/ipc/handlers/session.ts` |
+| `ipc:session.trash.list` | registerHandler | `src/main/ipc/handlers/session.ts` |
+| `ipc:session.trash.purge` | registerHandler | `src/main/ipc/handlers/session.ts` |
 | `ipc:session.tree` | registerHandlerWithSchema | `src/main/ipc/handlers/session.ts` |
 | `ipc:session.turnSnapshot` | registerHandlerWithSchema | `src/main/ipc/handlers/session.ts` |
 
-### workspace（21）
+### workspace（22）
 
 | 通道 | 注册方式 | 注册位置 |
 | --- | --- | --- |
@@ -190,6 +200,7 @@
 | `ipc:workspace.fs.rename` | registerHandlerWithSchema | `src/main/ipc/handlers/workspace-fs.ts` |
 | `ipc:workspace.fs.resolveFileNames` | registerHandlerWithSchema | `src/main/ipc/handlers/workspace-fs.ts` |
 | `ipc:workspace.fs.search` | registerHandlerWithSchema | `src/main/ipc/handlers/workspace-fs.ts` |
+| `ipc:workspace.fs.trash` | registerHandlerWithSchema | `src/main/ipc/handlers/workspace-fs.ts` |
 | `ipc:workspace.fs.writeText` | registerHandlerWithSchema | `src/main/ipc/handlers/workspace-fs.ts` |
 | `ipc:workspace.isSandbox` | registerHandlerWithSchema | `src/main/ipc/handlers/workspace.ts` |
 | `ipc:workspace.open` | registerHandlerWithSchema | `src/main/ipc/handlers/workspace.ts` |
@@ -274,6 +285,34 @@
 | `ipc:desktop.setSleepBlock` | registerHandlerWithSchema | `src/main/ipc/handlers/desktop-chrome.ts` |
 | `ipc:desktop.status` | registerHandler | `src/main/ipc/handlers/desktop-chrome.ts` |
 
+### grow（9）
+
+| 通道 | 注册方式 | 注册位置 |
+| --- | --- | --- |
+| `ipc:grow:beginPlan` | registerHandlerWithSchema | `src/main/ipc/handlers/grow.ts` |
+| `ipc:grow:convertToTeam` | registerHandlerWithSchema | `src/main/ipc/handlers/grow.ts` |
+| `ipc:grow:ensureDir` | registerHandlerWithSchema | `src/main/ipc/handlers/grow.ts` |
+| `ipc:grow:finishPlan` | registerHandlerWithSchema | `src/main/ipc/handlers/grow.ts` |
+| `ipc:grow:getState` | registerHandlerWithSchema | `src/main/ipc/handlers/grow.ts` |
+| `ipc:grow:listSessions` | registerHandlerWithSchema | `src/main/ipc/handlers/grow.ts` |
+| `ipc:grow:putQuestions` | registerHandlerWithSchema | `src/main/ipc/handlers/grow.ts` |
+| `ipc:grow:startSession` | registerHandlerWithSchema | `src/main/ipc/handlers/grow.ts` |
+| `ipc:grow:submitAnswer` | registerHandlerWithSchema | `src/main/ipc/handlers/grow.ts` |
+
+### grow-prd（9）
+
+| 通道 | 注册方式 | 注册位置 |
+| --- | --- | --- |
+| `ipc:grow-prd:commit` | registerHandler | `src/main/ipc/handlers/grow-prd.ts` |
+| `ipc:grow-prd:createChange` | registerHandler | `src/main/ipc/handlers/grow-prd.ts` |
+| `ipc:grow-prd:listIncomplete` | registerHandler | `src/main/ipc/handlers/grow-prd.ts` |
+| `ipc:grow-prd:projectConfirm` | registerHandler | `src/main/ipc/handlers/grow-prd.ts` |
+| `ipc:grow-prd:projectContext` | registerHandler | `src/main/ipc/handlers/grow-prd.ts` |
+| `ipc:grow-prd:projectListIncomplete` | registerHandler | `src/main/ipc/handlers/grow-prd.ts` |
+| `ipc:grow-prd:projectPreview` | registerHandler | `src/main/ipc/handlers/grow-prd.ts` |
+| `ipc:grow-prd:projectRecover` | registerHandler | `src/main/ipc/handlers/grow-prd.ts` |
+| `ipc:grow-prd:read` | registerHandler | `src/main/ipc/handlers/grow-prd.ts` |
+
 ### mcp（9）
 
 | 通道 | 注册方式 | 注册位置 |
@@ -288,7 +327,7 @@
 | `ipc:mcp.server.save` | registerHandler | `src/main/ipc/handlers/mcp.ts` |
 | `ipc:mcp.status` | registerHandler | `src/main/ipc/handlers/mcp.ts` |
 
-### model（8）
+### model（9）
 
 | 通道 | 注册方式 | 注册位置 |
 | --- | --- | --- |
@@ -299,7 +338,35 @@
 | `ipc:model.auth.providers` | registerHandlerWithSchema | `src/main/ipc/handlers/model-auth.ts` |
 | `ipc:model.cycle` | registerHandler | `src/main/ipc/handlers/model-runtime.ts` |
 | `ipc:model.list` | registerHandlerWithSchema | `src/main/ipc/handlers/model-runtime.ts` |
+| `ipc:model.reload` | registerHandler | `src/main/ipc/handlers/model-runtime.ts` |
 | `ipc:model.set` | registerHandlerWithSchema | `src/main/ipc/handlers/model-runtime.ts` |
+
+### sessionGoal（9）
+
+| 通道 | 注册方式 | 注册位置 |
+| --- | --- | --- |
+| `ipc:sessionGoal.clear` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
+| `ipc:sessionGoal.continue` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
+| `ipc:sessionGoal.get` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
+| `ipc:sessionGoal.loopRound` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
+| `ipc:sessionGoal.markDone` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
+| `ipc:sessionGoal.resume` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
+| `ipc:sessionGoal.set` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
+| `ipc:sessionGoal.setAutoRun` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
+| `ipc:sessionGoal.toggleCriterion` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
+
+### feedback（8）
+
+| 通道 | 注册方式 | 注册位置 |
+| --- | --- | --- |
+| `ipc:feedback.delete` | registerHandler | `src/main/ipc/handlers/feedback.ts` |
+| `ipc:feedback.inject.set` | registerHandler | `src/main/ipc/handlers/feedback.ts` |
+| `ipc:feedback.list` | registerHandler | `src/main/ipc/handlers/feedback.ts` |
+| `ipc:feedback.report` | registerHandler | `src/main/ipc/handlers/feedback.ts` |
+| `ipc:feedback.rule.add` | registerHandler | `src/main/ipc/handlers/feedback.ts` |
+| `ipc:feedback.rule.delete` | registerHandler | `src/main/ipc/handlers/feedback.ts` |
+| `ipc:feedback.setStatus` | registerHandler | `src/main/ipc/handlers/feedback.ts` |
+| `ipc:feedback.summarize` | registerHandler | `src/main/ipc/handlers/feedback.ts` |
 
 ### app（7）
 
@@ -312,18 +379,6 @@
 | `ipc:app.ignoreUpdateVersion` | registerHandler | `src/main/ipc/handlers/settings.ts` |
 | `ipc:app.openRelease` | registerHandler | `src/main/ipc/handlers/settings.ts` |
 | `ipc:app.shellReady` | registerHandler | `src/main/ipc/handlers/desktop-chrome.ts` |
-
-### sessionGoal（7）
-
-| 通道 | 注册方式 | 注册位置 |
-| --- | --- | --- |
-| `ipc:sessionGoal.clear` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
-| `ipc:sessionGoal.continue` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
-| `ipc:sessionGoal.get` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
-| `ipc:sessionGoal.markDone` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
-| `ipc:sessionGoal.resume` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
-| `ipc:sessionGoal.set` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
-| `ipc:sessionGoal.toggleCriterion` | registerHandlerWithSchema | `src/main/ipc/handlers/session-goal.ts` |
 
 ### asr（6）
 
@@ -623,6 +678,12 @@
 | 通道 | 注册方式 | 注册位置 |
 | --- | --- | --- |
 | `ipc:context.preview` | registerHandlerWithSchema | `src/main/ipc/handlers/model-runtime.ts` |
+
+### delegate（1）
+
+| 通道 | 注册方式 | 注册位置 |
+| --- | --- | --- |
+| `ipc:delegate.sessionFiles` | registerHandlerWithSchema | `src/main/ipc/handlers/delegate.ts` |
 
 ### link（1）
 

@@ -1,3 +1,9 @@
+.sidebar-search-block {
+  position: sticky;
+  top: -4px;
+  z-index: 20;
+  background: var(--surface-sidebar);
+}
 .sidebar-project-card {
   margin-block: 3px;
   padding-block: 2px;
@@ -16,7 +22,12 @@
 }
 .sidebar-project-header .sidebar-project-hit { min-height: 36px; }
 .sidebar-project-header .sidebar-project-toggle,
-.sidebar-project-header .sidebar-project-add { width: 24px; flex-shrink: 0; }
+.sidebar-project-header .sidebar-project-add,
+.sidebar-project-header .sidebar-project-trash { width: 24px; flex-shrink: 0; }
+/* 回收站图标平时淡出，鼠标进项目行才明显（不和 + 号抢视觉）。 */
+.sidebar-project-header .sidebar-project-trash { opacity: 0.45; transition: opacity 120ms ease; }
+.sidebar-project-row:hover .sidebar-project-trash,
+.sidebar-project-header .sidebar-project-trash:focus-visible { opacity: 1; }
 .sidebar-project-name {
   min-width: 0; color: var(--text-primary); font-size: 13px; font-weight: 600; line-height: 20px;
 }

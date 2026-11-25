@@ -34,6 +34,8 @@ let host: BrowserWindow | null = null
 let hostReady = false
 let hostFailed = false
 let hoverPaused = false
+/** 渲染进程报上来的卡片总高度（展开后的真实高度）；null = 还没量过，用默认几何。 */
+let measuredHostHeight: number | null = null
 let expireTimer: ReturnType<typeof setTimeout> | null = null
 /** Sounds requested before the host page finished loading. */
 const pendingSounds: Array<{ preset: AlertSoundPreset; volume: number }> = []
@@ -68,7 +70,7 @@ function sendUpdate(): void {
 function placeHost(): boolean {
   if (!host || host.isDestroyed()) return false
   const area = workArea()
-  const bounds = notificationHostBounds(area, visibleCards().length || 1)
+  const bounds = notificationHostBounds(area, visibleCards().length || 1, measuredHostHeight)
   host.setBounds(bounds)
   return notificationBoundsLookLegal(host.getBounds(), area)
 }
@@ -195,6 +197,17 @@ function ensureListeners(): void {
       placeHost()
     }
   })
+  ipcMain.on('notification:resize', (event, payload: { height?: number }) => {
+    if (!host || event.sender !== host.webContents) return
+    const height = typeof payload?.height === 'number' && Number.isFinite(payload.height)
+      ? Math.round(payload.height)
+      : null
+    if (height === null || height <= 0) return
+    // 卡片默认展开：窗口跟着正文长高，不需要用户手动拉。
+    if (measuredHostHeight !== null && Math.abs(measuredHostHeight - height) < 4) return
+    measuredHostHeight = height
+    if (active.length > 0) placeHost()
+  })
   ipcMain.on('notification:hover', (event, payload: { paused?: boolean }) => {
     if (!host || event.sender !== host.webContents) return
     hoverPaused = payload?.paused === true
@@ -243,6 +256,8 @@ async function createHost(): Promise<boolean> {
   cancelSoundIdle()
   if (host && !host.isDestroyed()) return true
   ensureListeners()
+  // 新窗口从默认几何开始，等页面报回真实高度再撑开。
+  measuredHostHeight = null
   try {
     host = new BrowserWindow(
       completionNotificationWindowOptions(join(__dirname, '../preload/notification.cjs')),
@@ -252,6 +267,7 @@ async function createHost(): Promise<boolean> {
     host.on('closed', () => {
       host = null
       hostReady = false
+      measuredHostHeight = null
       cancelHostDestroy()
       cancelSoundIdle()
     })

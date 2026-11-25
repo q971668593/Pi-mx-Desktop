@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
-import { FolderOpen, GitFork, ListX, Pencil, Trash2 } from '@renderer/components/icons'
+import { Archive, FolderOpen, GitFork, ListX, Pencil, Trash2 } from '@renderer/components/icons'
 import { ipcClient } from '@renderer/lib/ipc-client'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { activateWorkspace } from '@renderer/lib/activate-workspace'
@@ -35,11 +35,14 @@ export function ProjectContextMenuPortal({
   onClose,
   onListChange,
   onHide,
+  onViewArchive,
 }: {
   menu: ProjectMenuState
   onClose: () => void
   onListChange: () => void
   onHide: (paths: string[]) => void
+  /** 打开这个项目的「归档对话」全屏列表。 */
+  onViewArchive?: (path: string) => void
 }) {
   const { t } = useTranslation()
   const panelRef = useRef<HTMLDivElement>(null)
@@ -237,6 +240,21 @@ export function ProjectContextMenuPortal({
                 <Pencil className="h-3 w-3 shrink-0" strokeWidth={2} />
                 {t('common:sidebar.rename')}
               </button>
+              {onViewArchive ? (
+                <button
+                  type="button"
+                  className={contextMenuItemClass}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onViewArchive(menu.path)
+                    onClose()
+                  }}
+                >
+                  <Archive className="h-3 w-3 shrink-0" strokeWidth={2} />
+                  {t('common:sidebar.viewArchivedSessions')}
+                </button>
+              ) : null}
               <button
                 type="button"
                 className={contextMenuDangerItemClass}

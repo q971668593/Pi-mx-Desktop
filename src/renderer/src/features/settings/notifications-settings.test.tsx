@@ -92,7 +92,8 @@ describe('NotificationsSettings', () => {
   it('exposes selected semantics for completion notification segments when rules are expanded', () => {
     render(<NotificationsSettings />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'settings:notifications.rulesShow' }))
+    // 规则区块默认展开：进来就能看到「都通知」那几项，不用先点开。
+    expect(screen.getByRole('button', { name: 'settings:notifications.rulesHide' })).toBeInTheDocument()
 
     expect(screen.getByRole('button', { name: 'settings:general.alertPreview.response' })).toHaveAttribute(
       'aria-pressed',
@@ -124,7 +125,6 @@ describe('NotificationsSettings', () => {
   it('shows feedback for a test completion notification', async () => {
     render(<NotificationsSettings />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'settings:notifications.rulesShow' }))
     fireEvent.click(screen.getByRole('button', { name: 'settings:general.alertTestAction' }))
 
     expect(await screen.findByRole('status')).toHaveTextContent('settings:general.alertTestSent')

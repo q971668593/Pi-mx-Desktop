@@ -1,7 +1,5 @@
 {
   "bar": {
-    "pauseAutoRun": "Pause auto-continue",
-    "enableAutoRun": "Auto-continue",
     "placeholder": "What should this session achieve? (one sentence)",
     "set": "Set goal",
     "edit": "Edit goal",
@@ -15,11 +13,25 @@
     "copied": "Copied",
     "loopStalled": "Auto loop paused: no progress for several rounds, {{count}} criteria left",
     "loopCapped": "Auto loop stopped at the round limit, {{count}} criteria left",
-    "running": "Running",
+    "running": "Running now",
+    "waiting": "Waiting for next round",
     "paused": "Paused",
-    "stop": "Stop",
+    "stopped": "Stopped",
+    "waitingHint": "Auto-run is on; the next round starts when this one finishes",
+    "pausedHint": "Auto-run is off; press Start to continue",
+    "rounds": "Round {{count}}/{{max}}",
+    "roundsHint": "Auto-run stops by itself at {{max}} rounds",
+    "lastAdvanced": "Last progress {{time}}",
+    "timeJustNow": "just now",
+    "timeMinutes": "{{count}} min ago",
+    "timeHours": "{{count}} h ago",
+    "stop": "Stop this round",
     "stopping": "Stopping…",
-    "start": "Start again",
-    "starting": "Starting…"
+    "start": "Start",
+    "starting": "Starting…",
+    "pause": "Pause",
+    "wakeFailed": "This round was not sent: the session could not wake up (its worker may have exited). Click Start to retry.",
+    "startFailed": "This round was not sent. Click Start to try again.",
+    "dismissHint": "Dismiss"
   }
 }

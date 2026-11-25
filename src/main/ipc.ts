@@ -1,3 +1,5 @@
+import { registerGrowPrdProjectHandlers } from './ipc/handlers/grow-prd'
+import { registerGrowHandlers } from './ipc/handlers/grow'
 import { registerDialogHandlers } from './ipc/handlers/dialog'
 import { registerWorkspaceFsHandlers } from './ipc/handlers/workspace-fs'
 import { registerWorkspaceHandlers } from './ipc/handlers/workspace'
@@ -34,10 +36,14 @@ import { registerWorkspaceTaskHandlers } from './ipc/handlers/workspace-tasks'
 import { registerTeamBoardHandlers } from './ipc/handlers/team-board'
 import { registerImageGenHandlers } from './ipc/handlers/image-gen'
 import { registerPurgeHandlers } from './ipc/handlers/purge'
+import { registerFeedbackHandlers } from './ipc/handlers/feedback'
+import { registerDelegateHandlers } from './ipc/handlers/delegate'
 
 export { registerHandler, sendEvent } from './ipc/registry'
 
 export function registerAllHandlers(): void {
+  registerGrowHandlers()
+  registerGrowPrdProjectHandlers()
   registerDialogHandlers()
   registerWorkspaceFsHandlers()
   registerWorkspaceHandlers()
@@ -74,4 +80,6 @@ export function registerAllHandlers(): void {
   registerRemoteHandlers()
   registerLinkHandlers()
   registerPurgeHandlers()
+  registerFeedbackHandlers()
+  registerDelegateHandlers()
 }

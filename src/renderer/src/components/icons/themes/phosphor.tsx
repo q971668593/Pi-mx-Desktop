@@ -90,6 +90,7 @@ import { ShieldCheckIcon as P86 } from '@phosphor-icons/react/dist/csr/ShieldChe
 import { SidebarSimpleIcon as P87 } from '@phosphor-icons/react/dist/csr/SidebarSimple'
 import { SlidersHorizontalIcon as P88 } from '@phosphor-icons/react/dist/csr/SlidersHorizontal'
 import { SparkleIcon as P89 } from '@phosphor-icons/react/dist/csr/Sparkle'
+import { PlantIcon as PPlant } from '@phosphor-icons/react/dist/csr/Plant'
 import { SpinnerGapIcon as P90 } from '@phosphor-icons/react/dist/csr/SpinnerGap'
 import { SquareIcon as P91 } from '@phosphor-icons/react/dist/csr/Square'
 import { StackIcon as P92 } from '@phosphor-icons/react/dist/csr/Stack'
@@ -218,6 +219,7 @@ export const phosphorIcons = {
   'shield-check': P86,
   'sliders-horizontal': P88,
   'sparkles': P89,
+  'sprout': PPlant,
   'square': P91,
   'sun': P93,
   'target': P95,

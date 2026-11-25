@@ -79,6 +79,11 @@ export interface StoreSchema {
   alertOnRunIdle: boolean
   /** 后台会话（非前台）run 结束时也提醒 */
   alertOnBackgroundRunIdle: boolean
+  /**
+   * 通知默认值一次性迁移标记（v2）：老版本里这两项默认是「关后台提醒 / 仅未聚焦时打扰」，
+   * 用户从没动过也会被存成旧默认。迁移只跑一次，之后用户自己的选择不再被覆盖。
+   */
+  notificationDefaultsMigratedV2?: boolean
   /** Agent 失败时提醒 */
   alertOnRunFailed: boolean
   /** AI 操作本机屏幕时，屏幕四周显示蓝色呼吸光 */
@@ -176,12 +181,12 @@ const store = new Store<StoreSchema>({
     alertNotificationEnabled: true,
     alertOnExtensionUi: true,
     alertOnRunIdle: true,
-    alertOnBackgroundRunIdle: false,
+    alertOnBackgroundRunIdle: true,
     alertOnRunFailed: true,
     aiActivityGlowEnabled: true,
     completionNotificationTimeoutSeconds: 15,
     completionNotificationPreview: 'response',
-    completionNotificationOnlyWhenUnfocused: true,
+    completionNotificationOnlyWhenUnfocused: false,
     completionNotificationDndUntil: null,
     completionNotificationDelivery: 'auto',
     // Default matches DEFAULT_MAX_SESSION_WORKERS (6); 4 个会话同时跑太容易撞上池子满。
@@ -219,6 +224,24 @@ bindSecretStoreBacking({
     if (typeof s.delete === 'function') s.delete(k)
   },
 })
+
+/**
+ * 把通知相关的默认值统一到「都通知」：后台会话完成也提醒、不在未聚焦时才打扰。
+ *
+ * electron-store 的 defaults 只对「缺键」生效，老用户盘里已经存着旧默认值，所以必须显式迁移一次。
+ * 标记写回后不再重跑：用户之后在设置里改回去的选择要能留住。
+ */
+export function migrateNotificationDefaultsV2(): boolean {
+  if (store.get('notificationDefaultsMigratedV2') === true) return false
+  store.set('alertNotificationEnabled', true)
+  store.set('alertOnExtensionUi', true)
+  store.set('alertOnRunIdle', true)
+  store.set('alertOnBackgroundRunIdle', true)
+  store.set('alertOnRunFailed', true)
+  store.set('completionNotificationOnlyWhenUnfocused', false)
+  store.set('notificationDefaultsMigratedV2', true)
+  return true
+}
 
 export const configStore = {
   get<K extends keyof StoreSchema>(key: K): StoreSchema[K] {

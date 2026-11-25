@@ -5,11 +5,12 @@ import { useTranslation } from 'react-i18next'
 import { ipcClient, onAppEvent } from '@renderer/lib/ipc-client'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { cn } from '@renderer/lib/utils'
-import { Search, Check, ChevronRight, Loader2 } from '@renderer/components/icons'
+import { Search, Check, ChevronRight, Loader2, RefreshCw } from '@renderer/components/icons'
 import { toast } from 'sonner'
 import { readRecentModels, rememberRecentModel } from '@renderer/lib/recent-models'
 import { ComposerPopover } from './composer-popover'
 import {
+  forceReloadAvailableModels,
   isAvailableModelsPending,
   peekAvailableModels,
   refreshAvailableModels,
@@ -66,6 +67,7 @@ export function ModelPicker() {
   const searchRef = useRef<HTMLInputElement>(null)
 
   const [loading, setLoading] = useState(() => isAvailableModelsPending())
+  const [reloading, setReloading] = useState(false)
 
   const reload = () => {
     // Opening the picker refreshes the list; the cached rows are already on screen
@@ -73,6 +75,24 @@ export function ModelPicker() {
     const request = refreshAvailableModels().catch(() => peekAvailableModels())
     setLoading(isAvailableModelsPending())
     return request
+  }
+
+  /** 手动刷新：设置里刚加/改过的模型立刻出现在下拉里，不用切会话或重启。 */
+  const reloadNow = async () => {
+    if (reloading) return
+    setReloading(true)
+    setLoading(true)
+    try {
+      const next = await forceReloadAvailableModels()
+      setModels(next)
+      if (next.length > 0) toast.success(t('composer:modelsRefreshed', { count: next.length }))
+      else toast.message(t('composer:modelsRefreshedEmpty'))
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error))
+    } finally {
+      setReloading(false)
+      setLoading(isAvailableModelsPending())
+    }
   }
 
   useEffect(
@@ -305,6 +325,21 @@ export function ModelPicker() {
             aria-label={t('composer:searchModelPlaceholder')}
             className="flex-1 bg-transparent text-[12px] outline-none placeholder:text-muted-foreground/40"
           />
+          {/* 刷新按钮：设置里改过模型后，正在聊的对话也能就地拿到新列表 */}
+          <button
+            type="button"
+            title={t('composer:refreshModelsHint')}
+            aria-label={t('composer:refreshModelsHint')}
+            disabled={reloading}
+            onClick={(event) => {
+              event.stopPropagation()
+              event.preventDefault()
+              void reloadNow()
+            }}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-[var(--bg-hover)] hover:text-foreground disabled:opacity-50"
+          >
+            <RefreshCw className={cn('h-3.5 w-3.5', reloading && 'animate-spin')} />
+          </button>
         </div>
       </div>
 

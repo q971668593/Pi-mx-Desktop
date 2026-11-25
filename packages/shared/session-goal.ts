@@ -8,6 +8,67 @@
 
 export type GoalCriterion = { text: string; done: boolean }
 
+/** 自动循环为什么停下；null = 还在跑，或者只是用户自己按了暂停。 */
+export type GoalStopReason = 'done' | 'stalled' | 'capped' | 'manual'
+
+/**
+ * 自动循环的持久化进度。跟着目标一起落盘，所以重启后目标条还能显示
+ * 「跑过几轮 / 上次推进是什么时候 / 为什么停」——这些以前只活在渲染进程的内存里，
+ * 一重启就什么都不剩，用户根本看不出目标到底动过没有。
+ */
+export type GoalLoopProgress = {
+  /** 已经自动续跑的轮数。 */
+  rounds: number
+  /** 连续多少轮 remaining 没有下降。 */
+  stalledRounds: number
+  /** 上一次决策时看到的 remaining。 */
+  lastRemaining: number
+  /** 最后一次真的推进（remaining 下降）的时间；null = 还没推进过。 */
+  lastAdvancedAt: number | null
+  /** 最近一次自动续跑发出的时间；null = 还没续过。 */
+  lastContinuedAt: number | null
+  /** 为什么停下；null = 还在跑或用户手动暂停。 */
+  stopReason: GoalStopReason | null
+}
+
+export function emptyGoalLoopProgress(): GoalLoopProgress {
+  return {
+    rounds: 0,
+    stalledRounds: 0,
+    lastRemaining: 0,
+    lastAdvancedAt: null,
+    lastContinuedAt: null,
+    stopReason: null,
+  }
+}
+
+/** 盘里的数据可能是旧版本/被手改过：逐字段收敛成合法值，坏字段回落默认。 */
+export function normalizeGoalLoopProgress(input: unknown): GoalLoopProgress {
+  const base = emptyGoalLoopProgress()
+  if (!input || typeof input !== 'object') return base
+  const raw = input as Partial<Record<keyof GoalLoopProgress, unknown>>
+  const count = (value: unknown): number => {
+    const n = Math.floor(Number(value))
+    return Number.isFinite(n) && n > 0 ? n : 0
+  }
+  const stamp = (value: unknown): number | null => {
+    const n = Number(value)
+    return Number.isFinite(n) && n > 0 ? n : null
+  }
+  const reason = raw.stopReason
+  return {
+    rounds: count(raw.rounds),
+    stalledRounds: count(raw.stalledRounds),
+    lastRemaining: count(raw.lastRemaining),
+    lastAdvancedAt: stamp(raw.lastAdvancedAt),
+    lastContinuedAt: stamp(raw.lastContinuedAt),
+    stopReason:
+      reason === 'done' || reason === 'stalled' || reason === 'capped' || reason === 'manual'
+        ? reason
+        : null,
+  }
+}
+
 export type SessionGoal = {
   sessionFile: string
   /** 一句话目标：用户要的最终状态。 */
@@ -16,6 +77,10 @@ export type SessionGoal = {
   criteria: GoalCriterion[]
   createdAt: number
   updatedAt: number
+  /** 自动推进开着没有。持久化：重启后仍然算数，用户能随时按停。 */
+  autoRun?: boolean
+  /** 自动循环进度（只有自动推进过才会写）。 */
+  loop?: GoalLoopProgress
 }
 
 /** pi 的 system prompt section 名：pi 会把它渲染成 `<goal>…</goal>`。 */
@@ -35,6 +100,30 @@ export const GOAL_PROGRESS_PREFIX = 'GOAL-PROGRESS:'
 export const GOAL_LOOP_STALL_LIMIT = 3
 /** 自动循环的硬上限（轮），防止目标一直「差一点」。 */
 export const GOAL_LOOP_MAX_ROUNDS = 20
+
+export type GoalRunStatus = 'done' | 'running' | 'waiting' | 'paused' | 'stopped'
+
+/**
+ * 目标条要做的事就是回答用户一句「它到底在动没在动」。
+ *
+ * - running：本轮正在跑（worker 在干活）
+ * - waiting：自动推进开着，等这一轮收尾后自动续下一轮
+ * - paused：用户按了暂停
+ * - stopped：刹车把它停了（停滞/到轮数上限），要念出原因
+ * - done：验收项全达成
+ */
+export function decideGoalRunStatus(input: {
+  remaining: number
+  autoRun: boolean
+  runInProgress: boolean
+  stopReason: GoalStopReason | null
+}): GoalRunStatus {
+  if (input.remaining <= 0) return 'done'
+  if (input.runInProgress) return 'running'
+  if (input.autoRun) return 'waiting'
+  if (input.stopReason === 'stalled' || input.stopReason === 'capped') return 'stopped'
+  return 'paused'
+}
 
 export function goalRemaining(criteria: readonly GoalCriterion[] | null | undefined): number {
   return (criteria ?? []).filter((criterion) => !criterion.done).length

@@ -180,5 +180,13 @@
   "acceptanceCountHint": "Acceptance progress: {{done}} of {{total}} checks done on this card",
   "subagents": "Subagents",
   "subagentsHint": "Subagents dispatched from this conversation; click one to see its progress",
-  "noSubagents": "No subagents running"
+  "noSubagents": "No subagents running",
+  "delegate": {
+    "hint": "Click a row to open that subagent's session and watch its thinking and progress",
+    "running": "{{count}} subagents running",
+    "idle": "{{count}} subagents finished",
+    "stateRunning": "running",
+    "stateDone": "done",
+    "stateFailed": "failed"
+  }
 }

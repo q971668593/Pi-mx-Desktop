@@ -1,9 +1,11 @@
 import { z } from 'zod'
+import { growPrdProposalSchema } from '../../../packages/shared/grow-prd-proposal'
 import { normalizeFontName } from '../../../packages/shared/custom-theme.ts'
 import { MAX_GOAL_CRITERIA, MAX_GOAL_CRITERION_LENGTH, MAX_GOAL_LENGTH } from '../../../packages/shared/session-goal.ts'
 import { ICON_THEMES } from '../../../packages/shared/icon-theme.ts'
 import { BROWSER_SEARCH_ENGINE_IDS, type BrowserSearchEngine } from '../../../packages/shared/browser-types.ts'
 import { CAPABILITY_IDS } from '../../../packages/shared/capabilities.ts'
+import { GROW_MAX_OPTION_LENGTH, GROW_MAX_OPTIONS, normalizeGrowQuestionFormat } from '../../../packages/shared/grow-question.ts'
 
 export const shellOpenPathSchema = z.object({
   path: z.string().min(1).max(4096),
@@ -78,6 +80,11 @@ export const workspaceFsRenameSchema = z.object({
   newName: z.string(),
 })
 
+export const workspaceFsTrashSchema = z.object({
+  workspaceRoot: z.string().min(1),
+  relativePath: z.string().min(1),
+})
+
 export const workspaceFsCreateSchema = z.object({
   workspaceRoot: z.string().min(1),
   relativePath: z.string().min(1),
@@ -146,6 +153,8 @@ export const sessionDeleteSchema = z
   .object({
     sessionFile: z.string().trim().min(1),
     workspaceId: z.string().trim().min(1),
+    /** 回收站列表里要显示的标题（可选，取不到就退回文件名）。放宽上限避免超长标题让删除直接失败。 */
+    title: z.string().trim().max(4000).optional(),
   })
   .strict()
 
@@ -194,6 +203,33 @@ export const sessionGoalMarkDoneSchema = z
 export const sessionGoalClearSchema = z
   .object({
     sessionFile: goalSessionFileSchema,
+  })
+  .strict()
+
+/** 自动推进开关：暂停/开始都由渲染层显式说清楚，主进程只写盘。 */
+export const sessionGoalSetAutoRunSchema = z
+  .object({
+    sessionFile: goalSessionFileSchema,
+    enabled: z.boolean(),
+    /** 关闭时记下原因（manual = 用户按的暂停；stalled/capped/done = 刹车/达成）。 */
+    stopReason: z.enum(['done', 'stalled', 'capped', 'manual']).optional(),
+  })
+  .strict()
+
+/** 自动循环把这一轮的结果落盘（轮数/停滞计数/起跑前剩余），不属用户动作。 */
+export const sessionGoalLoopRoundSchema = z
+  .object({
+    sessionFile: goalSessionFileSchema,
+    rounds: z.number().int().min(0).max(10_000),
+    stalledRounds: z.number().int().min(0).max(10_000),
+    remaining: z.number().int().min(0).max(MAX_GOAL_CRITERIA),
+  })
+  .strict()
+
+/** 子 Agent 会话文件解析：runId 列表进来，路径出去（只在本应用 temp 目录里查）。 */
+export const delegateSessionFilesSchema = z
+  .object({
+    runIds: z.array(z.string().min(1).max(120)).max(50),
   })
   .strict()
 
@@ -705,3 +741,85 @@ export const wslProbeDistroSchema = looseRequest({
   distro: z.string().optional(),
   refresh: z.boolean().optional(),
 })
+
+// ── 需求树（grow-me）：会话 + 轮次问答 + 果子转看板 ──
+export const growWorkspaceSchema = z.object({ workspaceId: z.string().min(1).max(2000) }).strict()
+
+export const growSessionIdSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/)
+
+const growPrdIdentitySchema = z.object({
+  workspaceId: z.string().min(1).max(4096).refine((s) => !!s.trim() && !s.includes('\0')),
+  sessionFile: z.string().min(1).max(4096).refine((s) => !!s.trim() && !s.includes('\0')),
+  treeSessionId: growSessionIdSchema,
+}).strict()
+const growPrdOperationId = z.string().regex(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/)
+export const growPrdProjectPreviewSchema = growPrdIdentitySchema.extend({ proposal: growPrdProposalSchema }).strict()
+export const growPrdProjectConfirmSchema = growPrdIdentitySchema.extend({ previewId: growPrdOperationId, confirmed: z.literal(true) }).strict()
+export const growPrdProjectListSchema = growPrdIdentitySchema
+export const growPrdProjectRecoverSchema = growPrdIdentitySchema.extend({ operationId: growPrdOperationId, confirmed: z.literal(true) }).strict()
+export const growPrdProjectContextSchema = growWorkspaceSchema
+
+export const growListSessionsSchema = z.discriminatedUnion('action', [
+  growWorkspaceSchema.extend({ action: z.literal('getBinding'), sessionFile: z.string().min(1).max(4000) }),
+  growWorkspaceSchema.extend({ action: z.literal('setBinding'), sessionFile: z.string().min(1).max(4000), sessionId: growSessionIdSchema }),
+  growWorkspaceSchema.extend({ action: z.literal('list') }),
+]).or(growWorkspaceSchema)
+
+export const growGetStateSchema = z.object({
+  workspaceId: z.string().min(1).max(2000),
+  sessionId: growSessionIdSchema.optional(),
+}).strict()
+
+export const growBeginPlanSchema = z.object({
+  workspaceId: z.string().min(1).max(2000),
+  sessionId: growSessionIdSchema,
+}).strict()
+
+export const growFinishPlanSchema = growBeginPlanSchema.extend({
+  expectedRevision: z.number().int().min(0),
+}).strict()
+
+export const growStartSessionSchema = z.object({
+  workspaceId: z.string().min(1).max(2000),
+  requirement: z.string().max(4000).optional(),
+}).strict()
+
+const growOptionSchema = z.string().trim().min(1).max(GROW_MAX_OPTION_LENGTH)
+
+export const growPutQuestionsSchema = z.object({
+  workspaceId: z.string().min(1).max(2000),
+  sessionId: growSessionIdSchema,
+  round: z.number().int().min(1).max(50),
+  expectedRevision: z.number().int().min(0).optional(),
+  questions: z.array(z.object({
+    id: z.string().trim().min(1).max(64),
+    question: z.string().trim().min(1).max(500),
+    rationale: z.string().max(500).optional(),
+    depends_on: z.array(z.string().min(1).max(64)).max(8).optional(),
+    chapter_id: z.string().min(1).max(64).optional(),
+    kind: z.enum(['single', 'multiple', 'text']).optional(),
+    options: z.array(growOptionSchema).max(GROW_MAX_OPTIONS).optional(),
+  }).strict().refine(({ kind, options }) => {
+    if (kind === 'single' || kind === 'multiple') return !!normalizeGrowQuestionFormat(kind, options).kind
+    return options === undefined
+  }, { path: ['options'], message: 'Choice questions need at least two distinct options' })).min(1).max(8),
+}).strict()
+
+export const growSubmitAnswerSchema = z.object({
+  workspaceId: z.string().min(1).max(2000),
+  sessionId: growSessionIdSchema,
+  nodeId: z.string().min(1).max(64),
+  action: z.enum(['confirm', 'defer', 'unclear', 'answer', 'select']),
+  text: z.string().max(2000).optional(),
+  selectedOptions: z.array(growOptionSchema).min(1).max(GROW_MAX_OPTIONS).optional(),
+  publishedFormat: z.object({
+    kind: z.enum(['single', 'multiple']),
+    options: z.array(growOptionSchema).min(2).max(GROW_MAX_OPTIONS),
+  }).strict().refine(({ kind, options }) => !!normalizeGrowQuestionFormat(kind, options).kind).optional(),
+}).strict()
+
+export const growConvertToTeamSchema = z.object({
+  workspaceId: z.string().min(1).max(2000),
+  role: z.string().max(40).optional(),
+  sessionId: growSessionIdSchema.optional(),
+}).strict()

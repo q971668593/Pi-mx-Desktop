@@ -2,10 +2,10 @@ import { requestOpenInPane } from '@renderer/features/split/split-dnd'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
-import { ChevronRight, Copy, FolderOpen, GitFork, Pencil, Play, Trash2, Columns2 } from '@renderer/components/icons'
-import { selectSessionAttention } from '@renderer/lib/session-attention'
-import { activateWorkspace, switchSessionInPlace } from '@renderer/lib/activate-workspace'
+import { Archive, ChevronRight, Copy, FolderOpen, GitFork, Pencil, Trash2, Columns2 } from '@renderer/components/icons'
+import { activateWorkspace } from '@renderer/lib/activate-workspace'
 import { workspacePathsEqual } from '@shared/workspace-path'
+import { sessionFilesEqual } from '@renderer/lib/session-file-key'
 import { ipcClient } from '@renderer/lib/ipc-client'
 import { withUndo } from '@renderer/lib/undo-toast'
 import { useUIStore } from '@renderer/stores/ui-store'
@@ -90,6 +90,25 @@ export function SessionContextMenuPortal({
     }
   }
 
+  /**
+   * 目标对话是否正开在界面上。
+   * 以前只比 currentSessionId：新建对话还没回填 id、或 pendingBind 指向这个文件时判不出来，
+   * 结果是被归档/删除的对话还留在时间线里，用户以为没生效。
+   */
+  const detachIfViewing = (target: SessionMenuTarget) => {
+    const state = useUIStore.getState()
+    const file = target.sessionFile
+    const viewing = !!file && (state.currentSessionId === target.sessionId || sessionFilesEqual(state.historySessionFile, file))
+    if (viewing) {
+      state.setCurrentSession('')
+      state.clearTimeline()
+      state.loadHistoryItems([])
+      state.setHistoryMeta(0, 0, null)
+    }
+    // 解绑交给主进程按文件比较判断（ipc:session.delete / archive 里做），
+    // 渲染层读不到 pendingBind 指针，硬猜只会把别的会话的绑定一起清掉。
+  }
+
   const requestDelete = (target: SessionMenuTarget) => {
     if (!target.sessionFile) toast.error(t('common:sidebar.deleteMissingFile'))
     else setDeleteTarget(target)
@@ -105,16 +124,10 @@ export function SessionContextMenuPortal({
       const r = await ipcClient.invoke('session.delete', {
         sessionFile: target.sessionFile,
         workspaceId: target.workspacePath,
+        title: target.title,
       })
       if (r?.ok) {
-        const cur = useUIStore.getState().currentSessionId
-        if (cur === target.sessionId) {
-          useUIStore.getState().setCurrentSession('')
-          useUIStore.getState().clearTimeline()
-          useUIStore.getState().loadHistoryItems([])
-          useUIStore.getState().setHistoryMeta(0, 0, null)
-          void ipcClient.invoke('session.setPendingBind', { sessionFile: null })
-        }
+        detachIfViewing(target)
         // Drop the deleted session's per-session state so late events cannot resurrect it.
         const deletedFile = target.sessionFile
         void import('@renderer/stores/session-scope').then((m) => m.removeSessionState(deletedFile))
@@ -145,6 +158,29 @@ export function SessionContextMenuPortal({
     }
   }
 
+  /** 归档：会话文件留在磁盘，只从侧栏收起来，去项目右键的「查看归档对话」里找。 */
+  const runArchive = async (target: SessionMenuTarget) => {
+    if (!target.sessionFile) return
+    onClose()
+    onSessionRemoved?.({ sessionFile: target.sessionFile, workspacePath: target.workspacePath })
+    try {
+      const r = await ipcClient.invoke('session.archive', {
+        sessionFile: target.sessionFile,
+        workspaceId: target.workspacePath,
+        title: target.title,
+      })
+      if (r?.ok) {
+        toast.success(t('common:sidebar.archived'))
+        detachIfViewing(target)
+        void import('@renderer/stores/session-scope').then((m) => m.removeSessionState(target.sessionFile || ''))
+      } else toast.error(r?.error || t('common:sidebar.archiveFailed'))
+      refreshList(target.workspacePath)
+    } catch {
+      toast.error(t('common:sidebar.archiveFailed'))
+      refreshList(target.workspacePath)
+    }
+  }
+
   const itemClass = contextMenuItemClass
   const renameDefault =
     renameTarget?.title || renameTarget?.sessionId.slice(0, 8) || ''
@@ -165,31 +201,6 @@ export function SessionContextMenuPortal({
                 if (!(e.target as HTMLElement).closest('[data-fork-item]')) setForkAnchor(null)
               }}
             >
-              {menu.target.sessionFile &&
-              selectSessionAttention(menu.target.sessionFile, useUIStore.getState().sessionAttention) !==
-                'working' ? (
-                <button
-                  type="button"
-                  className={itemClass}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    const currentWorkspace = useUIStore.getState().currentWorkspace
-                    if (workspacePathsEqual(menu.target.workspacePath, currentWorkspace)) {
-                      void switchSessionInPlace(menu.target.sessionId, menu.target.sessionFile)
-                    } else {
-                      void activateWorkspace(menu.target.workspacePath, {
-                        sessionId: menu.target.sessionId,
-                        sessionFile: menu.target.sessionFile,
-                      })
-                    }
-                    onClose()
-                  }}
-                >
-                  <Play className="h-3 w-3 shrink-0" strokeWidth={2} />
-                  {t('common:sidebar.continue')}
-                </button>
-              ) : null}
               {menu.target.sessionFile ? (() => {
                 const file = menu.target.sessionFile
                 const pinned = isSessionPinned(pinnedSessions, file)
@@ -278,6 +289,20 @@ export function SessionContextMenuPortal({
                   {t('common:sidebar.openLog')}
                 </button>
               ) : null}
+              {menu.target.sessionFile ? (
+                <button
+                  type="button"
+                  className={itemClass}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    void runArchive(menu.target)
+                  }}
+                >
+                  <Archive className="h-3 w-3 shrink-0" strokeWidth={2} />
+                  {t('common:sidebar.archiveSession')}
+                </button>
+              ) : null}
               <button
                 type="button"
                 className={itemClass}
@@ -326,7 +351,7 @@ export function SessionContextMenuPortal({
       <ConfirmDialog
         open={!!deleteTarget}
         title={t('common:sidebar.delete')}
-        message={t('common:sidebar.deleteSessionConfirm', {
+        message={t('common:sidebar.deleteSessionTrashConfirm', {
           name: deleteTarget?.title || deleteTarget?.sessionId.slice(0, 8) || '',
         })}
         destructive

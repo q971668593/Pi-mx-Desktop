@@ -1,0 +1,124 @@
+import type { TimelineItem } from '@renderer/stores/ui-store-types'
+
+/**
+ * 子 Agent（`acp_delegate`）在时间线里的呈现方式：
+ *
+ * 每次派发的工具结果带 `details = { kind:'delegate', agent, runId, task, status, … }`，
+ * 派发（acp_delegate）时 status 是 'running'，等它（acp_delegate_wait）回来后才补
+ * durationMs / exitLabel / file / preview。同一 runId 会出现在两条工具行里，
+ * 所以要按 runId 合并，而不是按工具行数数 —— 否则「派了 2 个」会显示成 4 个。
+ */
+export type DelegateRunState = 'running' | 'completed' | 'failed'
+
+export type DelegateRun = {
+  /** 去重键：同一个 runId 的多条工具行合并成一条。 */
+  key: string
+  runId: string
+  agent: string
+  task: string
+  state: DelegateRunState
+  /** 派发那一刻的时间戳（工具行自带 timestamp）。 */
+  startedAt: number
+  durationMs?: number
+  /** 宿主进程写的最终报告路径，点开可看全文。 */
+  file?: string
+  /** 结束摘要，用来在行里给一句「它做完了什么」。 */
+  preview?: string
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value != null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed ? trimmed : undefined
+}
+
+export function delegateRunFromItem(item: TimelineItem): DelegateRun | null {
+  if (item.type !== 'tool-call') return null
+  const details = asRecord(item.toolDetails)
+  if (!details || details.kind !== 'delegate') return null
+  const runId = nonEmptyString(details.runId)
+  if (!runId) return null
+
+  const rawStatus = nonEmptyString(details.status)
+  const failed = item.isError === true || rawStatus === 'failed' || rawStatus === 'cancelled'
+  const completed = rawStatus === 'completed' || rawStatus === 'done'
+  const state: DelegateRunState = failed ? 'failed' : completed ? 'completed' : 'running'
+  const durationMs = typeof details.durationMs === 'number' && Number.isFinite(details.durationMs)
+    ? details.durationMs
+    : undefined
+
+  return {
+    key: runId,
+    runId,
+    agent: nonEmptyString(details.agent) ?? 'subagent',
+    task: nonEmptyString(details.task) ?? '',
+    state,
+    startedAt: typeof item.timestamp === 'number' ? item.timestamp : Date.now(),
+    durationMs,
+    file: nonEmptyString(details.file),
+    preview: nonEmptyString(details.preview),
+  }
+}
+
+/**
+ * 时间线里的所有子 Agent，按 runId 合并，最新的排在前面。
+ * 「结束」的信息一旦出现就保留：wait 的那一行即使先到，也不该让状态回到 running。
+ */
+export function collectDelegateRuns(items: TimelineItem[]): DelegateRun[] {
+  const byRunId = new Map<string, DelegateRun>()
+  for (const item of items) {
+    const run = delegateRunFromItem(item)
+    if (!run) continue
+    const previous = byRunId.get(run.runId)
+    if (!previous) {
+      byRunId.set(run.runId, run)
+      continue
+    }
+    const settled = previous.state !== 'running' ? previous.state : run.state
+    byRunId.set(run.runId, {
+      ...previous,
+      ...run,
+      // 开始时间取最早的那条（acp_delegate 派发那一行），不是 wait 那一行。
+      startedAt: Math.min(previous.startedAt, run.startedAt),
+      state: settled,
+      task: run.task || previous.task,
+      durationMs: run.durationMs ?? previous.durationMs,
+      file: run.file ?? previous.file,
+      preview: previous.preview ?? run.preview,
+    })
+  }
+  return [...byRunId.values()].sort((left, right) => right.startedAt - left.startedAt)
+}
+
+/** 还在跑的那些：底部条上的数字就是它的长度。 */
+export function runningDelegateRuns(runs: DelegateRun[]): DelegateRun[] {
+  return runs.filter((run) => run.state === 'running')
+}
+
+let memoItems: TimelineItem[] | null = null
+let memoRuns: DelegateRun[] = []
+const EMPTY_RUNS: DelegateRun[] = []
+
+/**
+ * Store selector：时间线每个 token 都会换新数组，这里按内容签名缓存，
+ * 内容没变就返回同一个实例，底部条不会跟着流式输出抖。
+ */
+export function selectDelegateRuns(items: TimelineItem[]): DelegateRun[] {
+  if (items === memoItems) return memoRuns
+  memoItems = items
+  const next = collectDelegateRuns(items)
+  const signature = next
+    .map((run) => `${run.runId}\u0001${run.state}\u0001${run.agent}\u0001${run.task}\u0001${run.startedAt}`)
+    .join('\u0002')
+  const previousSignature = memoRuns
+    .map((run) => `${run.runId}\u0001${run.state}\u0001${run.agent}\u0001${run.task}\u0001${run.startedAt}`)
+    .join('\u0002')
+  if (signature !== previousSignature) memoRuns = next.length ? next : EMPTY_RUNS
+  return memoRuns
+}

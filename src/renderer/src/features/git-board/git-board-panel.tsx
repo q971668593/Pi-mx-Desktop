@@ -124,6 +124,8 @@ export function GitBoardPanel() {
   const [restError, setRestError] = useState('')
   const [confirm, setConfirm] = useState<{ title: string; message: string; run: () => Promise<void> } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const refreshingRef = useRef(false)
   const [branchPickerOpen, setBranchPickerOpen] = useState(false)
   const [branchStatus, setBranchStatus] = useState<BranchStatus | null>(null)
   const branchAnchor = useRef<HTMLButtonElement>(null)
@@ -232,6 +234,28 @@ export function GitBoardPanel() {
   }, [cwd])
   const loadRef = useRef(load)
   loadRef.current = load
+  // 手动刷新：以前点了完全没反馈（后台确实重跑了 git，但界面上什么都不动），
+  // 而且按钮没有 shrink-0，头部横向挤满时会被压到滚动视口外，点上去像按了空气。
+  // 必须定义在所有 early return 之前，否则加载态/错误态分支里的按钮会命中 TDZ。
+  const manualRefresh = useCallback(async () => {
+    if (refreshingRef.current) return
+    refreshingRef.current = true
+    setRefreshing(true)
+    try { await load(false) } finally { refreshingRef.current = false; setRefreshing(false) }
+  }, [load])
+  const refreshButton = (
+    <button
+      type="button"
+      data-git-refresh=""
+      className="shrink-0 rounded border border-border/60 p-1 text-foreground-secondary transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+      aria-label={refreshing ? t('common:gitBoard.refreshing') : t('common:gitBoard.refresh')}
+      title={refreshing ? t('common:gitBoard.refreshing') : t('common:gitBoard.refresh')}
+      disabled={refreshing}
+      onClick={() => void manualRefresh()}
+    >
+      <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
+    </button>
+  )
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null
     const off = window.piDesktop?.onGitWorkspaceChanged?.(() => {
@@ -462,7 +486,7 @@ export function GitBoardPanel() {
   }
 
   if (!cwd) return <p className="p-4 text-[12px] text-foreground-tertiary">{t('common:gitBoard.noWorkspace')}</p>
-  if (loadError) return <div className="m-4 flex items-center gap-2 text-[12px]"><span className="text-destructive">{loadError}</span><button type="button" className="rounded border px-2 py-1" onClick={() => void load(false)}>{t('common:gitBoard.refresh')}</button></div>
+  if (loadError) return <div className="m-4 flex items-center gap-2 text-[12px]"><span className="text-destructive">{loadError}</span>{refreshButton}</div>
   if (missing) return <div className="m-4 space-y-2"><p className="text-[12px] text-foreground-tertiary">{t('common:gitBoard.notRepo')}</p><button type="button" className="rounded border px-3 py-1.5 text-[12px]" onClick={() => void run('gitBoard.init')}>{t('common:gitBoard.init')}</button></div>
   if (!data) return (
     <div className="flex h-full min-h-0 flex-col text-[12px]">
@@ -470,7 +494,7 @@ export function GitBoardPanel() {
         <span className="h-4 w-24 animate-pulse rounded bg-muted" aria-hidden />
         <span className="sr-only">{t('common:loading')}</span>
         <div className="ml-auto">
-          <button type="button" className="rounded p-1.5 text-foreground-secondary hover:bg-muted hover:text-foreground" aria-label={t('common:gitBoard.refresh')} onClick={() => void load(false)}><RefreshCw className="h-3.5 w-3.5" /></button>
+          {refreshButton}
         </div>
       </div>
       <div role="tablist" className="flex shrink-0 overflow-x-auto border-b border-border/50 bg-[var(--bg-1)]">{TABS.map((item) => <button key={item} type="button" role="tab" aria-selected={tab === item} className={cn('relative h-9 shrink-0 border-b-2 px-3 text-[12px] transition-colors', tab === item ? 'border-primary bg-[var(--bg-base)] font-medium text-foreground' : 'border-transparent text-foreground-secondary hover:bg-muted hover:text-foreground')} onClick={() => { setTab(item); try { localStorage.setItem(`pi-desktop:git-tab:${workspacePathKey(cwd)}`, item) } catch { void 0 } }}>{t(`common:gitBoard.${item}`)}</button>)}</div>
@@ -674,7 +698,7 @@ export function GitBoardPanel() {
               {label}
             </button>
           ))}
-          <button type="button" className="rounded p-1.5 text-foreground-secondary hover:bg-muted hover:text-foreground" aria-label={t('common:gitBoard.refresh')} onClick={() => void load(false)}><RefreshCw className="h-3.5 w-3.5" /></button>
+          {refreshButton}
         </div>
       </div>
       {data.remotes.length > 0 && (

@@ -273,6 +273,17 @@ export function attachWorkerHandlers(
         .catch((error) => safeWrite(`[WorkerManager] team tool failed: ${String(error)}`))
     }
 
+    if (data.type === 'grow-tool-request') {
+      void import('./grow-tool-bridge')
+        .then(({ handleGrowToolRequest }) => handleGrowToolRequest(data, slot, (message) => {
+          if (slot.worker === transport) transport.postMessage(message)
+        }))
+        .catch((error) => {
+          safeWrite(`[WorkerManager] grow tool failed: ${String(error)}`)
+          if (slot.worker === transport) transport.postMessage({ type: 'grow-tool-response', callId: data.callId, result: { content: [{ type: 'text', text: String(error) }], isError: true } })
+        })
+    }
+
     if (data.type === 'terminal-tool-request') {
       void import('./terminal/terminal-tool-bridge')
         .then(({ handleTerminalToolRequest }) => handleTerminalToolRequest(data, slot, (message) => {

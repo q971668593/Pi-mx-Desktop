@@ -1,11 +1,13 @@
 import type { BrowserWindowConstructorOptions } from 'electron'
+import { NOTIFICATION_CARD_HEIGHT, NOTIFICATION_HOST_WIDTH } from './completion-notification-geometry'
 
 export function completionNotificationWindowOptions(
   preload: string,
 ): BrowserWindowConstructorOptions {
   return {
-    width: 380,
-    height: 168,
+    width: NOTIFICATION_HOST_WIDTH,
+    // 初始高度只占位：卡片渲染完会自己量高度并通过 notification:resize 把窗口撑开。
+    height: NOTIFICATION_CARD_HEIGHT,
     show: false,
     frame: false,
     resizable: false,

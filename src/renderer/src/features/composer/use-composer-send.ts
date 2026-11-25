@@ -17,6 +17,7 @@ import { applyTitleFromLatestMessage } from '@renderer/lib/session-title-follow'
 import { afterPromptSent } from '@renderer/lib/after-prompt-sent'
 import { composerTurnActive } from '@renderer/lib/session-worker-sync'
 import { hideAllDelayedTooltips } from './delayed-tooltip'
+import { captureLessonFromUserText } from '@renderer/lib/feedback-lessons'
 import { renderRichTextFromPlain } from './attachments'
 import { appendOptimisticOutgoingMessage, bindOptimisticOutgoingToSession, clearOptimisticOutgoing } from '@renderer/lib/optimistic-send'
 import {
@@ -128,6 +129,12 @@ export function useComposerSend(opts: {
           sessionRuntimeRunning: store.sessionRuntimeRunning,
         })
         if (displayText.trim()) inputHistory.recordSent(displayText.trim())
+        // 带批评/驳回信号的发言顺手记一条候选：主进程会让内置模型判断值不值得留成规则。
+        // 纯后台行为，失败静默，不影响发送。
+        captureLessonFromUserText(displayText.trim(), {
+          sessionFile: store.historySessionFile ?? undefined,
+          workspacePath: store.currentWorkspace || undefined,
+        })
         hideAllDelayedTooltips()
         renderRichTextFromPlain(el, '')
         setStagedImages([])

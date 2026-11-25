@@ -180,5 +180,13 @@
   "acceptanceCountHint": "验收项完成数：这张卡有 {{total}} 条验收标准已达成 {{done}} 条",
   "subagents": "子 Agent",
   "subagentsHint": "当前对话派出去的子 Agent点开看它的执行细节",
-  "noSubagents": "暂无子 Agent 在跑"
+  "noSubagents": "暂无子 Agent 在跑",
+  "delegate": {
+    "hint": "点一行打开这个子 Agent 的会话，看它的思考和进度",
+    "running": "{{count}} 个子 Agent 在跑",
+    "idle": "{{count}} 个子 Agent 已完成",
+    "stateRunning": "进行中",
+    "stateDone": "已完成",
+    "stateFailed": "失败"
+  }
 }

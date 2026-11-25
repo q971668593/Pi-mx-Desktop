@@ -40,5 +40,5 @@ export function readSessionWorkerIdleTimeoutMinutes(): number {
 }
 
 export function readAlertOnBackgroundRunIdle(): boolean {
-  return configStore.get('alertOnBackgroundRunIdle') === true
+  return configStore.get('alertOnBackgroundRunIdle') !== false
 }

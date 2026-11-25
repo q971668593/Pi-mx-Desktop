@@ -18,6 +18,7 @@ import { openTerminalAt } from '@renderer/features/terminal/terminal-run-bar'
 import { FilePreviewTabBar } from './file-preview-tab-bar'
 import { useFilePreviewTabs } from './use-file-preview-tabs'
 import { RenamePromptDialog } from '@renderer/features/workspace/rename-prompt-dialog'
+import { ConfirmDialog } from '@renderer/features/settings/confirm-dialog'
 import type { WorkspaceFsSearchEntry } from '@shared/ipc-contract'
 import { workspacePathKey } from '@shared/workspace-path'
 
@@ -63,6 +64,7 @@ export function WorkspaceFilesPanel() {
   const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null)
   const [renameOpen, setRenameOpen] = useState(false)
   const [renameValue, setRenameValue] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<{ abs: string; name: string; rel: string; isDirectory: boolean } | null>(null)
   const [createTarget, setCreateTarget] = useState<{ rel: string; isDirectory: boolean } | null>(null)
   const [treeSelection, setTreeSelection] = useState<{ rel: string; isDirectory: boolean } | null>(null)
   const [copiedTreeFile, setCopiedTreeFile] = useState<string | null>(null)
@@ -322,7 +324,10 @@ export function WorkspaceFilesPanel() {
     if (!workspaceFileToOpen) return
     useUIStore.setState({ workspaceFileToOpen: null })
     if (workspaceFileToOpen.workspaceRoot === workspaceRoot) {
+      setShowDotfiles(true)
+      setSearchQuery('')
       onSelectPath(workspaceFileToOpen.rel, false)
+      setExplorerCollapsed(false)
       if (workspaceFileToOpen.line) setSourceLocation({ rel: workspaceFileToOpen.rel, line: workspaceFileToOpen.line })
       if (workspaceFileToOpen.gitDiff) setGitDiffPreview({ rel: workspaceFileToOpen.rel, ...workspaceFileToOpen.gitDiff })
     }
@@ -399,6 +404,29 @@ export function WorkspaceFilesPanel() {
   const closeMenu = useCallback(() => setMenu(null), [])
 
   const bumpTree = () => setTreeEpoch((n) => n + 1)
+
+  const submitDelete = async () => {
+    if (!workspaceRoot || !deleteTarget) return
+    const target = deleteTarget
+    setDeleteTarget(null)
+    const res = await ipcClient.invoke('workspace.fs.trash', {
+      workspaceRoot,
+      relativePath: target.rel,
+    })
+    if (!res?.ok) {
+      toast.error(res?.error === 'not_found' ? t('toast.deleteMissing') : t('toast.deleteFailed'))
+      return
+    }
+    // 关掉已经打开的预览页：删掉的正是它，或它在被删的文件夹里面
+    for (const tab of tabs) {
+      if (tab.rel === target.rel || tab.rel.startsWith(`${target.rel}/`)) {
+        clearFileDraft(workspaceRoot, tab.rel)
+        closeTab(tab.id)
+      }
+    }
+    bumpTree()
+    toast.message(t('toast.deleted'))
+  }
 
   const submitRename = async () => {
     if (!workspaceRoot || !renameTarget) return
@@ -594,6 +622,10 @@ export function WorkspaceFilesPanel() {
           setRenameValue(menu.name)
           setRenameOpen(true)
         }}
+        onDelete={() => {
+          if (!menu) return
+          setDeleteTarget({ abs: menu.abs, name: menu.name, rel: menu.rel, isDirectory: menu.isDirectory })
+        }}
         onReveal={() => {
           if (!menu) return
           void ipcClient.invoke('shell.showItemInFolder', { path: menu.abs })
@@ -677,6 +709,15 @@ export function WorkspaceFilesPanel() {
             document.body,
           )
         : null}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title={t('delete.title')}
+        message={t('delete.message', { name: deleteTarget?.name ?? '' })}
+        destructive
+        confirmLabel={t('delete.confirm')}
+        onConfirm={() => void submitDelete()}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

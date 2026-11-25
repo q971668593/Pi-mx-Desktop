@@ -8,7 +8,7 @@ import { configStore } from '../../config-store'
 import { authorizeProjectCwd } from '../../trusted-workspace'
 import { registerHandler, registerHandlerWithSchema } from '../registry'
 import { readCodexGrant } from '../../image-gen/codex-auth'
-import { generateImages, listCodexImageModels } from '../../image-gen/generate'
+import { generateImages, listCodexImageModels, listCustomModels } from '../../image-gen/generate'
 
 export function registerImageGenHandlers(): void {
   registerHandler('ipc:imageGen.status', async () => {
@@ -53,6 +53,21 @@ export function registerImageGenHandlers(): void {
   registerHandler('ipc:imageGen.models', async (req) => {
     const config = normalizeImageGenConfig(configStore.get('imageGen'))
     if (config.provider === 'custom') {
+      // 自定义中转：默认只回显已填模型；点「同步模型」时去 {baseUrl}/models 实拉一份。
+      // 注意：生图专用分组的钥匙常被限制只能调生图接口，拉列表会报余额不足——
+      // 那不是钥匙坏了，换全权限钥匙或去后台看分组配置就行。
+      if (req?.refresh === true && config.baseUrl) {
+        const pulled = await listCustomModels(config.baseUrl, config.apiKey)
+        const ok = pulled.models.length > 0
+        const models = ok ? pulled.models : config.model ? [config.model] : []
+        return {
+          ok: true,
+          models,
+          pulled: ok,
+          ...(!ok && pulled.error ? { fetchError: pulled.error } : {}),
+          ...(pulled.raw ? { rawPreview: pulled.raw } : {}),
+        }
+      }
       const models = config.model ? [config.model] : []
       return { ok: true, models }
     }

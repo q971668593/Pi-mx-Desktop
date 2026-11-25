@@ -252,6 +252,27 @@ export async function workspaceFsRename(req: { workspaceRoot: string; relativePa
   }
 }
 
+/** Move a workspace file or folder to the OS trash (recoverable). Never touches the workspace root itself. */
+export async function workspaceFsTrash(req: { workspaceRoot: string; relativePath: string }) {
+  const rel = String(req.relativePath || '')
+  if (!rel || rel === '.' || rel === '/') return { ok: false as const, error: 'refuse_root' as const }
+  const resolved = await resolvePathUnderWorkspace(String(req.workspaceRoot || ''), rel)
+  if (!resolved.ok) return { ok: false as const, error: resolved.error }
+  if (!(await pathExists(resolved.abs))) return { ok: false as const, error: 'not_found' as const }
+  const rootAbs = await normalizeRoot(String(req.workspaceRoot || ''))
+  const relNew = relative(rootAbs, resolved.abs)
+  if (!relNew || relNew === '.' || isOutsideRoot(relNew)) return { ok: false as const, error: 'refuse_root' as const }
+  try {
+    // Static `import { shell } from 'electron'` would drag Electron into every unit test
+    // that touches this module; trash is main-process-only so a dynamic import is fine.
+    const { shell } = await import('electron')
+    await shell.trashItem(resolved.abs)
+    return { ok: true as const }
+  } catch {
+    return { ok: false as const, error: 'trash_failed' as const }
+  }
+}
+
 /** Copy one user-selected file into a workspace directory without ever replacing an existing entry. */
 export async function workspaceFsCopyFile(req: {
   workspaceRoot: string

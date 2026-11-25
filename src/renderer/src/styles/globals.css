@@ -179,6 +179,9 @@
     /* Secondary text is a solid step, not a faded one: descriptions must stay readable at 11–12px. */
     --text-secondary-hsl: 240 4% 37%;
     --text-tertiary-hsl: 240 4% 50%;
+    /* 面板上的文字动作（添加到引用 / 保存等）：以前借用 --accent 当文字色，
+       accent 在亮色主题是近米白，等于白底白字。这里单独给一个对比度够的链接色。 */
+    --text-action-hsl: 24 88% 34%;
 
     /* Accent colors for tool types */
     --tool-read: 220 90% 56%;
@@ -309,6 +312,7 @@
 
     --text-secondary-hsl: 0 0% 67%;
     --text-tertiary-hsl: 0 0% 53%;
+    --text-action-hsl: 32 92% 66%;
 
     --tool-read: 212 90% 68%;
     --tool-edit: 38 70% 55%;

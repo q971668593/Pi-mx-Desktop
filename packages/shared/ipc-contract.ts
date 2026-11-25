@@ -5,6 +5,8 @@ import type { CompatibilityLevel } from './extension-types'
 import type { ModelAuthProjection } from './model-auth-projection'
 import type { AdapterCatalog } from '../../src/extension-compat/adapter-schema'
 import type { SessionContextPreview } from './session-context-preview'
+import type { GrowChoiceKind, GrowQuestionFormat } from './grow-question'
+import type { GrowPrdProposal } from './grow-prd-proposal'
 
 // ── Workspace ──
 export interface WorkspaceOpenRequest { path?: string; awaitWorker?: boolean }
@@ -130,6 +132,8 @@ export interface ModelListRequest {
   scope?: 'catalog' | 'available' | 'settings'
 }
 export interface ModelListResponse { models: ModelInfo[] }
+export type ModelReloadRequest = Record<string, never>
+export interface ModelReloadResponse { ok: boolean; models: ModelInfo[]; error?: string }
 export interface ModelSetRequest {
   sessionId: string
   sessionFile?: string
@@ -380,6 +384,7 @@ export interface IpcMethodMap {
   'prompt.followUp': { request: PromptFollowUpRequest; response: PromptFollowUpResponse }
   'prompt.abort': { request: PromptAbortRequest; response: PromptAbortResponse }
   'model.list': { request: ModelListRequest; response: ModelListResponse }
+  'model.reload': { request: ModelReloadRequest; response: ModelReloadResponse }
   'model.set': { request: ModelSetRequest; response: ModelSetResponse }
   'model.cycle': { request: ModelCycleRequest; response: ModelCycleResponse }
   'pi.models.get': { request: PiModelsGetRequest; response: PiModelsGetResponse }
@@ -430,8 +435,47 @@ export interface IpcMethodMap {
     request: AppDownloadUpdateRequest
     response: AppDownloadUpdateResponse
   }
+  'grow-prd.projectPreview': { request: GrowPrdProjectIdentity & { proposal: GrowPrdProposal }; response: GrowPrdProjectResponse<GrowPrdProjectPreview> }
+  'grow-prd.projectConfirm': { request: GrowPrdProjectIdentity & { previewId: string; confirmed: true }; response: GrowPrdProjectResponse<GrowPrdProjectTransaction> }
+  'grow-prd.projectListIncomplete': { request: GrowPrdProjectIdentity; response: GrowPrdProjectResponse<Array<{ operationId: string; state: string }>> }
+  'grow-prd.projectRecover': { request: GrowPrdProjectIdentity & { operationId: string; confirmed: true }; response: GrowPrdProjectResponse<GrowPrdProjectTransaction> }
+  'grow-prd.projectContext': { request: { workspaceId: string }; response: GrowPrdProjectResponse<GrowPrdProjectContext> }
   'events.subscribe': { request: EventsSubscribeRequest; response: EventsSubscribeResponse; stream: AppEvent }
 }
+
+export interface GrowPrdProjectIdentity { workspaceId: string; sessionFile: string; treeSessionId: string }
+export type GrowPrdProjectResponse<T> = { ok: true; data: T } | { ok: false; error: string; message: string }
+export interface GrowPrdProjectPreview {
+  previewId: string
+  hashes: { prd: { before: string; after: string }; tree: { before: string; after: string } }
+  candidate: { sessionId: string; reason: string; newTreeJson: string; changes: Array<{ nodeId: string; before: Record<string, unknown> | null; after: Record<string, unknown> }>; affectedNodeIds: string[]; comparison: { prd: { before: string; after: string }; tree: { before: string; after: string } } }
+}
+export interface GrowPrdProjectContext { prdHash: string; prdExists: boolean; trees: Array<{ sessionId: string; revision: number }> }
+export interface GrowPrdProjectTransaction { version: 1; operationId: string; treeSessionId: string; prd: { oldHash: string; newHash: string }; tree: { oldHash: string; newHash: string }; state: 'prepared' | 'prd-written' | 'tree-written' | 'committed' }
+
+// ── Grow（需求树 grow-me）：会话 + 轮次问答 + 果子转看板 ──
+export type GrowNodeStatus = 'pending' | 'answered' | 'needs_review' | 'deferred'
+export interface GrowNodeView extends GrowQuestionFormat { id: string; question: string; status: GrowNodeStatus; round?: number; answer?: string; selectedOptions?: string[]; depends_on?: string[]; chapter_id?: string }
+export interface GrowChapterView { id: string; title: string; ready: boolean }
+export interface GrowPanelStateView {
+  ready: boolean; sessionId?: string; revision?: number; currentRound?: number
+  nodes: GrowNodeView[]; chapters: GrowChapterView[]
+  pendingCount: number; reviewCount: number; docFile?: string | null; requirement?: string; planStale?: boolean
+}
+export interface GrowGetStateRequest { workspaceId: string; sessionId?: string }
+export interface GrowGetStateResponse { ok: boolean; state?: GrowPanelStateView; error?: string }
+export interface GrowBeginPlanRequest { workspaceId: string; sessionId: string }
+export interface GrowFinishPlanRequest extends GrowBeginPlanRequest { expectedRevision: number }
+export interface GrowPlanResponse { ok: boolean; revision?: number; error?: string }
+export interface GrowStartSessionRequest { workspaceId: string; requirement?: string }
+export interface GrowStartSessionResponse { ok: boolean; sessionId?: string; revision?: number; error?: string }
+export interface GrowQuestionInput extends GrowQuestionFormat { id: string; question: string; rationale?: string; depends_on?: string[]; chapter_id?: string }
+export interface GrowPutQuestionsRequest { workspaceId: string; sessionId: string; round: number; questions: GrowQuestionInput[]; expectedRevision?: number }
+export interface GrowPutQuestionsResponse { ok: boolean; revision?: number; count?: number; error?: string }
+export interface GrowSubmitAnswerRequest { workspaceId: string; sessionId: string; nodeId: string; action: 'confirm' | 'defer' | 'unclear' | 'answer' | 'select'; text?: string; selectedOptions?: string[]; publishedFormat?: { kind: GrowChoiceKind; options: string[] } }
+export interface GrowSubmitAnswerResponse { ok: boolean; revision?: number; node?: GrowNodeView; error?: string }
+export interface GrowConvertToTeamRequest { workspaceId: string; role?: string; sessionId?: string }
+export interface GrowConvertToTeamResponse { ok: boolean; created?: Array<{ id: string; title: string }>; error?: string }
 
 // ── Type helpers ──
 export type IpcMethodName = keyof IpcMethodMap

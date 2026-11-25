@@ -6,11 +6,17 @@ import { DEFAULT_IMAGE_GEN_CONFIG, normalizeImageGenConfig, type ImageGenConfig 
 import { SettingRow, SettingsSection } from './settings-page-shared'
 import { btnOutline, btnPrimary, inputCls, selectCls } from './settings-controls'
 
+/** 生图页右侧输入框加宽：SettingRow 右列是内容撑宽，input 的 w-full 在这里撑不起来，得给最小宽。 */
+const wideInputCls = `${inputCls} min-w-[16rem] sm:min-w-[22rem]`
+
 /** invoke 在某些测试/受限环境下可能返回非 Promise：统一兜一层，别让页面挂掉。 */
 type IpcReply = {
   config?: unknown
   status?: Status
   models?: unknown
+  pulled?: unknown
+  fetchError?: unknown
+  rawPreview?: unknown
   images?: Array<{ rel?: string }>
 }
 
@@ -46,6 +52,14 @@ export function ImageGenSettings({ showHeading = true }: { showHeading?: boolean
   const [saving, setSaving] = useState(false)
   const [testPrompt, setTestPrompt] = useState('')
   const [testing, setTesting] = useState(false)
+  const [testError, setTestError] = useState<string | null>(null)
+  const [testImage, setTestImage] = useState<{ url: string; rel: string } | null>(null)
+  const [lastSync, setLastSync] = useState<{
+    count: number
+    models: string[]
+    raw: string
+    pulled: boolean
+  } | null>(null)
 
   const load = async () => {
     const res = await call('imageGen.status')
@@ -88,7 +102,18 @@ export function ImageGenSettings({ showHeading = true }: { showHeading?: boolean
 
   const refreshModels = async () => {
     const res = await call('imageGen.models', { refresh: true })
-    setModels(Array.isArray(res?.models) ? res.models : [])
+    const list = Array.isArray(res?.models) ? (res.models as string[]) : []
+    setModels(list)
+    const pulled = res?.pulled === true
+    const raw = typeof res?.rawPreview === 'string' ? res.rawPreview : ''
+    setLastSync({ count: pulled ? list.length : 0, models: list.slice(0, 30), raw, pulled })
+    if (!pulled) {
+      const err =
+        typeof res?.fetchError === 'string' && res.fetchError ? res.fetchError : '没拉到，用已填模型继续'
+      toast.error('模型列表没拉到', { description: err })
+    } else if (list.length) {
+      toast.success(`拉到 ${list.length} 个模型，下拉框里选就行`)
+    }
   }
 
   const runTest = async () => {
@@ -99,21 +124,54 @@ export function ImageGenSettings({ showHeading = true }: { showHeading?: boolean
       return
     }
     setTesting(true)
+    setTestError(null)
+    setTestImage(null)
     try {
-      const res = await call('imageGen.generate', { workspaceId, prompt: testPrompt.trim(), quality: config.quality })
-      if (!res) throw new Error('imageGen.generate failed')
+      // 生成接口走原始 invoke：失败原因（HTTP 状态 + 服务端回执）必须原样抛出来，
+      // 不能像其它读取接口那样吞成 null，否则只剩一句 generate failed，没法定位。
+      const res = (await ipcClient.invoke('imageGen.generate', {
+        workspaceId,
+        prompt: testPrompt.trim(),
+        quality: config.quality,
+      })) as unknown as { images?: Array<{ rel?: string; path?: string }>; prompt?: unknown; warnings?: string[] }
       const first = res?.images?.[0]
-      toast.success(t('settings:imageGen.testDone'), { description: first?.rel || '' })
-      setTestPrompt('')
-    } catch (error) {
-      toast.error(t('settings:imageGen.testFailed'), { description: String((error as Error)?.message || error) })
+      const rel = typeof first?.rel === 'string' ? first.rel : ''
+      if (!rel) throw new Error('生图服务没有返回图片')
+      // 直接读图预览：和时间线共用 shell.readImagePreview，不用跳目录找文件。
+      try {
+        const preview = (await ipcClient.invoke('shell.readImagePreview', {
+          workspaceRoot: workspaceId,
+          path: rel,
+        })) as unknown as { ok?: boolean; dataUrl?: string }
+        if (preview?.ok && preview?.dataUrl) setTestImage({ url: String(preview.dataUrl), rel })
+      } catch {
+        // 预览失败不影响主流程，至少把路径告诉用户。
+      }
+      toast.success(t('settings:imageGen.testDone'), { description: rel })
+      } catch (error) {
+      const raw = String((error as Error)?.message || error)
+      const message = raw.replace(/^Error invoking remote method '[^']+':\s*Error:\s*/, '')
+      setTestError(message)
+      toast.error(t('settings:imageGen.testFailed'), { description: message })
     } finally {
       setTesting(false)
     }
   }
 
   const expiry = status?.codexExpiresAt ? new Date(status.codexExpiresAt).toLocaleString() : ''
-  const modelOptions = [...new Set([config.model, ...models].filter(Boolean))]
+  // 自定义中转不限制模型：输入框随便填，下拉只给提示（APIMart 这类网关模型很多，拉不到全量列表）。
+  const CUSTOM_MODEL_HINTS = [
+    'gpt-image-1.5',
+    'gpt-image-2.5',
+    'Nano-banana',
+    'Nano-banana-Pro',
+    'Seedream-4.5',
+    'Flux-2.0',
+  ]
+  const modelOptions =
+    config.provider === 'custom'
+      ? [...new Set([config.model, ...models, ...CUSTOM_MODEL_HINTS].filter(Boolean))]
+      : [...new Set([config.model, ...models].filter(Boolean))]
 
   return (
     <Section title={t('settings:imageGen.title')} description={t('settings:imageGen.description')} showHeading={showHeading}>
@@ -155,23 +213,39 @@ export function ImageGenSettings({ showHeading = true }: { showHeading?: boolean
           label={t('settings:imageGen.model')}
           description={config.provider === 'codex' ? t('settings:imageGen.modelHintCodex') : t('settings:imageGen.modelHintCustom')}
         >
-          <div className="flex items-center gap-2">
-            <input
-              className={inputCls}
-              aria-label={t('settings:imageGen.model')}
-              list="image-gen-models"
-              value={config.model}
-              placeholder={config.provider === 'codex' ? 'gpt-image-2' : 'gpt-image-1'}
-              onChange={(event) => setConfig({ ...config, model: event.target.value })}
-              onBlur={() => void save(config)}
-            />
-            <datalist id="image-gen-models">
-              {modelOptions.map((model) => <option key={model} value={model} />)}
-            </datalist>
-            {config.provider === 'codex' ? (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <input
+                className={wideInputCls}
+                aria-label={t('settings:imageGen.model')}
+                list="image-gen-models"
+                value={config.model}
+                placeholder={config.provider === 'codex' ? 'gpt-image-2' : 'gpt-image-1.5，可直接输入 APIMart 模型名'}
+                onChange={(event) => setConfig({ ...config, model: event.target.value })}
+                onBlur={(event) => void save({ ...config, model: event.target.value })}
+              />
+              <datalist id="image-gen-models">
+                {modelOptions.map((model) => <option key={model} value={model} />)}
+              </datalist>
               <button type="button" className={btnOutline} onClick={() => void refreshModels()}>
                 {t('settings:imageGen.syncModels')}
               </button>
+            </div>
+            {lastSync ? (
+              <div className="rounded-lg border border-border/60 bg-muted/40 p-2 text-xs leading-5">
+                <div className="font-medium">
+                  {lastSync.pulled ? `同步到 ${lastSync.count} 个模型：` : '没拉到（用的已填模型）：'}
+                </div>
+                <div className="break-all">{lastSync.models.join('、') || '（空）'}</div>
+                {lastSync.raw ? (
+                  <details className="mt-1">
+                    <summary className="cursor-pointer text-muted-foreground">看原始报文</summary>
+                    <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px]">
+                      {lastSync.raw}
+                    </pre>
+                  </details>
+                ) : null}
+              </div>
             ) : null}
           </div>
         </SettingRow>
@@ -181,22 +255,22 @@ export function ImageGenSettings({ showHeading = true }: { showHeading?: boolean
         <>
           <SettingRow label={t('settings:imageGen.baseUrl')} description={t('settings:imageGen.baseUrlHint')}>
             <input
-              className={inputCls}
+              className={wideInputCls}
               aria-label={t('settings:imageGen.baseUrl')}
               value={config.baseUrl}
-              placeholder="https://host/v1"
+              placeholder="https://api.apimart.ai/v1"
               onChange={(event) => setConfig({ ...config, baseUrl: event.target.value })}
-              onBlur={() => void save(config)}
+              onBlur={(event) => void save({ ...config, baseUrl: event.target.value })}
             />
           </SettingRow>
           <SettingRow label={t('settings:imageGen.apiKey')} description={t('settings:imageGen.apiKeyHint')}>
             <input
-              className={inputCls}
+              className={wideInputCls}
               aria-label={t('settings:imageGen.apiKey')}
               type="password"
               value={config.apiKey}
               onChange={(event) => setConfig({ ...config, apiKey: event.target.value })}
-              onBlur={() => void save(config)}
+              onBlur={(event) => void save({ ...config, apiKey: event.target.value })}
             />
           </SettingRow>
         </>
@@ -219,7 +293,8 @@ export function ImageGenSettings({ showHeading = true }: { showHeading?: boolean
               <option value="max">max</option>
             </select>
           </SettingRow>
-          <SettingRow label={t('settings:imageGen.identity')} description={t('settings:imageGen.identityHint')}>
+          {config.provider === 'codex' ? (
+            <SettingRow label={t('settings:imageGen.identity')} description={t('settings:imageGen.identityHint')}>
             <select
               className={selectCls}
               aria-label={t('settings:imageGen.identity')}
@@ -230,6 +305,7 @@ export function ImageGenSettings({ showHeading = true }: { showHeading?: boolean
               <option value="codex">{t('settings:imageGen.identityCodex')}</option>
             </select>
           </SettingRow>
+          ) : null}
           {/*
             不设「默认尺寸」：一次横版一次竖版是常态，全局默认只会互相打架。
             agent 调用时按需求传 size；不传就是 auto（服务端按内容决定）。
@@ -249,25 +325,44 @@ export function ImageGenSettings({ showHeading = true }: { showHeading?: boolean
           </SettingRow>
           <SettingRow label={t('settings:imageGen.outputDir')} description={t('settings:imageGen.outputDirHint')}>
             <input
-              className={inputCls}
+              className={wideInputCls}
               aria-label={t('settings:imageGen.outputDir')}
               value={config.outputDir}
               onChange={(event) => setConfig({ ...config, outputDir: event.target.value })}
-              onBlur={() => void save(config)}
+              onBlur={(event) => void save({ ...config, outputDir: event.target.value })}
             />
           </SettingRow>
           <SettingRow label={t('settings:imageGen.try')} description={t('settings:imageGen.tryHint')}>
-            <div className="flex items-center gap-2">
-              <input
-                className={inputCls}
-                aria-label={t('settings:imageGen.try')}
-                value={testPrompt}
-                placeholder={t('settings:imageGen.tryPlaceholder')}
-                onChange={(event) => setTestPrompt(event.target.value)}
-              />
-              <button type="button" className={btnPrimary} disabled={testing || !testPrompt.trim()} onClick={() => void runTest()}>
-                {testing ? t('settings:imageGen.testing') : t('settings:imageGen.test')}
-              </button>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <input
+                  className={wideInputCls}
+                  aria-label={t('settings:imageGen.try')}
+                  value={testPrompt}
+                  placeholder={t('settings:imageGen.tryPlaceholder')}
+                  onChange={(event) => setTestPrompt(event.target.value)}
+                />
+                <button type="button" className={btnPrimary} disabled={testing || !testPrompt.trim()} onClick={() => void runTest()}>
+                  {testing ? t('settings:imageGen.testing') : t('settings:imageGen.test')}
+                </button>
+              </div>
+              {testError ? (
+                <div className="rounded-lg border border-red-300/60 bg-red-50 p-2 text-xs leading-5 text-red-800 dark:border-red-800/50 dark:bg-red-950/40 dark:text-red-200">
+                  <div className="font-medium">失败原因：</div>
+                  <div className="break-all whitespace-pre-wrap">{testError}</div>
+                  {/model_not_found|is not supported by any|MODEL_NOT_FOUND/i.test(testError) ? (
+                    <div className="mt-1 opacity-80">这个分组不认你填的模型名：去后台看看分组里配了哪些模型，照着名字原样填（比如分组叫 GPT-生图，就找它对应的模型 ID）。</div>
+                  ) : /404|No such|not found|images\/generations/i.test(testError) ? (
+                    <div className="mt-1 opacity-80">多数 404 都是中转地址少了 /v1：改成 https://apexapi.roixw.com/v1 再试。</div>
+                  ) : null}
+                </div>
+              ) : null}
+              {testImage ? (
+                <div className="overflow-hidden rounded-lg border border-border/50">
+                  <img src={testImage.url} alt={testImage.rel} className="max-h-64 w-full object-contain bg-black/5" />
+                  <div className="px-2 py-1 text-[11px] text-muted-foreground">{testImage.rel}</div>
+                </div>
+              ) : null}
             </div>
           </SettingRow>
         </>

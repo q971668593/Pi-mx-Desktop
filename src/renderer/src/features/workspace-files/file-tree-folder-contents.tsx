@@ -91,8 +91,9 @@ function FileTreeLevelInner(props: LevelProps) {
     setVisibleCount(FOLDER_INITIAL_VISIBLE)
   }, [entries, q])
 
-  const windowed = q ? displaySource : displaySource.slice(0, visibleCount)
-  const canLoadMore = !q && displaySource.length > visibleCount
+  const selectedIndex = selectedPath ? displaySource.findIndex((entry) => selectedPath === entry.path || selectedPath.startsWith(`${entry.path}/`)) : -1
+  const windowed = q ? displaySource : displaySource.slice(0, Math.max(visibleCount, selectedIndex + 1))
+  const canLoadMore = !q && displaySource.length > Math.max(visibleCount, selectedIndex + 1)
 
   if (filtered.length === 0 && q) return null
 

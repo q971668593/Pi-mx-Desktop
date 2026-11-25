@@ -40,7 +40,12 @@ export function sanitizeCompletionPreview(text: string | undefined, maxGraphemes
 }
 
 export const COMPLETION_TITLE_MAX = 40
-export const COMPLETION_BODY_MAX = 140
+/**
+ * 正文上限。卡片现在按内容自量高度（最多 NOTIFICATION_CARD_MAX_HEIGHT，
+ * 超出由正文自己滚），所以不必像以前那样只留两行——140 字连一句完整的
+ * 结论都装不下。仍然设上限，是为了别让一条通知把整屏占满。
+ */
+export const COMPLETION_BODY_MAX = 600
 
 export type CompletionCopyInput = {
   language: 'zh' | 'en'

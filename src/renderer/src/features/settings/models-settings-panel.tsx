@@ -20,6 +20,7 @@ import type { LocalModelEntry } from '@renderer/features/settings/model-entry-ed
 import { btnOutline, btnPrimary, cloneConfig, configEqual, defaultModelEntry } from './models-settings-shared'
 import { ModelsProviderCard } from './models-provider-card'
 import { ModelsSdkProviderSection } from './models-sdk-provider-section'
+import { ModelDefaultSection } from './model-default-section'
 import { saveModelsConfigDraft } from './save-models-config'
 import { PluginModelSettings } from './plugin-model-settings'
 import { ModelRuntimeAdvanced } from './model-runtime-advanced'
@@ -80,7 +81,8 @@ export function ModelsSettingsPanel() {
     const keys = Object.keys(cfg.providers || {})
     setExpanded((prev) => {
       const next = { ...prev }
-      for (const k of keys) if (next[k] === undefined) next[k] = keys.length <= 3
+      // 已配置的供应商默认折叠：列表一长就把下面的插件模型、默认模型顶出屏幕了，想改再点开展开。
+      for (const k of keys) if (next[k] === undefined) next[k] = false
       return next
     })
   }, [])
@@ -388,8 +390,9 @@ export function ModelsSettingsPanel() {
         onAuthChanged={() => void load()}
       />
 
-      {/* 配完供应商再配插件：插件模型跑在主对话之外（Git 提交说明、终端任务检测等）。
-          默认模型不在设置里选：每个对话自己挑，新会话由 SDK 自动取第一个可用模型。 */}
+      {/* 默认模型在这里选：新会话自动用它；下面插件模型跑在主对话之外（Git 提交说明、终端任务检测等）。 */}
+      <ModelDefaultSection models={settingsModels} />
+
       <PluginModelSettings />
 
       <ModelRuntimeAdvanced />

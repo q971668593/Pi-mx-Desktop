@@ -18,6 +18,7 @@ import {
 } from '@renderer/lib/right-panel-visibility'
 import type { UIState } from '@renderer/stores/ui-store-types'
 import { workspacePathKey } from '@shared/workspace-path'
+import type { RightPanelPrefs } from '@shared/right-panels'
 
 export function projectPanelKey(path: string | null): string {
   return `pi-desktop:project-panel:${workspacePathKey(path)}`
@@ -35,8 +36,10 @@ type ShellSlice = Pick<
   UIState,
   | 'activePanel'
   | 'setActivePanel'
+  | 'focusRightPanel'
   | 'rightPanelCatalog'
   | 'rightPanelPrefs'
+  | 'rightPanelForced'
   | 'rightPanelOrder'
   | 'applyRightPanelRuntime'
   | 'theme'
@@ -82,15 +85,41 @@ export function createShellSlice(set: StoreSet, get: StoreGet): ShellSlice {
         return { activePanel }
       }),
     rightPanelPrefs: defaultCoreRightPanelPrefs(),
+    rightPanelForced: {},
+    // 输入框的「上下文」圆环等入口直接点名某个面板。设置里默认关掉的面板（context/review/tree）
+    // 以前会被 coerceActivePanel 悄悄换成 files，看着像点不动。这里先就地启用再激活，
+    // 仅影响本次运行时的 prefs（设置页保存时才写主进程配置），下次进设置仍可再关掉。
+    focusRightPanel: (panel) =>
+      set((state) => {
+        const known = state.rightPanelCatalog.some((item) => item.id === panel)
+        if (!known) {
+          // 未知面板（别名/扩展面板未在目录里）才交给 coerce 回落。
+          return { ...revealRightPanelPatch(), activePanel: coerceActivePanel(panel, state.rightPanelPrefs, state.rightPanelCatalog, state.rightPanelOrder) }
+        }
+        const activePanel = panel
+        if (state.currentWorkspace) try { localStorage.setItem(projectPanelKey(state.currentWorkspace), activePanel) } catch { void 0 }
+        return {
+          ...revealRightPanelPatch(),
+          rightPanelPrefs: state.rightPanelPrefs[panel] ? state.rightPanelPrefs : { ...state.rightPanelPrefs, [panel]: true },
+          rightPanelForced: state.rightPanelForced[panel] ? state.rightPanelForced : { ...state.rightPanelForced, [panel]: true },
+          activePanel,
+        }
+      }),
     rightPanelOrder: [],
     applyRightPanelRuntime: (catalog, prefs, order) =>
       set((state) => {
         const nextOrder = order?.length ? order : state.rightPanelOrder
+        // 把本次运行内主动打开过的面板并回主进程配置，否则切 workspace / 保存设置
+        // 会把这些面板重新关掉，正在看的面板被弹回 files。
+        const forcedIds = Object.keys(state.rightPanelForced).filter((id) => catalog.some((item) => item.id === id))
+        const mergedPrefs = forcedIds.length === 0
+          ? prefs
+          : forcedIds.reduce<RightPanelPrefs>((acc, id) => ({ ...acc, [id]: true }), { ...prefs })
         return {
           rightPanelCatalog: catalog,
-          rightPanelPrefs: prefs,
+          rightPanelPrefs: mergedPrefs,
           rightPanelOrder: nextOrder,
-          activePanel: coerceActivePanel(state.activePanel, prefs, catalog, nextOrder),
+          activePanel: coerceActivePanel(state.activePanel, mergedPrefs, catalog, nextOrder),
         }
       }),
     theme: 'system',

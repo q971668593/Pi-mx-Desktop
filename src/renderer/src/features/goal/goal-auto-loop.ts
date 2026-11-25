@@ -37,6 +37,8 @@ export type GoalRoundRuntime = {
   markDone: (indices: number[]) => Promise<SessionGoal | null>
   send: (text: string, sessionFile: string) => Promise<boolean | void>
   notify: (event: { kind: 'done' | 'stalled' | 'capped'; remaining: number }) => void
+  /** 把这一轮的轮数/利车计数落盘（不阻塞发消息；不传就不落盘）。 */
+  recordRound?: (progress: { rounds: number; stalledRounds: number; remaining: number }) => void
 }
 
 type LoopRecord = GoalLoopState & { goalText: string }
@@ -55,6 +57,22 @@ function remainingOf(goal: SessionGoal): number {
   return goal.criteria.filter((criterion) => !criterion.done).length
 }
 
+/**
+ * 重启/切会话之后接着算利车：内存里的 loopStates 是空的，从目标里落盘的
+ * loop 进度恢复，否则一重启就又是一个「可以无限白转 20 轮」的新周期。
+ * 只有目标文本没变时才接上（改目标 = 新目标，刹车该重新数）。
+ */
+function seededState(goal: SessionGoal): LoopRecord | null {
+  const loop = goal.loop
+  if (!loop || loop.rounds === 0) return null
+  return {
+    rounds: loop.rounds,
+    stalledRounds: loop.stalledRounds,
+    lastRemaining: loop.lastRemaining,
+    goalText: goal.goal,
+  }
+}
+
 /** 跑一轮判定：先吸收模型汇报的进度，再过刹车表，决定「继续/停」。 */
 export async function runGoalRound(runtime: GoalRoundRuntime): Promise<GoalLoopOutcome> {
   const sessionFile = runtime.getSessionFile()
@@ -65,7 +83,11 @@ export async function runGoalRound(runtime: GoalRoundRuntime): Promise<GoalLoopO
   }
   // 编辑过目标文本 = 换了一个目标，旧的刹车计数不再适用。
   const prior = loopStates.get(sessionFile)
-  const state = prior && prior.goalText === goal.goal ? prior : null
+  const state = prior && prior.goalText === goal.goal
+    ? prior
+    : seededState(goal)?.goalText === goal.goal
+      ? seededState(goal)
+      : null
   const before = remainingOf(goal)
 
   if (runtime.reportedIndices.length > 0) await runtime.markDone(runtime.reportedIndices)
@@ -95,6 +117,8 @@ export async function runGoalRound(runtime: GoalRoundRuntime): Promise<GoalLoopO
   const sent = await runtime.send(goalContinuationPrompt(remaining), sessionFile)
   if (sent === false) return 'blocked'
   loopStates.set(sessionFile, { ...next, goalText: latest.goal })
+  // 轮数落盘：目标条要显示「第 N/20 轮」，重启后也要接着算。
+  runtime.recordRound?.({ rounds: next.rounds, stalledRounds: next.stalledRounds, remaining })
   return 'continue'
 }
 
@@ -181,9 +205,21 @@ export function installGoalAutoLoop() {
           if (kind === 'done') toast.success(t('goal:bar.done'))
           else toast.message(t(kind === 'capped' ? 'goal:bar.loopCapped' : 'goal:bar.loopStalled', { count: remaining }))
         },
+        recordRound: (progress) => {
+          void ipcClient
+            .invoke('sessionGoal.loopRound', { sessionFile, ...progress })
+            .then((response) => {
+              const stored = response?.goal ?? null
+              if (!stored) return
+              const view = useSessionGoalStore.getState()
+              if (view.sessionFile === sessionFile) view.applyGoal(stored)
+            })
+            .catch((error) => console.warn('[GoalAutoLoop] persisting the round failed:', error))
+        },
       })
       if (result === 'done' || result === 'stalled' || result === 'capped') {
-        if (valid()) useSessionGoalStore.getState().setAutoRun(sessionFile, false)
+        // 停下原因跟着写盘：目标条据此能把「用户暂停」和「刹车停手」区分开。
+        if (valid()) useSessionGoalStore.getState().setAutoRun(sessionFile, false, result)
       }
     } catch (error) {
       console.warn('[GoalAutoLoop] round failed:', error)

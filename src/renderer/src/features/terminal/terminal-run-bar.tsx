@@ -288,7 +288,7 @@ export function TerminalRunBar() {
               </div>
             </div>
           )}
-          {editingGroup && <button type="button" className="mb-2 text-[12px] text-accent hover:underline" onClick={() => { setEditingGroup(null); setGroupName(''); setGroupTasks(new Set()) }}>{t('common:terminal.newGroup')}</button>}
+          {editingGroup && <button type="button" className="mb-2 text-[12px] font-medium text-text-action hover:underline" onClick={() => { setEditingGroup(null); setGroupName(''); setGroupTasks(new Set()) }}>{t('common:terminal.newGroup')}</button>}
           <label className="block text-[12px]">{t('common:terminal.groupName')}<input value={groupName} disabled={!!editingGroup} onChange={(event) => setGroupName(event.target.value)} className="mt-1 w-full rounded border bg-transparent px-2 py-1.5 disabled:opacity-60" /></label>
           <p className="mt-3 text-[12px] text-foreground-secondary">{t('common:terminal.groupHelp')}</p>
           <div className="mt-2 max-h-48 overflow-auto">

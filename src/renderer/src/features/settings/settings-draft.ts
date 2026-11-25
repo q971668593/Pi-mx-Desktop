@@ -199,7 +199,7 @@ export async function loadSettingsDraftFromDisk(i18nLanguage: string): Promise<S
     alertNotificationEnabled: s.alertNotificationEnabled !== false,
     alertOnExtensionUi: s.alertOnExtensionUi !== false,
     alertOnRunIdle: s.alertOnRunIdle !== false,
-    alertOnBackgroundRunIdle: s.alertOnBackgroundRunIdle === true,
+    alertOnBackgroundRunIdle: s.alertOnBackgroundRunIdle !== false,
     alertOnRunFailed: s.alertOnRunFailed !== false,
     aiActivityGlowEnabled: s.aiActivityGlowEnabled !== false,
     completionNotificationTimeoutSeconds: normalizeCompletionTimeoutSeconds(s.completionNotificationTimeoutSeconds),

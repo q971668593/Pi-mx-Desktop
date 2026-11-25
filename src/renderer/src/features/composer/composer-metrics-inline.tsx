@@ -33,9 +33,8 @@ export function ComposerMetricsInline({ metrics, isRunning }: { metrics: Metrics
   const baseTitle = cacheTitle ? `${contextTitle} · ${cacheTitle}` : contextTitle
   const title = `${baseTitle} · ${t('composer:contextRingClickHint')}`
   const openContextPanel = () => {
-    const st = useUIStore.getState()
-    st.setActivePanel('context')
-    st.revealRightPanel()
+    // 一步到位：设置里关掉的面板也要能打开，否则会被回落到 files，看起来像跳到了文件查看器。
+    useUIStore.getState().focusRightPanel('context')
   }
 
   return (

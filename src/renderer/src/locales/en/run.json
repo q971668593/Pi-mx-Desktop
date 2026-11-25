@@ -63,5 +63,6 @@
     "summary": "Summary",
     "other": "Other",
     "free": "Free"
-  }
+  },
+  "genSpeedHistoryHint": "This run reported no token usage, so this is the average real output rate over recent runs."
 }

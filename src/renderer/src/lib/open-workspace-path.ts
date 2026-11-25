@@ -91,8 +91,7 @@ export function openReviewGitForPath(relPath: string): void {
   const store = useUIStore.getState()
   const raw = normalizeRelPath(relPath, store.currentWorkspace) || relPath.replace(/\\/g, '/').trim()
   if (!raw) return
-  store.setActivePanel('review')
-  store.revealRightPanel()
+  store.focusRightPanel('review')
   window.dispatchEvent(new CustomEvent('pi-desktop:review-scope', { detail: 'git' }))
   window.dispatchEvent(
     new CustomEvent('pi-desktop:review-focus-file', {
@@ -106,8 +105,7 @@ export function openReviewSessionForPath(relPath: string): void {
   const store = useUIStore.getState()
   const raw = normalizeRelPath(relPath, store.currentWorkspace) || relPath.replace(/\\/g, '/').trim()
   if (!raw) return
-  store.setActivePanel('review')
-  store.revealRightPanel()
+  store.focusRightPanel('review')
   window.dispatchEvent(new CustomEvent('pi-desktop:review-scope', { detail: 'session' }))
   window.dispatchEvent(
     new CustomEvent('pi-desktop:review-focus-file', {

@@ -6,6 +6,7 @@ import { cn } from '@renderer/lib/utils'
 import {
   Activity,
   Boxes,
+  Brain,
   ChevronLeft,
   Cpu,
   Inbox,
@@ -95,10 +96,14 @@ const AdaptersSettings = lazy(() =>
 const PurgeSettings = lazy(() =>
   import('@renderer/features/settings/purge-settings-panel').then((m) => ({ default: m.PurgeSettings })),
 )
+const LessonSettingsPanel = lazy(() =>
+  import('@renderer/features/settings/lesson-settings-panel').then((m) => ({ default: m.LessonSettingsPanel })),
+)
 
 type SettingsPageId =
   | 'general'
   | 'notifications'
+  | 'lessons'
   | 'appearance'
   | 'models'
   | 'resources'
@@ -124,6 +129,7 @@ const NAV_GROUPS: NavGroup[] = [
     labelKey: 'settings:nav.groupCommon',
     pages: [
       { key: 'general', icon: SlidersHorizontal },
+      { key: 'lessons', icon: Brain },
       { key: 'notifications', icon: Inbox },
       { key: 'appearance', icon: Palette },
       { key: 'models', icon: Boxes },
@@ -444,6 +450,7 @@ export function SettingsPage() {
           <SettingsMain wide={wide} pageKey={activePageKey} footer={<SettingsSaveBar wide={wide} />}>
             {pages.length === 0 ? <div className="workbench-empty"><Search className="h-6 w-6 opacity-50" /><p>{t('settings:noSearchResults')}</p><span>{t('settings:searchHint')}</span></div> : <Suspense fallback={<SettingsPanelSkeleton />}>
             {page === 'general' && <GeneralSettings />}
+            {page === 'lessons' && <LessonSettingsPanel />}
             {page === 'notifications' && <NotificationsSettings />}
             {page === 'appearance' && <AppearanceSettings />}
             {page === 'models' && (

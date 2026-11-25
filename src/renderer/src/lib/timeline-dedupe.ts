@@ -1,5 +1,6 @@
 import type { TimelineItem } from '@renderer/stores/ui-store'
 import { markTrailingIncompleteAssistants } from '@shared/timeline-incomplete'
+import { sanitizeLeakedToolCallText } from '@shared/leaked-tool-call'
 
 export function normalizeTimelineMessageText(t?: string): string {
   return (t || '').replace(/\s+/g, ' ').trim()
@@ -50,9 +51,17 @@ export function dedupeAdjacentUserMessages(items: TimelineItem[]): TimelineItem[
 }
 
 export function sanitizeHistoryTimeline(items: TimelineItem[]): TimelineItem[] {
+  // 兜底：历史落盘数据里若有模型误发的 <atem: 指令文本，重开会话时也不再原样上屏。
+  const cleaned = items.map((it) => {
+    if (it.type === 'assistant-message' && typeof it.text === 'string' && it.text.includes('<atem:')) {
+      const next = sanitizeLeakedToolCallText(it.text)
+      if (next.leaked && next.text !== it.text) return { ...it, text: next.text }
+    }
+    return it
+  })
   // Heal crash mid-stream empty leaf so incomplete UI + rewind stay available after reopen.
   return markTrailingIncompleteAssistants(
-    dedupeAdjacentUserMessages(stripOptimisticTimelineItems(items)),
+    dedupeAdjacentUserMessages(stripOptimisticTimelineItems(cleaned)),
   ) as TimelineItem[]
 }
 

@@ -2,6 +2,7 @@ import { isAbortUiHoldActive } from '@renderer/lib/abort-ui-hold'
 import { isReusableOptimisticUserMessage } from '@renderer/lib/timeline-dedupe'
 import type { MessageEvent, StoreApi } from '@renderer/stores/apply-app-event-types'
 import { flushStreamPendingSync } from '@renderer/stores/ui-store-stream'
+import { containsLeakedToolCall, sanitizeLeakedToolCallText } from '@shared/leaked-tool-call'
 import type { TimelineItem } from '@renderer/stores/ui-store-types'
 
 /**
@@ -144,6 +145,9 @@ export function handleMessage(event: MessageEvent, api: StoreApi): void {
     api.set({ streamingAssistantId: id })
   } else if (event.phase === 'delta' && event.text) {
     clearAgentTurnBootstrappingIfNeeded()
+    // 实时流里模型偶发把 <atem: 指令当正文发出来：整片跳过，不让原始 XML 闪屏；
+    // end 包里的 sanitize 会补一句人话提示。
+    if (event.contentKind !== 'thinking' && containsLeakedToolCall(event.text)) return
     const run = api.get().runState
     if (event.contentKind !== 'thinking' && run.status === 'running' && run.startTime != null && run.firstOutputDelayMs == null) {
       state.setRunState({ firstOutputDelayMs: Math.max(0, event.timestamp - run.startTime) })
@@ -161,8 +165,11 @@ export function handleMessage(event: MessageEvent, api: StoreApi): void {
       : api.get().streamingAssistantId
     if (hasFinalText) {
       // Final text is always assistant prose, never thinking.
+      // 兜底同上：end 包里若夹带泄露块，换成人话再落屏，老会话重开也由 sanitizeHistoryTimeline 覆盖。
+      const finalText =
+        event.contentKind === 'thinking' ? String(event.text) : sanitizeLeakedToolCallText(String(event.text)).text
       if (event.contentKind === 'thinking') state.appendThinkingDelta(String(event.text))
-      else state.setStreamingAssistantFinalText(event.text ?? '')
+      else state.setStreamingAssistantFinalText(finalText)
     } else if (!api.get().agentTurnBootstrapping && !api.get().optimisticPendingUserText) {
       api.set({ streamingAssistantId: null })
     }

@@ -16,6 +16,7 @@ const BrowserPanel = lazy(() => import('@renderer/features/browser/browser-panel
 const TerminalPanel = lazy(() => import('@renderer/features/terminal/terminal-panel').then((m) => ({ default: m.TerminalPanel })))
 const GitBoardPanel = lazy(() => import('@renderer/features/git-board/git-board-panel').then((m) => ({ default: m.GitBoardPanel })))
 const TeamBoardPanel = lazy(() => import('@renderer/features/team-board/team-board-panel').then((m) => ({ default: m.TeamBoardPanel })))
+const GrowPanel = lazy(() => import('@renderer/features/grow/grow-panel').then((m) => ({ default: m.GrowPanel })))
 
 const ADAPTER_PANEL_COMPONENTS: Record<string, React.ComponentType<import('./side-panel-registry').SidePanelComponentProps>> = {
   'workspace-tasks': WorkspaceTasksSidePanel,
@@ -50,6 +51,7 @@ export function SidePanelHost({ item }: { item: RightPanelCatalogItem | undefine
   if (item.id === 'git') return wrap(<GitBoardPanel />)
   if (item.id === 'team') return wrap(<TeamBoardPanel />)
   if (item.id === 'browser') return wrap(<BrowserPanel />)
+  if (item.id === 'grow') return wrap(<GrowPanel />)
 
   return <div className="p-4 text-[12px] text-muted-foreground">{t('common:panel.unregistered', { id: item.id })}</div>
 }

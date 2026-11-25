@@ -63,5 +63,6 @@
     "summary": "摘要",
     "other": "其他",
     "free": "余量"
-  }
+  },
+  "genSpeedHistoryHint": "本次运行没有拿到 token 用量，这里显示最近几次运行的真实出字速度平均值。"
 }

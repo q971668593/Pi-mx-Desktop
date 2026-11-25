@@ -19,9 +19,10 @@ describe('defaultCoreRightPanelPrefs', () => {
     expect(prefs.review).toBe(false)
     expect(prefs.context).toBe(false)
     expect(prefs.tree).toBe(false)
+    expect(prefs.grow).toBe(true)
   })
 
-  it('keeps the catalog order files → git → team → terminal → browser → run → review → context → tree', () => {
+  it('keeps the catalog order files → git → team → terminal → browser → run → review → context → tree → grow', () => {
     expect(CORE_RIGHT_PANEL_CATALOG.map((item) => item.id)).toEqual([
       'files',
       'git',
@@ -32,6 +33,7 @@ describe('defaultCoreRightPanelPrefs', () => {
       'review',
       'context',
       'tree',
+      'grow',
     ])
   })
 })
@@ -58,6 +60,7 @@ describe('normalizeRightPanelOrder', () => {
       'review',
       'context',
       'tree',
+      'grow',
     ])
   })
 })
@@ -65,7 +68,7 @@ describe('normalizeRightPanelOrder', () => {
 describe('normalizeRightPanelPrefs', () => {
   it('falls back to files+run when all panels disabled', () => {
     const prefs = normalizeRightPanelPrefs(
-      { review: false, run: false, context: false, tree: false, files: false, terminal: false, git: false, browser: false, team: false },
+      { review: false, run: false, context: false, tree: false, files: false, terminal: false, git: false, browser: false, team: false, grow: false },
       CORE_RIGHT_PANEL_CATALOG,
     )
     expect(prefs.files).toBe(true)
@@ -83,5 +86,10 @@ describe('normalizeRightPanelPrefs', () => {
     expect(prefs.git).toBe(true)
     expect(prefs.team).toBe(true)
     expect(prefs.files).toBe(true)
+  })
+
+  it('backfills grow:true when an older saved layout lacks the key', () => {
+    const prefs = normalizeRightPanelPrefs({ files: true, run: true }, CORE_RIGHT_PANEL_CATALOG)
+    expect(prefs.grow).toBe(true)
   })
 })

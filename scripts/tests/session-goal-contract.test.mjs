@@ -61,7 +61,7 @@ describe('session goal contract', () => {
     assert.match(schemas, /MAX_GOAL_LENGTH/)
     assert.match(schemas, /MAX_GOAL_CRITERIA/)
     const generated = read('packages/shared/ipc-channels.generated.ts')
-    for (const channel of ['get', 'set', 'toggleCriterion', 'markDone', 'clear']) {
+    for (const channel of ['get', 'set', 'toggleCriterion', 'markDone', 'clear', 'setAutoRun', 'loopRound']) {
       assert.ok(generated.includes(`'ipc:sessionGoal.${channel}'`), `白名单缺少 ipc:sessionGoal.${channel}`)
     }
   })

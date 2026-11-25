@@ -80,6 +80,54 @@ export function refreshAvailableModels(): Promise<ModelInfo[]> {
   return promise
 }
 
+/**
+ * 手动刷新（模型下拉里的刷新按钮）：先让主进程把每个活着的 worker 的模型注册表重载一遍，
+ * 再把最新可用列表回填到缓存。
+ *
+ * 只重发 model.list 不够——worker 池里的 slot 各持一份注册表，设置里新加/改过的 provider
+ * 得 reloadModels 之后才会出现在它们手里。走这条路径，正在聊的对话不用切会话或重启。
+ */
+export function forceReloadAvailableModels(): Promise<ModelInfo[]> {
+  generation += 1
+  invalidated = false
+  const requestGeneration = generation
+  inFlight = null
+  const promise = Promise.resolve(ipcClient.invoke('model.reload', {}))
+    .then((res) => {
+      if (inFlight?.promise === promise) inFlight = null
+      if (requestGeneration !== generation) return snapshot
+      // 主进程把失败包成 { ok: false, models: [] }（不 throw），这里必须把它还原成错误，
+      // 否则界面只会提示「没拿到模型列表」，真正的 error 文本全链路无人读取。
+      if (res?.ok === false) throw new Error(String(res?.error || 'model_reload_failed'))
+      const models = Array.isArray(res?.models) ? (res.models as ModelInfo[]) : []
+      if (models.length > 0) {
+        snapshot = models
+        invalidated = false
+        emptyRetries = 0
+        clearEmptyRetry()
+      } else {
+        // 主进程没拿到（例如刚启动还没就绪）：退回普通刷新，别把已有的列表清空。
+        invalidated = true
+        scheduleEmptyRetry()
+      }
+      for (const listener of listeners) listener(snapshot)
+      return snapshot
+    })
+    .catch((error) => {
+      // 不清 inFlight 会让它永远指向一个已 reject 的 promise：isAvailableModelsPending() 恒为 true，
+      // 后续 refreshAvailableModels/ensureAvailableModels 全都会复用这个 rejected promise，直到重启。
+      if (inFlight?.promise === promise) inFlight = null
+      if (requestGeneration === generation) {
+        invalidated = true
+        if (snapshot.length === 0) scheduleEmptyRetry()
+        for (const listener of listeners) listener(snapshot)
+      }
+      throw error
+    })
+  inFlight = { generation: requestGeneration, promise }
+  return promise
+}
+
 export function ensureAvailableModels(): Promise<ModelInfo[]> {
   if (!invalidated && snapshot.length > 0) return Promise.resolve(snapshot)
   return refreshAvailableModels()

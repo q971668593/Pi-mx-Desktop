@@ -14,6 +14,8 @@ export const BUILTIN_COMMANDS: SlashCommand[] = [
   { id: 'fork', name: '/fork', category: 'builtin' },
   { id: 'clone', name: '/clone', category: 'builtin' },
   { id: 'tree', name: '/tree', category: 'builtin' },
+  { id: 'clarify', name: '/澄清', category: 'builtin' },
+  { id: 'clarify', name: '/clarify', category: 'builtin' },
   { id: 'purge', name: '/purge', category: 'builtin' },
 ]
 
@@ -26,6 +28,7 @@ export const BUILTIN_CMD_I18N: Record<string, string> = {
   fork: 'composer:commands.fork',
   clone: 'composer:commands.clone',
   tree: 'composer:commands.tree',
+  clarify: 'composer:commands.clarify',
   purge: 'composer:commands.purge',
 }
 

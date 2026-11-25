@@ -93,6 +93,7 @@
     "newFolder": "新建文件夹",
     "reveal": "在文件夹中显示",
     "rename": "重命名",
+    "delete": "删除",
     "openInNewTab": "在新窗口打开",
     "searchInFolder": "在此文件夹搜索"
     ,"newTerminal": "在此处新建终端"
@@ -102,11 +103,19 @@
     "confirm": "确定",
     "cancel": "取消"
   },
+  "delete": {
+    "title": "删除",
+    "message": "确定把「{{name}}」移到回收站吗？",
+    "confirm": "是，删除"
+  },
   "toast": {
     "attached": "已附加到输入框",
     "copied": "已复制路径",
     "renamed": "已重命名",
     "renameFailed": "重命名失败",
+    "deleted": "已移到回收站",
+    "deleteFailed": "删除失败",
+    "deleteMissing": "文件已经不在了，刷新一下试试",
     "fileCopied": "已复制文件，可选择文件夹后按 Ctrl+V 粘贴",
     "pastedOne": "已粘贴文件",
     "pastedMany": "已粘贴 {{count}} 个文件",

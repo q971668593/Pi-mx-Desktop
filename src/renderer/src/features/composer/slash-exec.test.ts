@@ -10,6 +10,7 @@ vi.mock('@renderer/lib/ipc-client', () => ({
   ipcClient: { invoke: vi.fn(() => Promise.resolve({ adapters: [] })) },
 }))
 vi.mock('@renderer/lib/extension-ui-channel', () => ({ clearExtensionDialogDedupe: vi.fn() }))
+vi.mock('@renderer/lib/send-composer-prompt', () => ({ sendComposerPrompt: vi.fn().mockResolvedValue(true) }))
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
@@ -30,6 +31,23 @@ beforeEach(() => {
     },
   })
   useExtensionUIStore.setState({ activePending: null, suspended: null })
+})
+
+describe('/clarify tree binding', () => {
+  it('binds the newly created tree to the current conversation before sending', async () => {
+    useUIStore.setState({ workerLiveSnapshot: { sessionId: null, sessionFile: null, status: 'idle' }, timelineItems: [] })
+    invoke.mockImplementation(async (method, payload) => {
+      if (method === 'grow:listSessions') return { ok: true, sessionId: (payload as { action?: string }).action === 'getBinding' ? 'old-tree' : 'new-tree' } as never
+      if (method === 'grow:startSession') return { ok: true, sessionId: 'new-tree' } as never
+      return {} as never
+    })
+    await executeSlashCommand('/澄清 做一个问卷')
+    expect(invoke).toHaveBeenCalledWith('grow:listSessions', {
+      workspaceId: 'C:/workspace', action: 'setBinding', sessionFile: 'C:/sessions/current.jsonl', sessionId: 'new-tree',
+    })
+    const { sendComposerPrompt } = await import('@renderer/lib/send-composer-prompt')
+    expect(sendComposerPrompt).toHaveBeenCalledWith(expect.stringContaining('new-tree'))
+  })
 })
 
 describe('/new session reset', () => {

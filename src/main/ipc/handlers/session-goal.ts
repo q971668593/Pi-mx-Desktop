@@ -6,7 +6,9 @@ import { workerManager } from '../../worker-manager'
 import {
   sessionGoalClearSchema,
   sessionGoalGetSchema,
+  sessionGoalLoopRoundSchema,
   sessionGoalMarkDoneSchema,
+  sessionGoalSetAutoRunSchema,
   sessionGoalSetSchema,
   sessionGoalToggleCriterionSchema,
 } from '../schemas'
@@ -76,8 +78,35 @@ export function registerSessionGoalHandlers(): void {
   })
 
   /**
+   * 「开始/暂停自动推进」（目标条上那两个按钮）。
+   *
+   * 开关落盘在主进程：重启、切会话、热更新都不会丢。只有开启时才真的去推动一轮；
+   * 暂停只写盘 + 断掉续跑，不动当前正在跑的这一轮（用户想立刻停就用终止）。
+   */
+  registerHandlerWithSchema('ipc:sessionGoal.setAutoRun', sessionGoalSetAutoRunSchema, async (req) => {
+    const store = getSessionGoalStore()
+    const goal = store.setAutoRun(req.sessionFile, req.enabled, undefined, req.stopReason)
+    if (!goal) return { goal: null }
+    // 开启但 worker 还没起来：先唤醒会话再发续跑提示，别静默什么也不做。
+    const remaining = store.remaining(req.sessionFile)
+    if (!req.enabled || remaining <= 0) return { goal, started: false }
+    const round = await workerManager.startGoalRound(req.sessionFile, goalContinuationPrompt(remaining))
+    return { goal, ...round }
+  })
+
+  /** 自动循环每续一轮就把轮数/停滞计数落盘：目标条和重启后的状态都靠这个。 */
+  registerHandlerWithSchema('ipc:sessionGoal.loopRound', sessionGoalLoopRoundSchema, async (req) => {
+    const goal = getSessionGoalStore().markLoopContinued(req.sessionFile, {
+      rounds: req.rounds,
+      stalledRounds: req.stalledRounds,
+      remaining: req.remaining,
+    })
+    return { goal }
+  })
+
+  /**
    * 「再次启动目标」：把未完成的验收项拼成续跑提示，直接发一轮。
-   * 不依赖上一轮的 runId，所以暂停很久之后也能重新开始。
+   * 不依赖上一轮的 runId，所以暂停很久之后也能重新开始；冷会话先唤醒再发。
    */
   registerHandlerWithSchema('ipc:sessionGoal.resume', sessionGoalGetSchema, async ({ sessionFile }) => {
     const store = getSessionGoalStore()
@@ -85,9 +114,8 @@ export function registerSessionGoalHandlers(): void {
     if (!goal) return { sent: false, reason: 'no_goal' as const }
     const remaining = store.remaining(sessionFile)
     if (!remaining) return { sent: false, reason: 'done' as const }
-    if (!workerManager.hasLiveSessionWorker(sessionFile)) return { sent: false, reason: 'cold' as const }
-    await workerManager.sendPrompt(goalContinuationPrompt(remaining), sessionFile)
-    return { sent: true }
+    const round = await workerManager.startGoalRound(sessionFile, goalContinuationPrompt(remaining))
+    return round.started ? { sent: true } : { sent: false, reason: round.reason ?? ('wake_failed' as const) }
   })
 
   registerHandlerWithSchema('ipc:sessionGoal.clear', sessionGoalClearSchema, async (req) => {

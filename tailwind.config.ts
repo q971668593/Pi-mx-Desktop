@@ -66,6 +66,8 @@ const config: Config = {
         'foreground-secondary': 'hsl(var(--text-secondary-hsl))',
         // Hints and metadata one step below secondary.
         'foreground-tertiary': 'hsl(var(--text-tertiary-hsl))',
+        // 文字动作色（面板上的「添加到引用 / 保存」这类链接式按钮）
+        'text-action': 'hsl(var(--text-action-hsl))',
         // 桌面 Agent UI AOU brand palette
         aou: {
           1: 'var(--aou-1)',
