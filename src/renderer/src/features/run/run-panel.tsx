@@ -96,8 +96,13 @@ export function RunPanel() {
   })
   const liveTps = isRunning && metrics.tps != null && metrics.tps > 0 ? metrics.tps / 4 : null
   const settledTps =
-    !isRunning && runState.runOutputTokens != null && runState.runOutputTokens > 0 && runState.lastRunDurationMs
-      ? runState.runOutputTokens * 1000 / runState.lastRunDurationMs
+    !isRunning && runState.runOutputTokens != null && runState.runOutputTokens > 0
+      ? (() => {
+        const basisMs = runState.lastRunWriteMs != null && runState.lastRunWriteMs > 0
+          ? runState.lastRunWriteMs
+          : runState.lastRunDurationMs
+        return basisMs ? runState.runOutputTokens! * 1000 / basisMs : null
+      })()
       : null
   // 本次 run 没有得出可用速率时，用历史样本平均兜底，界面始终给出一个数字。
   const historyTps = averageTokenSpeed()?.tps ?? null

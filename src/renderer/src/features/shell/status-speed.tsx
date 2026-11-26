@@ -19,10 +19,12 @@ export function StatusSpeed() {
   const settled = useMemo(() => {
     if (running) return null
     if (run.runOutputTokens == null || run.runOutputTokens <= 0) return null
-    if (run.lastRunDurationMs == null || run.lastRunDurationMs <= 0) return null
-    const value = run.runOutputTokens * 1000 / run.lastRunDurationMs
+    // 写字速度按正文实际输出耗时算，不含工具调用；老数据没有写字耗时才退回整轮耗时。
+    const basisMs = run.lastRunWriteMs != null && run.lastRunWriteMs > 0 ? run.lastRunWriteMs : run.lastRunDurationMs
+    if (basisMs == null || basisMs <= 0) return null
+    const value = run.runOutputTokens * 1000 / basisMs
     return Number.isFinite(value) && value > 0 ? value : null
-  }, [running, run.runOutputTokens, run.lastRunDurationMs])
+  }, [running, run.runOutputTokens, run.lastRunWriteMs, run.lastRunDurationMs])
   const history = useMemo(() => averageTokenSpeed(), [run.lastRunDurationMs, run.status])
   const live = running && tps != null && tps > 0 ? tps / 4 : null
   const source: SpeedSource = live != null ? 'live' : settled != null ? 'settled' : history != null ? 'history' : 'none'

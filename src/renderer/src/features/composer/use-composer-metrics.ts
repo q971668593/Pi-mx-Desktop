@@ -4,6 +4,7 @@ import { useUIStore } from '@renderer/stores/ui-store'
 import { formatTokens, estTokensFromChars } from '@renderer/lib/format-tokens'
 import type { ContextRoleSlice } from '@renderer/features/run/context-donut'
 import { useSessionContextPreview } from '@renderer/features/context/use-session-context-preview'
+import { noteStreamProgress } from '@renderer/lib/token-stream-clock'
 
 export function useComposerMetrics(options?: { enabled?: boolean }) {
   const metricsEnabled = options?.enabled !== false
@@ -60,6 +61,8 @@ export function useComposerMetrics(options?: { enabled?: boolean }) {
       setTps(null)
       return
     }
+    // 写字时钟：只在正文变长时累计，工具调用和等待不计入写字耗时。
+    noteStreamProgress(streamingId, streamLen)
     const now = performance.now()
     if (!streamingId) {
       // Keep the last measured rate so an idle panel still shows how fast the run went.

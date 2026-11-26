@@ -1,7 +1,7 @@
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { formatTokens } from '@renderer/lib/format-tokens'
 import { cn } from '@renderer/lib/utils'
-import { useUIStore } from '@renderer/stores/ui-store'
 import type { useComposerMetrics } from './use-composer-metrics'
 
 type Metrics = ReturnType<typeof useComposerMetrics>
@@ -32,37 +32,49 @@ export function ComposerMetricsInline({ metrics, isRunning }: { metrics: Metrics
       : null
   const baseTitle = cacheTitle ? `${contextTitle} · ${cacheTitle}` : contextTitle
   const title = `${baseTitle} · ${t('composer:contextRingClickHint')}`
-  const openContextPanel = () => {
-    // 一步到位：设置里关掉的面板也要能打开，否则会被回落到 files，看起来像跳到了文件查看器。
-    useUIStore.getState().focusRightPanel('context')
-  }
+  const [showPop, setShowPop] = useState(false)
 
   return (
     <div className="composer-metrics-inline flex shrink-0 items-center gap-1.5 text-[10.5px] tabular-nums leading-none text-foreground-secondary/60">
       {tpsLabel && isRunning ? <span title={t('composer:tpsHint')}>{tpsLabel}</span> : null}
       {showCtx && (
-        <button
-          type="button"
-          onClick={openContextPanel}
-          className="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/45"
-          title={title}
-          aria-label={title}
+        <span
+          className="relative flex"
+          onMouseEnter={() => setShowPop(true)}
+          onMouseLeave={() => setShowPop(false)}
         >
-          <span role="img" title={title} aria-label={title} className="flex items-center justify-center">
-            <svg width="16" height="16" viewBox="0 0 16 16" className={cn('composer-context-ring', pct >= 80 && 'is-high')} aria-hidden>
-              <circle cx="8" cy="8" r={R} className="track" />
-              <circle
-                cx="8"
-                cy="8"
-                r={R}
-                className="value"
-                strokeDasharray={C}
-                strokeDashoffset={C * (1 - Math.max(pct, 2) / 100)}
-                transform="rotate(-90 8 8)"
-              />
-            </svg>
-          </span>
-        </button>
+          <button
+            type="button"
+            onClick={() => setShowPop((value) => !value)}
+            aria-expanded={showPop}
+            className="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/45"
+            title={title}
+            aria-label={title}
+          >
+            <span role="img" title={title} aria-label={title} className="flex items-center justify-center">
+              <svg width="16" height="16" viewBox="0 0 16 16" className={cn('composer-context-ring', pct >= 80 && 'is-high')} aria-hidden>
+                <circle cx="8" cy="8" r={R} className="track" />
+                <circle
+                  cx="8"
+                  cy="8"
+                  r={R}
+                  className="value"
+                  strokeDasharray={C}
+                  strokeDashoffset={C * (1 - Math.max(pct, 2) / 100)}
+                  transform="rotate(-90 8 8)"
+                />
+              </svg>
+            </span>
+          </button>
+          {showPop ? (
+            <span
+              role="status"
+              className="absolute bottom-8 right-0 z-30 w-max max-w-[280px] rounded-lg border border-border/60 bg-popover px-2.5 py-1.5 text-[11px] leading-relaxed text-popover-foreground shadow-lg"
+            >
+              {baseTitle}
+            </span>
+          ) : null}
+        </span>
       )}
     </div>
   )

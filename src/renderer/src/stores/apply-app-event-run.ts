@@ -2,6 +2,7 @@ import { isAbortQueueIgnoreActive, isAbortUiHoldActive } from '@renderer/lib/abo
 import { isViewingWorkerBoundSession } from '@renderer/lib/session-worker-sync'
 import { alertTrace } from '@renderer/lib/alert-trace'
 import { recordTokenSpeedSample } from '@renderer/lib/token-speed-stats'
+import { takeStreamActiveMs } from '@renderer/lib/token-stream-clock'
 import type { RunEvent, StoreApi } from '@renderer/stores/apply-app-event-types'
 import { flushStreamPendingSync } from '@renderer/stores/ui-store-stream'
 import { eventSessionFile } from '@renderer/stores/apply-app-event-background'
@@ -119,6 +120,9 @@ export function handleRun(event: RunEvent, api: StoreApi): boolean {
     const wasActive = rs.status === 'running' || rs.status === 'failed'
     const prevRun = rs.activeRunId
     const durationMs = rs.startTime ? Math.max(0, Date.now() - rs.startTime) : rs.lastRunDurationMs
+    // 写字耗时：正文实际往外冒的时间（工具调用不算）；拿不到时退回整轮耗时。
+    const streamMs = takeStreamActiveMs()
+    const writeMs = streamMs > 0 ? streamMs : durationMs
     // 结算时把这次真实速率记成样本：下一次碰上「没有 usage / 耗时不足」的 run 时，
     // 状态栏和 Run 面板就能用样本平均给出一个大致速度，而不是一条横线。
     // 一次 run 可能结算两次（点 Stop 时先 cancelled 再 idle），而 setRunState 不清 startTime，
@@ -127,12 +131,13 @@ export function handleRun(event: RunEvent, api: StoreApi): boolean {
     const sampleKey = event.runId ? String(event.runId) : null
     if (wasActive && (sampleKey === null || sampleKey !== lastSpeedSampleRunId)) {
       lastSpeedSampleRunId = sampleKey
-      recordTokenSpeedSample(rs.runOutputTokens, durationMs)
+      recordTokenSpeedSample(rs.runOutputTokens, writeMs)
     }
     state.setRunState({
       status: 'idle',
       lastRunId: prevRun ?? rs.lastRunId,
       lastRunDurationMs: durationMs,
+      lastRunWriteMs: writeMs,
       activeRunId: undefined,
       activeTool: undefined,
       activeToolStatus: undefined,

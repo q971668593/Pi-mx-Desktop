@@ -115,6 +115,8 @@ export interface RunState {
   availableThinkingLevels?: string[]
   startTime?: number
   lastRunDurationMs?: number
+  /** 本轮正文实际往外冒的时间（毫秒）：只累计写字，工具调用和等待不算。速度都按它算。 */
+  lastRunWriteMs?: number
   /** Output tokens reported by the model across assistant turns in this run. */
   runOutputTokens?: number
   /** Time from the turn start to the first assistant content delta. */

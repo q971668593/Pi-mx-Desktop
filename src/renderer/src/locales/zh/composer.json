@@ -246,7 +246,7 @@
   "modelPickerKeys": "↑↓ 选择 · Enter 切换 · Esc 关闭",
   "thinkingChip": "思考：{{level}}（Shift+Tab 切换）",
   "contextRing": "上下文 {{used}} / {{total}}（{{pct}}%）",
-  "contextRingClickHint": "点击查看上下文详情",
+  "contextRingClickHint": "悬停查看上下文用量（已用 / 总量）",
   "tools": {
     "button": "工具",
     "title": "本会话启用",

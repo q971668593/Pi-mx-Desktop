@@ -246,7 +246,7 @@
   "modelPickerKeys": "↑↓ select · Enter switch · Esc close",
   "thinkingChip": "Thinking: {{level}} (Shift+Tab to cycle)",
   "contextRing": "Context {{used}} / {{total}} ({{pct}}%)",
-  "contextRingClickHint": "Click to open Context panel",
+  "contextRingClickHint": "Hover to see context usage (used / total)",
   "tools": {
     "button": "Tools",
     "title": "On for this chat",
