@@ -15,6 +15,8 @@ export function ComposerMetricsInline({ metrics, isRunning }: { metrics: Metrics
   const showCtx = metrics.contextWindow != null || metrics.estContextTokens != null
   const pct = Math.max(0, Math.min(100, metrics.ctxPct ?? 0))
   const tpsLabel = metrics.tps != null && metrics.tps > 0 ? `${Math.round(metrics.tps)} tps` : null
+  // 钩子必须在提前返回之前：上下文指标时有时无，写在后面会触发 React #310 直接白屏。
+  const [showPop, setShowPop] = useState(false)
 
   if (!showCtx && !tpsLabel) return null
 
@@ -32,7 +34,6 @@ export function ComposerMetricsInline({ metrics, isRunning }: { metrics: Metrics
       : null
   const baseTitle = cacheTitle ? `${contextTitle} · ${cacheTitle}` : contextTitle
   const title = `${baseTitle} · ${t('composer:contextRingClickHint')}`
-  const [showPop, setShowPop] = useState(false)
 
   return (
     <div className="composer-metrics-inline flex shrink-0 items-center gap-1.5 text-[10.5px] tabular-nums leading-none text-foreground-secondary/60">
