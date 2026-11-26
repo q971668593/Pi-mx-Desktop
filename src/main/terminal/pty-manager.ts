@@ -71,9 +71,9 @@ export class PtyManager {
     return this.ptys.size
   }
 
-  create(profile: ShellProfile, opts: { cwd?: string; workspace?: string; command?: string; cols: number; rows: number; owner?: TerminalOwner; markers?: string[] }): { id: string; pid: number } {
+  create(profile: ShellProfile, opts: { cwd?: string; workspace?: string; command?: string; cols: number; rows: number; owner?: TerminalOwner; markers?: string[]; env?: NodeJS.ProcessEnv }): { id: string; pid: number } {
     const cwd = opts.cwd && existsSync(opts.cwd) && statSync(opts.cwd).isDirectory() ? opts.cwd : homedir()
-    const env = { ...this.baseEnv(), TERM: 'xterm-256color', COLORTERM: 'truecolor', TERM_PROGRAM: 'pi-desktop' }
+    const env = { ...this.baseEnv(), TERM: 'xterm-256color', COLORTERM: 'truecolor', TERM_PROGRAM: 'pi-desktop', ...opts.env }
     const pty = this.spawn(profile.path, interactiveShellArgs(profile), { name: 'xterm-256color', cols: clampDim(opts.cols, 80), rows: clampDim(opts.rows, 24), cwd, env })
     const id = `t${++this.seq}`
     const markers = [...(opts.markers ?? [])]

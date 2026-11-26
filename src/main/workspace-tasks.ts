@@ -83,8 +83,73 @@ type RawTask = {
 
 const keyOf = (task: TaskLaunch) => `${task.cwd}\u0000${task.command}\u0000${task.args.join('\u0001')}`
 
+export type VsCodeVariableContext = {
+  root: string
+  /** 有文件上下文时才传（比如从编辑器里点运行）；一键启动走项目根没有它。 */
+  file?: string
+}
+
+/**
+ * 展开 VS Code tasks.json 变量。至少覆盖另一位点名的标配：
+ * ${workspaceFolder}、${workspaceRoot}、${workspaceFolderBasename}、
+ * ${file}、${relativeFile}、${env:名字}。
+ * 没有文件上下文时 ${file} 一族原样保留（编一个假路径更害人，界面上能看见没展开）。
+ */
+export function expandVsCodeVariables(value: string, context: VsCodeVariableContext): string {
+  const { root, file } = context
+  const basename = root.replace(/[/\\]+$/, '').split(/[/\\]/).pop() ?? root
+  let out = value
+    .split('${workspaceFolder}')
+    .join(root)
+    .split('${workspaceRoot}')
+    .join(root)
+    .split('${workspaceFolderBasename}')
+    .join(basename)
+    .split('${pathSeparator}')
+    .join(sep)
+  out = out.replace(/\$\{env[:.]([^}]+)\}/g, (_, name: string) => process.env[String(name)] ?? '')
+  if (file) {
+    const relative = relativePath(root, file)
+    out = out
+      .split('${file}')
+      .join(file)
+      .split('${fileBasename}')
+      .join(basenameOf(file))
+      .split('${fileDirname}')
+      .join(dirnameOf(file))
+      .split('${fileExtname}')
+      .join(extnameOf(file))
+      .split('${relativeFile}')
+      .join(relative)
+      .split('${relativeFileDirname}')
+      .join(dirnameOf(relative))
+  }
+  return out
+}
+
+function relativePath(root: string, file: string): string {
+  const prefix = root.replace(/[/\\]+$/, '') + sep
+  return file.startsWith(prefix) ? file.slice(prefix.length) : file
+}
+
+function basenameOf(path: string): string {
+  return path.replace(/[/\\]+$/, '').split(/[/\\]/).pop() ?? path
+}
+
+function dirnameOf(path: string): string {
+  const trimmed = path.replace(/[/\\]+$/, '')
+  const index = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'))
+  return index < 0 ? '.' : trimmed.slice(0, index) || '.'
+}
+
+function extnameOf(path: string): string {
+  const base = basenameOf(path)
+  const index = base.lastIndexOf('.')
+  return index <= 0 ? '' : base.slice(index)
+}
+
 function expandWorkspace(value: string, root: string): string {
-  return value.split('${workspaceFolder}').join(root).split('${workspaceRoot}').join(root)
+  return expandVsCodeVariables(value, { root })
 }
 
 function resolveTaskCwd(raw: unknown, root: string): string {
@@ -94,9 +159,14 @@ function resolveTaskCwd(raw: unknown, root: string): string {
 }
 
 function buildTask(raw: RawTask, label: string, root: string): TaskLaunch | null {
-  const command = typeof raw.command === 'string' ? raw.command.trim() : ''
+  const context: VsCodeVariableContext = { root }
+  // 命令和参数里的 ${workspaceFolder} 也要展：以前只展了 cwd，
+  // 变量原样 handed 到 cmd 就成了不存在的文件，cmd 只出 banner 就退。
+  const command = typeof raw.command === 'string' ? expandVsCodeVariables(raw.command.trim(), context).trim() : ''
   if (!command) return null
-  const args = Array.isArray(raw.args) ? raw.args.filter((item): item is string => typeof item === 'string') : []
+  const args = Array.isArray(raw.args)
+    ? raw.args.filter((item): item is string => typeof item === 'string').map((item) => expandVsCodeVariables(item, context))
+    : []
   return {
     label,
     command,

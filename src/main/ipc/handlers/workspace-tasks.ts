@@ -15,7 +15,7 @@ const TASK_PROMPT = `你是项目启动助手。根据项目文件判断怎样�
 2. 每个可执行任务必须有 label、command、args。command 只能是项目已有的程序或脚本命令。
 3. 一键运行使用 label 为“运行”、dependsOn 为需要同时启动的任务、group 为 {"kind":"build","isDefault":true}。
 4. 能发布时，一键发布使用 label 为“发布”、dependsOn 为发布任务、group 为 "publish"。不能可靠判断就不要编造发布任务。
-5. 多端项目用 options.cwd 指向对应子目录，并用 presentation.group 标记 build 或 publish。
+5. 多端项目用 options.cwd 指向对应子目录；分组标记写任务顶层的 group（build 或 publish），不要写进 presentation 里。调 .cmd/.bat 脚本时用 "type": "process" + "command": "cmd.exe" + args ["/d", "/c", "\${workspaceFolder}/…绝对路径"]，不要用 shell 类型加相对文件名。
 6. 不要包含注释、密钥、绝对用户路径或未在项目中出现的命令。
 7. 每个任务（含一键运行/发布组合）都必须有 detail：一句中文说明它在做什么，例如“运行后端 API”“发布全部子包”“同时启动 3 个服务”，不超过 20 字。`
 

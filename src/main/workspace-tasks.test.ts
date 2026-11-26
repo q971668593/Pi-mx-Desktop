@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { commandLine, mergeTaskDocument, parseJsonDocument, parseTaskGroups, shellSetup } from './workspace-tasks'
+import { commandLine, expandVsCodeVariables, mergeTaskDocument, parseJsonDocument, parseTaskGroups, shellSetup } from './workspace-tasks'
 
 const dirs: string[] = []
 afterEach(async () => { await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))) })
@@ -52,6 +52,30 @@ describe('workspace task groups', () => {
     expect(groups[0].tasks[0].cwd.replace(/\\/g, '/')).toContain('/web')
     expect(commandLine(groups[0].tasks[0], 'powershell')).toBe('npm run dev')
     expect(shellSetup('C:\\work', 'cmd')).toBe('cd /d "C:\\work"')
+  })
+
+  it('expands VS Code variables in command, args and cwd', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'pi-tasks-'))
+    dirs.push(root)
+    const parsed = { tasks: [
+      { label: 'preview', command: 'cmd.exe', args: ['/d', '/c', '${workspaceFolder}/apps/flutter-app/dev-edge-preview.cmd'], options: { cwd: '${workspaceFolder}/apps/flutter-app' } },
+      { label: 'named', command: 'echo', args: ['${workspaceFolderBasename}', '${env:PI_TEST_VAR}'], options: { cwd: '${workspaceFolder}' } },
+      { label: 'run', dependsOn: ['preview', 'named'], group: { kind: 'build', isDefault: true } },
+    ] }
+    process.env.PI_TEST_VAR = 'from-env'
+    try {
+      const groups = parseTaskGroups(root, parsed)
+      // parseTaskGroups 只收有 group/dependsOn 的组合；直接验 buildTask 经由 groups 传不到，这里，
+      // 所以用 tasksOf + 内部展开：这里改为断言 expandVsCodeVariables 本体。
+      expect(groups).toHaveLength(1)
+      const byLabel = new Map(groups[0].tasks.map((task) => [task.label, task]))
+      expect(byLabel.get('preview')?.args[2]).toBe(`${root}/apps/flutter-app/dev-edge-preview.cmd`)
+      expect(byLabel.get('named')?.args).toEqual([root.replace(/[/\\]+$/, '').split(/[/\\]/).pop(), 'from-env'])
+      expect(expandVsCodeVariables('${file}', { root })).toBe('${file}')
+      expect(expandVsCodeVariables('${file}', { root, file: join(root, 'a', 'b.ts') })).toBe(join(root, 'a', 'b.ts'))
+    } finally {
+      delete process.env.PI_TEST_VAR
+    }
   })
 
   it('quotes arguments that would otherwise be interpreted by the shell', () => {

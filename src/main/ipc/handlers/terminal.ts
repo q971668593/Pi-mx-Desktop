@@ -51,8 +51,14 @@ export function registerTerminalHandlers(): void {
     try {
       for (const task of req.tasks as TaskLaunch[]) {
         if (!isPathInside(project.cwd, task.cwd)) return { ok: false, error: 'cwd_not_trusted', created }
+        // Git Bash（MSYS）会改写命令行里的 /d /c 和盘符路径，cmd 收不到指令就秒退；
+        // 只给 MSYS 系 shell 的任务终端关掉改写，其他 shell 不受影响。
+        const msys = process.platform === 'win32' && ['bash', 'zsh', 'fish', 'sh', 'other'].includes(profile.kind)
         const line = `${shellSetup(task.cwd, profile.kind)}\r${commandLine(task, profile.kind)}\r`
-        const { id } = terminals().create(profile, { cwd: task.cwd, workspace: project.cwd, command: line, cols: 100, rows: 24 })
+        const { id } = terminals().create(profile, {
+          cwd: task.cwd, workspace: project.cwd, command: line, cols: 100, rows: 24,
+          ...(msys ? { env: { MSYS2_ARG_CONV_EXCL: '*' } } : {}),
+        })
         terminals().writeWhenReady(id, line, 5000, true)
         created.push({ id, label: task.label })
       }
