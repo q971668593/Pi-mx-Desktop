@@ -7,6 +7,8 @@ import {
   deleteLessonRule,
   loadFeedback,
   setLessonsInjectIntoContext,
+  summarizeLessons,
+  updateLessonRule,
   type FeedbackSnapshot,
   type LessonRule,
 } from '@renderer/lib/feedback-lessons'
@@ -80,6 +82,8 @@ export function LessonSettingsPanel() {
           rules.map((rule) => (
             <RuleRow key={rule.id} rule={rule} busy={busy} onDelete={() => void run(async () => {
               await deleteLessonRule(rule.id)
+            })} onSave={(patch) => run(async () => {
+              await updateLessonRule(rule.id, patch)
             })} />
           ))
         )}
@@ -171,9 +175,91 @@ export function LessonSettingsPanel() {
   )
 }
 
-function RuleRow({ rule, busy, onDelete }: { rule: LessonRule; busy: boolean; onDelete: () => void }) {
+function RuleRow({ rule, busy, onDelete, onSave }: {
+  rule: LessonRule
+  busy: boolean
+  onDelete: () => void
+  onSave: (patch: { title: string; body: string }) => Promise<void> | void
+}) {
   const { t } = useTranslation()
   const negative = rule.polarity !== 'positive'
+  const [editing, setEditing] = useState(false)
+  const [editTitle, setEditTitle] = useState(rule.title)
+  const [editBody, setEditBody] = useState(rule.body)
+  const [optimizing, setOptimizing] = useState(false)
+
+  const startEdit = () => {
+    setEditTitle(rule.title)
+    setEditBody(rule.body)
+    setEditing(true)
+  }
+
+  const optimize = async () => {
+    const material = editBody.trim() || rule.body
+    if (!material.trim() || optimizing) return
+    setOptimizing(true)
+    try {
+      const res = await summarizeLessons({
+        material: [material],
+        instruction: t('settings:lessons.optimizeInstruction'),
+        save: false,
+      })
+      if (!res.ok || !res.draft) throw new Error(res.error || 'optimize_failed')
+      setEditTitle(res.draft.title || editTitle)
+      setEditBody(res.draft.body || editBody)
+      toast.success(t('settings:lessons.optimizeDone'))
+    } catch (error) {
+      toast.error(`${t('settings:lessons.optimizeFailed')}: ${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setOptimizing(false)
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className="px-4 py-2.5 [&:not(:last-child)]:border-b [&:not(:last-child)]:border-border/50">
+        <input
+          className={inputCls}
+          value={editTitle}
+          onChange={(event) => setEditTitle(event.target.value)}
+          placeholder={t('settings:lessons.addRuleTitlePh')}
+          maxLength={120}
+        />
+        <textarea
+          className={`${inputCls} mt-2 min-h-16 resize-y`}
+          value={editBody}
+          onChange={(event) => setEditBody(event.target.value)}
+          maxLength={4000}
+        />
+        <div className="mt-2 flex items-center gap-2">
+          <button
+            type="button"
+            className={btnOutline}
+            disabled={busy || !editBody.trim()}
+            onClick={() => { void (async () => { await onSave({ title: editTitle.trim(), body: editBody.trim() }); setEditing(false) })() }}
+          >
+            {t('settings:lessons.saveRule')}
+          </button>
+          <button
+            type="button"
+            className={btnOutline}
+            disabled={busy || optimizing}
+            onClick={() => void optimize()}
+          >
+            {optimizing ? t('settings:lessons.optimizing') : t('settings:lessons.optimizeRule')}
+          </button>
+          <button
+            type="button"
+            className="workbench-button shrink-0"
+            disabled={busy}
+            onClick={() => setEditing(false)}
+          >
+            {t('settings:lessons.cancelEdit')}
+          </button>
+        </div>
+      </div>
+    )
+  }
   return (
     <div className="flex items-start gap-2 px-4 py-2.5 [&:not(:last-child)]:border-b [&:not(:last-child)]:border-border/50">
       <span
@@ -194,6 +280,14 @@ function RuleRow({ rule, busy, onDelete }: { rule: LessonRule; busy: boolean; on
           {new Date(rule.createdAt).toLocaleString()}
         </div>
       </div>
+      <button
+        type="button"
+        className="workbench-button shrink-0"
+        disabled={busy}
+        onClick={startEdit}
+      >
+        {t('settings:lessons.editRule')}
+      </button>
       <button
         type="button"
         className="workbench-button shrink-0 text-destructive"

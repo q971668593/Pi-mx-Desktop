@@ -11,6 +11,7 @@ import {
   pendingLessonCount,
   setLessonStatus,
   setLessonsInjectIntoContext,
+  updateLessonRule,
 } from '../../feedback-lessons-store'
 import { judgeLessonWithModel, summarizeLessonsWithModel } from '../../lesson-judge'
 
@@ -79,16 +80,22 @@ export function registerFeedbackHandlers(): void {
   registerHandler('ipc:feedback.summarize', async (req: {
     instruction?: string
     lessonIds?: string[]
+    material?: string[]
     model?: string
     polarity?: 'negative' | 'positive'
     save?: boolean
   }) => {
-    const lessons = lessonsForSummary(Array.isArray(req?.lessonIds) ? req.lessonIds : undefined)
+    // 传了现成文字就直接用（比如“优化这条已有规则”），不再查教训库。
+    const direct = Array.isArray(req?.material) ? req.material.map((text) => String(text || '').trim()).filter(Boolean) : []
+    const picked = direct.length
+      ? direct.map((text) => ({ id: '', text }))
+      : lessonsForSummary(Array.isArray(req?.lessonIds) ? req.lessonIds : undefined)
+    const lessons = picked.map((lesson) => lesson.text)
     if (!lessons.length && !req?.instruction?.trim()) {
       return { ok: false, error: 'no_material' }
     }
     const summary = await summarizeLessonsWithModel({
-      lessons: lessons.map((lesson) => lesson.text),
+      lessons,
       instruction: req?.instruction,
       model: req?.model,
     })
@@ -103,7 +110,7 @@ export function registerFeedbackHandlers(): void {
       title: summary.title,
       body: summary.body,
       polarity,
-      fromLessonIds: lessons.map((lesson) => lesson.id),
+      fromLessonIds: picked.filter((lesson) => lesson.id).map((lesson) => lesson.id),
     })
     return { ok: true, rule, draft: { title: summary.title, body: summary.body, polarity } }
   })
@@ -121,6 +128,16 @@ export function registerFeedbackHandlers(): void {
       polarity: req?.polarity === 'positive' ? 'positive' : 'negative',
       source: 'manual',
     })
+    return { ok: true, rule }
+  })
+
+  registerHandler('ipc:feedback.rule.update', async (req: {
+    id?: string
+    title?: string
+    body?: string
+  }) => {
+    const rule = updateLessonRule(String(req?.id || ''), { title: req?.title, body: req?.body })
+    if (!rule) return { ok: false, error: 'not_found_or_empty' }
     return { ok: true, rule }
   })
 

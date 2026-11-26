@@ -251,6 +251,23 @@ export function setLessonStatus(id: string, status: LessonStatus): boolean {
   return changed
 }
 
+const PROHIBITIVE_MARKERS = ['不要', '别', '禁止', '不得', '切勿', '避免', '不再', '不许']
+const PRESCRIPTIVE_MARKERS = ['应该', '必须', '应当', '记得', '务必', '只', '先']
+
+/**
+ * 按正文实际写法校准正负：AI 落笔的规则经常是“应该式”正文配“纠错来源”负标签，
+ * 直接进上下文会变成“不要这样做：交付前先清理……”这种反话。
+ * 只有一边有标记、另一边没有时才翻转；两边都有或都没有就维持传入值。
+ */
+export function inferPolarityFromBody(body: string, fallback: 'negative' | 'positive'): 'negative' | 'positive' {
+  const text = String(body || '')
+  const prohibitive = PROHIBITIVE_MARKERS.some((mark) => text.includes(mark))
+  const prescriptive = PRESCRIPTIVE_MARKERS.some((mark) => text.includes(mark))
+  if (prohibitive && !prescriptive) return 'negative'
+  if (prescriptive && !prohibitive) return 'positive'
+  return fallback
+}
+
 export function addLessonRule(input: {
   title: string
   body: string
@@ -264,13 +281,28 @@ export function addLessonRule(input: {
     createdAt: Date.now(),
     title: String(input.title || '未命名规则').slice(0, 120),
     body: String(input.body || '').slice(0, 4000),
-    polarity: input.polarity === 'positive' ? 'positive' : 'negative',
+    polarity: inferPolarityFromBody(String(input.body || ''), input.polarity === 'positive' ? 'positive' : 'negative'),
     fromLessonIds: Array.isArray(input.fromLessonIds) ? input.fromLessonIds : [],
     source: input.source === 'manual' ? 'manual' : 'model',
   }
   const pruned = pruneLessons(data.lessons, [rule, ...data.rules])
   write({ ...data, lessons: pruned.lessons, rules: pruned.rules })
   return rule
+}
+
+/** 修改已沉淀的规则：标题/正文可改，正负按新正文重校（见 inferPolarityFromBody）。 */
+export function updateLessonRule(id: string, patch: { title?: string; body?: string }): LessonRule | null {
+  const data = read()
+  const target = data.rules.find((row) => row.id === id)
+  if (!target) return null
+  const title = patch.title !== undefined ? String(patch.title || '未命名规则').slice(0, 120) : target.title
+  const body = patch.body !== undefined ? String(patch.body || '').slice(0, 4000) : target.body
+  if (!body.trim()) return null
+  const rules = data.rules.map((row) => row.id === id
+    ? { ...row, title, body, polarity: inferPolarityFromBody(body, row.polarity) }
+    : row)
+  write({ ...data, rules })
+  return rules.find((row) => row.id === id) ?? null
 }
 
 export function deleteLessonRule(id: string): boolean {
@@ -295,7 +327,7 @@ export function buildLessonRulesSection(): string | null {
         const title = rule.title?.trim() ? `（${rule.title.trim()}）` : ''
         return `${index + 1}. [${mark}]${title}${rule.body.trim()}`
       })
-      return `以下是用户在历史对话里批评、驳回、纠正后沉淀下来的教训请严格遵守：\n${lines.join('\n')}`
+      return `以下是用户沉淀下来的规则，请严格遵守：\n${lines.join('\n')}`
     }
   }
   return null

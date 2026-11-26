@@ -104,14 +104,23 @@ export async function deleteLesson(id: string): Promise<void> {
 export async function summarizeLessons(input: {
   instruction?: string
   lessonIds?: string[]
+  material?: string[]
   polarity?: 'negative' | 'positive'
   model?: string
-}): Promise<{ ok: boolean; rule?: LessonRule | null; error?: string }> {
+  save?: boolean
+}): Promise<{ ok: boolean; rule?: LessonRule | null; draft?: { title: string; body: string; polarity: 'negative' | 'positive' }; error?: string }> {
   return (await ipcClient.invoke('feedback.summarize', input)) as {
     ok: boolean
     rule?: LessonRule | null
+    draft?: { title: string; body: string; polarity: 'negative' | 'positive' }
     error?: string
   }
+}
+
+export async function updateLessonRule(id: string, patch: { title?: string; body?: string }): Promise<LessonRule> {
+  const res = (await ipcClient.invoke('feedback.rule.update', { id, ...patch })) as { ok: boolean; rule?: LessonRule; error?: string }
+  if (!res.ok || !res.rule) throw new Error(res.error || 'update_failed')
+  return res.rule
 }
 
 export async function deleteLessonRule(id: string): Promise<void> {
