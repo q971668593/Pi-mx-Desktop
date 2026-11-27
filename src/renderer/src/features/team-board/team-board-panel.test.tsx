@@ -23,7 +23,7 @@ function snapshot(overrides: Partial<TeamSnapshot> = {}): TeamSnapshot {
       {
         id: 'T-001',
         title: '登录页',
-        role: '前端',
+        role: 'Builder',
         status: '进行中',
         wave: 'W1',
         input: 'PRD 登录章节',
@@ -35,13 +35,17 @@ function snapshot(overrides: Partial<TeamSnapshot> = {}): TeamSnapshot {
         autoNote: '',
         approval: '',
         approvalNote: '',
+        worktreePath: '',
+        branch: '',
+        ownedPaths: [],
+        reworkCount: 0,
         acceptance: [{ text: '账号密码可登录', done: false }],
         raw: 'T-001 登录页',
       },
       {
         id: 'T-002',
         title: '支付接口',
-        role: '后端',
+        role: 'Builder',
         status: '待办',
         wave: '',
         input: '',
@@ -53,13 +57,19 @@ function snapshot(overrides: Partial<TeamSnapshot> = {}): TeamSnapshot {
         autoNote: '',
         approval: '',
         approvalNote: '',
+        worktreePath: '',
+        branch: '',
+        ownedPaths: [],
+        reworkCount: 0,
         acceptance: [],
         raw: 'T-002 支付接口',
       },
     ],
-    roles: defaultTeamRoleBindings().map((role) => (role.role === '前端' ? { ...role, model: 'acme/front' } : role)),
+    roles: defaultTeamRoleBindings().map((role) => (role.role === 'Builder' ? { ...role, model: 'acme/front' } : role)),
     sessions: {},
     runs: [],
+    maxConcurrency: 3,
+    autoReview: false,
     ...overrides,
   }
 }
@@ -77,11 +87,11 @@ beforeEach(async () => {
 afterEach(cleanup)
 
 describe('TeamBoardPanel', () => {
-  it('shows the current batch, the five-role dock and the task lanes', async () => {
+  it('shows the current batch, the four-role dock and the task lanes', async () => {
     render(<TeamBoardPanel />)
     expect(await screen.findByText('订单模块')).toBeInTheDocument()
     expect(screen.getByText('完成下单主流程')).toBeInTheDocument()
-    for (const role of ['Leader', '设计师', '前端', '后端', '质量测试']) {
+    for (const role of ['Leader', 'Builder', 'Verifier', 'Designer']) {
       expect(screen.getAllByText(role).length).toBeGreaterThan(0)
     }
     expect(screen.getByText('登录页')).toBeInTheDocument()

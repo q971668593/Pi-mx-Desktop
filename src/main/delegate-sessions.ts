@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { app } from 'electron'
 
@@ -39,6 +39,55 @@ export function resolveDelegateSessionFiles(runIds: unknown[]): Record<string, s
     }
     const sessionFile = join(dir, `${runId}.session.jsonl`)
     result[runId] = existsSync(sessionFile) ? sessionFile : null
+  }
+  return result
+}
+
+export type DelegateProbedState = 'running' | 'completed' | 'stale'
+
+const DEFAULT_DELEGATE_STALE_MS = 10 * 60 * 1000
+
+function latestMtimeMs(paths: string[]): number {
+  let latest = 0
+  for (const file of paths) {
+    try {
+      const mtime = statSync(file).mtimeMs
+      if (Number.isFinite(mtime) && mtime > latest) latest = mtime
+    } catch {
+      /* 文件不存在 */
+    }
+  }
+  return latest
+}
+
+/**
+ * 核对 acp_delegate 子 Agent 的真实落地状态：
+ * - `.out` 文件已写出 → `completed`
+ * - `.activity` / `.session.jsonl` 最近仍在更新 → `running`
+ * - 无产物或长时间静止 → `stale`（已死/已断开的历史残影）
+ */
+export function probeDelegateRunStates(
+  runIds: unknown[],
+  staleMs = DEFAULT_DELEGATE_STALE_MS,
+): Record<string, DelegateProbedState> {
+  const dir = delegateDir()
+  const result: Record<string, DelegateProbedState> = {}
+  const now = Date.now()
+  for (const runId of runIds) {
+    if (typeof runId !== 'string') continue
+    if (!dir || !RUN_ID_PATTERN.test(runId)) {
+      result[runId] = 'stale'
+      continue
+    }
+    if (existsSync(join(dir, `${runId}.out`))) {
+      result[runId] = 'completed'
+      continue
+    }
+    const lastWrite = latestMtimeMs([
+      join(dir, `${runId}.activity`),
+      join(dir, `${runId}.session.jsonl`),
+    ])
+    result[runId] = lastWrite > 0 && now - lastWrite <= staleMs ? 'running' : 'stale'
   }
   return result
 }

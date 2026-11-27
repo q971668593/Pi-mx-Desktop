@@ -21,7 +21,11 @@ import {
 } from './team-board'
 
 const { settings } = vi.hoisted(() => ({ settings: { preset: '', global: { defaultProvider: 'test', defaultModel: 'base' } } }))
-vi.mock('./config-store', () => ({ configStore: { get: () => settings.preset } }))
+vi.mock('./config-store', () => ({
+  configStore: {
+    get: (key: string) => (key === 'teamDefaultModel' ? settings.preset : undefined),
+  },
+}))
 vi.mock('./pi-agent-settings-read', () => ({ readPiAgentGlobalSettingsFromDisk: () => settings.global }))
 
 it('resolves the global preset for existing teams while keeping role overrides editable', () => {
@@ -34,7 +38,7 @@ it('resolves the global preset for existing teams while keeping role overrides e
     const snapshot = readTeamSnapshot(root)
     expect(snapshot.defaultModel).toBe('test/team')
     expect(snapshot.roles.find((role) => role.role === 'Leader')?.model).toBe('test/leader')
-    expect(snapshot.roles.find((role) => role.role === '前端')?.model).toBe('')
+    expect(snapshot.roles.find((role) => role.role === 'Builder')?.model).toBe('')
   } finally {
     settings.preset = ''
   }
@@ -80,13 +84,13 @@ afterEach(() => {
 })
 
 describe('initTeamProject', () => {
-  it('creates the project skeleton and the five-role config only once', () => {
+  it('creates the project skeleton and the four-role config only once', () => {
     const { root, spec } = workspace()
     const snapshot = initTeamProject(root, { name: '演示项目' })
     expect(snapshot.exists).toBe(true)
     expect(snapshot.batch).toBe('需求梳理')
-    expect(snapshot.roles.map((role) => role.role)).toEqual(['Leader', '设计师', '前端', '后端', '质量测试'])
-    for (const file of ['看板/当前批次.md', 'PRD.md', '00-总入口.md', '错题本.md', '品味账本.md', '角色配置.json', '角色配置.md']) {
+    expect(snapshot.roles.map((role) => role.role)).toEqual(['Leader', 'Builder', 'Verifier', 'Designer'])
+    for (const file of ['看板/当前批次.md', 'PRD.md', '00-总入口.md', '00-宪法.md', '02-方案契约.md', '错题本.md', '品味账本.md', '角色配置.json', '角色配置.md']) {
       expect(existsSync(join(spec, file)), file).toBe(true)
     }
     expect(readFileSync(join(spec, '00-总入口.md'), 'utf8')).toContain('演示项目')
@@ -128,7 +132,7 @@ describe('role config', () => {
     }))
     saveTeamRoles(spec, [{ role: '前端', model: 'a/front', effort: 'high', enabled: true, directEnabled: true }])
     const saved = JSON.parse(readFileSync(file, 'utf8')) as { roles: Array<Record<string, unknown>> }
-    const front = saved.roles.find((role) => role.role === '前端')
+    const front = saved.roles.find((role) => role.role === 'Builder')
     expect(front).toMatchObject({ model: 'a/front', effort: 'high', refs: ['协议/01.md'], notifications: 'quiet' })
   })
 
@@ -137,13 +141,13 @@ describe('role config', () => {
     initTeamProject(root)
     saveTeamRoles(spec, [
       { role: 'Leader', model: 'a/leader', effort: 'high', enabled: true, directEnabled: true, note: '协调' },
-      { role: '前端', model: 'a/frontend', effort: 'medium', enabled: true, directEnabled: false, note: '实现' },
+      { role: 'Builder', model: 'a/frontend', effort: 'medium', enabled: true, directEnabled: false, note: '实现' },
     ])
     const roles = readTeamRoles(spec)
-    expect(roles).toHaveLength(5)
+    expect(roles).toHaveLength(4)
     expect(roles[0]).toMatchObject({ role: 'Leader', model: 'a/leader', effort: 'high' })
-    expect(roles[2]).toMatchObject({ role: '前端', model: 'a/frontend', directEnabled: false })
-    expect(readFileSync(join(spec, '角色配置.md'), 'utf8')).toContain('| 前端 | a/frontend | medium | 开启 | 禁用 |')
+    expect(roles[1]).toMatchObject({ role: 'Builder', model: 'a/frontend', directEnabled: false })
+    expect(readFileSync(join(spec, '角色配置.md'), 'utf8')).toContain('| Builder | a/frontend | medium | 开启 | 禁用 |')
   })
 })
 
@@ -196,7 +200,7 @@ describe('createTeamTask', () => {
       output: 'src/pages/login.vue',
       acceptance: ['账号密码可登录'],
     })
-    expect(first.tasks[0]).toMatchObject({ id: 'T-001', title: '登录页', role: '前端', status: '待办' })
+    expect(first.tasks[0]).toMatchObject({ id: 'T-001', title: '登录页', role: 'Builder', status: '待办' })
     expect(first.tasks[0].acceptance).toEqual([{ text: '账号密码可登录', done: false }])
     const second = createTeamTask(root, { title: '支付接口', role: '后端' })
     expect(second.tasks.map((task) => task.id)).toEqual(['T-001', 'T-002'])
@@ -218,7 +222,7 @@ describe('dispatch runs', () => {
     })
     expect(run.status).toBe('starting')
     // 派发是任务会话，不能把角色坞的常驻会话覆盖掉
-    expect(readTeamState(spec).sessions['前端']).toMatchObject({ sessionFile: 'C:/sessions/front-chat.jsonl', sessionId: 'chat-1' })
+    expect(readTeamState(spec).sessions['Builder']).toMatchObject({ sessionFile: 'C:/sessions/front-chat.jsonl', sessionId: 'chat-1' })
     markTeamRunRunning(spec, 'C:/sessions/front.jsonl')
     expect(readTeamState(spec).runs[0].status).toBe('running')
 
@@ -249,9 +253,9 @@ describe('dispatch runs', () => {
   it('binds a role conversation without a task', () => {
     const { root, spec } = workspace()
     initTeamProject(root)
-    expect(bindTeamSession(spec, '设计', { sessionFile: 'C:/sessions/design.jsonl' })).toBe('设计师')
-    expect(readTeamState(spec).sessions['设计师']).toMatchObject({ sessionFile: 'C:/sessions/design.jsonl' })
-    expect(readTeamSnapshot(root).sessions['设计师']).toBeTruthy()
+    expect(bindTeamSession(spec, '设计', { sessionFile: 'C:/sessions/design.jsonl' })).toBe('Designer')
+    expect(readTeamState(spec).sessions['Designer']).toMatchObject({ sessionFile: 'C:/sessions/design.jsonl' })
+    expect(readTeamSnapshot(root).sessions['Designer']).toBeTruthy()
   })
 })
 

@@ -43,7 +43,7 @@ export async function flushQueuedMessages(): Promise<FlushQueueResult> {
       return result
     }
     if (result.mode === 'steer') {
-      toast.info(`已立即发送 ${result.flushed} 条：当前工具调用结束后立即注入`)
+      toast.info(`已立即注入 ${result.flushed} 条消息`)
     } else {
       toast.success(`已立即发送 ${result.flushed} 条排队消息`)
     }

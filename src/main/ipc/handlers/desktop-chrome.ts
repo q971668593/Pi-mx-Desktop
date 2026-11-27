@@ -34,12 +34,50 @@ export function registerDesktopChromeHandlers(): void {
       : 0
     const runtime = workerManager.listSessionRuntime()
     const browserPids = new Set(peekBrowserHost()?.pageProcessIds() ?? [])
-    const appMemory = summarizeAppMemory(app.getAppMetrics(), browserPids)
+    const metrics = app.getAppMetrics()
+    const appMemory = summarizeAppMemory(metrics, browserPids)
+    // 整个应用 CPU 占用：所有 Electron 进程 percentCPUUsage 求和（多核下可超 100%）。
+    let cpuPercent = 0
+    try {
+      for (const m of metrics) cpuPercent += (m as { cpu?: { percentCPUUsage?: number } }).cpu?.percentCPUUsage ?? 0
+    } catch {
+      /* metrics 不可用就按 0 */
+    }
+    let terminals: Array<{ id: string; cwd: string; workspace: string; profileName: string; command?: string; owner: string; state: string }> = []
+    try {
+      const { listAllTerminals } = await import('../../terminal/terminal-service')
+      terminals = listAllTerminals()
+    } catch {
+      terminals = []
+    }
     return {
       rss,
       total,
       app: appMemory,
       workers: runtime,
+      cpu: { percent: Math.round(cpuPercent * 10) / 10, processes: metrics.length },
+      terminals,
+    }
+  })
+
+  registerHandler('ipc:desktop.cleanupIdleResources', async () => {
+    const workers = workerManager.pruneIdleWorkersNow()
+    let terminals = 0
+    try {
+      const { reapIdleAiTerminalsNow } = await import('../../terminal/terminal-service')
+      terminals = reapIdleAiTerminalsNow()
+    } catch {
+      terminals = 0
+    }
+    return { ok: true, workers, terminals }
+  })
+
+  registerHandlerWithSchema('ipc:desktop.killTerminal', z.object({ id: z.string().min(1) }), async ({ id }) => {
+    try {
+      const { closeTerminal } = await import('../../terminal/terminal-service')
+      return { ok: closeTerminal(id) }
+    } catch {
+      return { ok: false }
     }
   })
 

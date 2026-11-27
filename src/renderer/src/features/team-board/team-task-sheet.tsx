@@ -4,16 +4,17 @@ import {
   AlertTriangle,
   ArrowLeft,
   Check,
+  Copy,
+  GitBranch,
   Loader2,
   Play,
-  Copy,
   X,
 } from '@renderer/components/icons'
 import { cn } from '@renderer/lib/utils'
-import { TEAM_STATUSES, type TeamRoleBinding, type TeamRun, type TeamStatus, type TeamTask } from '@shared/team-board'
+import { TEAM_BLOCK_TYPES, TEAM_STATUSES, type TeamRoleBinding, type TeamRun, type TeamStatus, type TeamTask } from '@shared/team-board'
 import { isSessionRunning, latestRun, roleColor, roleFullAvatar, roleLabel, sessionFileName, shortModel, statusLabel, STATUS_COLORS } from './team-board-lib'
 
-const BLOCK_TYPES = ['待用户确认', '缺环境/工具', '外部依赖', '执行失败'] as const
+const BLOCK_TYPES = TEAM_BLOCK_TYPES
 
 type StatusOptions = {
   reason?: string
@@ -27,10 +28,14 @@ export function TeamTaskSheet({
   runs,
   runtimeRunning,
   busy,
+  merging,
+  reviewing,
   initialPending,
   onClose,
   onStatus,
   onDispatch,
+  onDispatchReview,
+  onMerge,
   onCopyPrompt,
   onOpenRole,
   onOpenSession,
@@ -38,16 +43,21 @@ export function TeamTaskSheet({
   onApproval,
   onIntervene,
   onAbort,
+  onAppendMemory,
 }: {
   task: TeamTask
   binding: TeamRoleBinding | undefined
   runs: TeamRun[]
   runtimeRunning: Record<string, boolean> | null | undefined
   busy: boolean
+  merging?: boolean
+  reviewing?: boolean
   initialPending?: TeamStatus | null
   onClose: () => void
   onStatus: (to: TeamStatus, options?: StatusOptions) => Promise<boolean>
   onDispatch: () => void
+  onDispatchReview?: () => void
+  onMerge?: () => void
   onCopyPrompt: () => void
   onOpenRole: () => void
   onOpenSession: (run: TeamRun) => void
@@ -55,6 +65,7 @@ export function TeamTaskSheet({
   onApproval: (decision: 'approve' | 'deny', note: string) => Promise<boolean>
   onIntervene: (text: string) => Promise<boolean>
   onAbort: (run: TeamRun) => void
+  onAppendMemory?: (kind: 'lesson' | 'taste', text: string) => Promise<boolean>
 }) {
   const { t } = useTranslation()
   const [pending, setPending] = useState<TeamStatus | null>(initialPending ?? null)
@@ -66,6 +77,9 @@ export function TeamTaskSheet({
   const [approvalBusy, setApprovalBusy] = useState(false)
   const [guidance, setGuidance] = useState('')
   const [guidanceBusy, setGuidanceBusy] = useState(false)
+  const [memoryKind, setMemoryKind] = useState<'lesson' | 'taste'>('lesson')
+  const [memoryText, setMemoryText] = useState('')
+  const [memoryBusy, setMemoryBusy] = useState(false)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -75,6 +89,7 @@ export function TeamTaskSheet({
     setBlockReason('')
     setApprovalNote('')
     setGuidance('')
+    setMemoryText('')
   }, [initialPending, task.id])
 
   const run = latestRun(task, runs)
@@ -331,8 +346,12 @@ export function TeamTaskSheet({
           <dl className="mt-1 space-y-1">
             {task.input ? <Info label={t('team:input')} value={task.input} /> : null}
             {task.output ? <Info label={t('team:output')} value={task.output} mono /> : null}
+            {task.ownedPaths.length ? <Info label={t('team:ownedPaths')} value={task.ownedPaths.join('、')} mono /> : null}
+            {task.branch ? <Info label={t('team:branch')} value={task.branch} mono /> : null}
+            {task.worktreePath ? <Info label={t('team:worktreePath')} value={task.worktreePath} mono /> : null}
             {task.dependsOn.length ? <Info label={t('team:dependsOn')} value={task.dependsOn.join('、')} mono /> : null}
             {task.wave ? <Info label={t('team:wave')} value={task.wave} /> : null}
+            {task.reworkCount > 0 ? <Info label={t('team:reworkCount')} value={String(task.reworkCount)} /> : null}
             {task.blockType ? <Info label={t('team:blockType')} value={task.blockType} /> : null}
             {task.note ? <Info label={t('team:note')} value={task.note} /> : null}
             {task.manualNote ? <Info label={t('team:manualNote')} value={task.manualNote} /> : null}
@@ -480,6 +499,28 @@ export function TeamTaskSheet({
             {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
             {t('team:dispatch')}
           </button>
+          {onDispatchReview && task.status === '待审查' ? (
+            <button
+              type="button"
+              onClick={onDispatchReview}
+              disabled={reviewing}
+              className="inline-flex items-center gap-1 rounded bg-amber-600 px-2 py-1 text-2xs font-medium text-white hover:bg-amber-700 disabled:opacity-40"
+            >
+              {reviewing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+              {t('team:dispatchReview')}
+            </button>
+          ) : null}
+          {onMerge && task.branch && (task.status === '已通过' || task.status === '已验收') ? (
+            <button
+              type="button"
+              onClick={onMerge}
+              disabled={merging}
+              className="inline-flex items-center gap-1 rounded bg-indigo-600 px-2 py-1 text-2xs font-medium text-white hover:bg-indigo-700 disabled:opacity-40"
+            >
+              {merging ? <Loader2 className="h-3 w-3 animate-spin" /> : <GitBranch className="h-3 w-3" />}
+              {t('team:mergeBranch')}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onCopyPrompt}
@@ -489,6 +530,57 @@ export function TeamTaskSheet({
             {t('team:copyPrompt')}
           </button>
         </div>
+
+        {onAppendMemory ? (
+          <details className="mt-3 rounded border border-border/40 p-2">
+            <summary className="cursor-pointer text-2xs font-medium text-foreground-secondary hover:text-foreground">
+              {t('team:memoryTitle')}
+            </summary>
+            <div className="mt-2 flex gap-1">
+              <button
+                type="button"
+                onClick={() => setMemoryKind('lesson')}
+                data-active={memoryKind === 'lesson'}
+                className="team-status-button"
+              >
+                {t('team:memoryLesson')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setMemoryKind('taste')}
+                data-active={memoryKind === 'taste'}
+                className="team-status-button"
+              >
+                {t('team:memoryTaste')}
+              </button>
+            </div>
+            <div className="mt-1.5 flex items-center gap-1">
+              <input
+                value={memoryText}
+                onChange={(event) => setMemoryText(event.target.value)}
+                maxLength={500}
+                placeholder={t('team:memoryPlaceholder')}
+                className="team-sheet-input min-w-0 flex-1 text-2xs"
+              />
+              <button
+                type="button"
+                disabled={!memoryText.trim() || memoryBusy}
+                onClick={async () => {
+                  if (!memoryText.trim()) return
+                  setMemoryBusy(true)
+                  try {
+                    if (await onAppendMemory(memoryKind, memoryText.trim())) setMemoryText('')
+                  } finally {
+                    setMemoryBusy(false)
+                  }
+                }}
+                className="shrink-0 rounded bg-primary px-2 py-1 text-2xs font-medium text-primary-foreground disabled:opacity-40"
+              >
+                {memoryBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : t('team:save')}
+              </button>
+            </div>
+          </details>
+        ) : null}
 
         {task.raw ? (
           <details className="mt-3">

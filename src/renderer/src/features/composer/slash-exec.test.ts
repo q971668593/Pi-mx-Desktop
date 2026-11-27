@@ -33,23 +33,6 @@ beforeEach(() => {
   useExtensionUIStore.setState({ activePending: null, suspended: null })
 })
 
-describe('/clarify tree binding', () => {
-  it('binds the newly created tree to the current conversation before sending', async () => {
-    useUIStore.setState({ workerLiveSnapshot: { sessionId: null, sessionFile: null, status: 'idle' }, timelineItems: [] })
-    invoke.mockImplementation(async (method, payload) => {
-      if (method === 'grow:listSessions') return { ok: true, sessionId: (payload as { action?: string }).action === 'getBinding' ? 'old-tree' : 'new-tree' } as never
-      if (method === 'grow:startSession') return { ok: true, sessionId: 'new-tree' } as never
-      return {} as never
-    })
-    await executeSlashCommand('/澄清 做一个问卷')
-    expect(invoke).toHaveBeenCalledWith('grow:listSessions', {
-      workspaceId: 'C:/workspace', action: 'setBinding', sessionFile: 'C:/sessions/current.jsonl', sessionId: 'new-tree',
-    })
-    const { sendComposerPrompt } = await import('@renderer/lib/send-composer-prompt')
-    expect(sendComposerPrompt).toHaveBeenCalledWith(expect.stringContaining('new-tree'))
-  })
-})
-
 describe('/new session reset', () => {
   it('clears old extension UI and worker state', async () => {
     useExtensionUIStore.setState({

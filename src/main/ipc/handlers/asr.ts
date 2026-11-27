@@ -54,11 +54,14 @@ export function registerAsrHandlers(): void {
 
   registerHandler('ipc:asr.detectBinary', async () => {
     try {
-      const { execSync } = await import('child_process')
-      const cmd = process.platform === 'win32' ? 'where codex-asr' : 'which codex-asr'
-      const path = execSync(cmd, { encoding: 'utf8', timeout: 5000 }).trim().split('\n')[0].trim()
+      const { execFile } = await import('node:child_process')
+      const { promisify } = await import('node:util')
+      const execFileAsync = promisify(execFile)
+      const cmd = process.platform === 'win32' ? 'where' : 'which'
+      const { stdout } = await execFileAsync(cmd, ['codex-asr'], { encoding: 'utf8', timeout: 5000, windowsHide: true })
+      const path = stdout.trim().split(/\r?\n/)[0]?.trim() || ''
       return { found: !!path, path: path || null }
-    } catch (e) {
+    } catch {
       return { found: false, path: null }
     }
   })

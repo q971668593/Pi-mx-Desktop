@@ -90,26 +90,44 @@ export function TeamBoardAutoSettle() {
 
   useEffect(() => {
     if (!workspaceId) return
-    return onAppEvent((event) => {
-      const outcome = outcomeOf(event)
-      if (!outcome || !('sessionFile' in event) || typeof event.sessionFile !== 'string' || !event.sessionFile) return
-      const file = event.sessionFile
+    const findMatch = (map: Map<string, TeamRun>, file: string): [string, TeamRun] | null => {
       const key = normalizeSessionFileKey(file) || file
-      let matchedKey = ''
-      let matched: TeamRun | undefined
-      for (const [runKey, run] of runsRef.current) {
-        if (runKey === key || sessionFilesEqual(run.sessionFile, file)) {
-          matchedKey = runKey
-          matched = run
-          break
-        }
+      for (const [runKey, run] of map) {
+        if (runKey === key || sessionFilesEqual(run.sessionFile, file)) return [runKey, run]
       }
-      if (!matched) return
+      return null
+    }
+    const settleRun = (matchedKey: string, matched: TeamRun, outcome: 'success' | 'failed' | 'cancelled') => {
       // 先摘掉再调用：completion 和 settled 可能同一轮都到，避免重复落账。
       runsRef.current.delete(matchedKey)
       void ipcClient
         .invoke('teamBoard.settleRun', { workspaceId, sessionFile: matched.sessionFile, outcome, closedBy: 'host' })
         .then(() => notifyTeamBoardChanged())
+        .catch(() => {})
+    }
+
+    return onAppEvent((event) => {
+      const outcome = outcomeOf(event)
+      if (!outcome || !('sessionFile' in event) || typeof event.sessionFile !== 'string' || !event.sessionFile) return
+      const file = event.sessionFile
+      const direct = findMatch(runsRef.current, file)
+      if (direct) {
+        settleRun(direct[0], direct[1], outcome)
+        return
+      }
+      // 主进程通过 team_board 工具派发或打回返工时，面板未必打开；未命中缓存时懒拉一次活跃 Run。
+      void ipcClient
+        .invoke('teamBoard.activeRuns', { workspaceId })
+        .then((response) => {
+          if (workspaceRef.current !== workspaceId || !response?.exists) return
+          const map = new Map<string, TeamRun>()
+          for (const run of (response.runs || []) as TeamRun[]) {
+            map.set(normalizeSessionFileKey(run.sessionFile) || run.sessionFile, run)
+          }
+          runsRef.current = map
+          const lazy = findMatch(map, file)
+          if (lazy) settleRun(lazy[0], lazy[1], outcome)
+        })
         .catch(() => {})
     })
   }, [workspaceId])

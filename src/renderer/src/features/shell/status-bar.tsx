@@ -1,13 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, Cpu, RefreshCw, ArrowUp, Terminal } from '@renderer/components/icons'
-import { openTerminalTab } from '@renderer/features/terminal/terminal-panel'
-import { useTerminalStore } from '@renderer/features/terminal/terminal-store'
-import { useRightPanelHidden } from '@renderer/lib/use-right-panel-hidden'
+import { toast } from 'sonner'
+import { ChevronDown, Cpu, RefreshCw } from '@renderer/components/icons'
 import type { SessionItem } from '@renderer/stores/ui-store-types'
-import { ipcClient, onAppUpdateAvailable } from '@renderer/lib/ipc-client'
+import { ipcClient } from '@renderer/lib/ipc-client'
 import { useVisibleInterval } from '@renderer/hooks/use-visible-interval'
-import { showAppUpdateDialog } from '@renderer/lib/app-update-notify'
 import { countAttention, listAttentionSessions, type SessionAttention } from '@renderer/lib/session-attention'
 import { activateWorkspace, switchSessionInPlace } from '@renderer/lib/activate-workspace'
 import { sessionFilesEqual } from '@renderer/lib/session-file-key'
@@ -22,15 +19,24 @@ import { ComposerToolsMenu } from '@renderer/features/composer/composer-tools-me
 import { FeedbackInboxButton } from '@renderer/features/feedback/feedback-inbox-button'
 
 type WorkerRow = { sessionFile: string; running: boolean; cwd: string }
+type TerminalRow = { id: string; cwd: string; workspace: string; profileName: string; command?: string; owner: string; state: string }
+type CpuInfo = { percent: number; processes: number }
 type MemoryKind = 'main' | 'ui' | 'sessions' | 'browser' | 'gpu' | 'other'
 type AppMemory = { total: number; byKind: Record<MemoryKind, number>; processes: number }
-type DesktopStatus = { rss: number; total: number; app?: AppMemory; workers: WorkerRow[] }
+type DesktopStatus = { rss: number; total: number; app?: AppMemory; workers: WorkerRow[]; cpu?: CpuInfo; terminals?: TerminalRow[] }
 const MEMORY_KINDS: MemoryKind[] = ['sessions', 'ui', 'main', 'browser', 'gpu', 'other']
 
 /** Equal at display granularity (memory is shown in MB), so steady polls do not re-render. */
 function sameDesktopStatus(previous: DesktopStatus | null, next: DesktopStatus): boolean {
   if (!previous) return false
   const mb = (bytes: number) => Math.round(bytes / 1024 ** 2)
+  const cpuSame = Math.abs((previous.cpu?.percent ?? 0) - (next.cpu?.percent ?? 0)) < 0.5
+  const prevTerms = previous.terminals ?? []
+  const nextTerms = next.terminals ?? []
+  const termsSame = prevTerms.length === nextTerms.length && prevTerms.every((row, index) => {
+    const other = nextTerms[index]
+    return row.id === other.id && row.state === other.state && row.cwd === other.cwd
+  })
   return (
     mb(previous.app?.total ?? previous.rss) === mb(next.app?.total ?? next.rss) &&
     previous.total === next.total &&
@@ -38,7 +44,7 @@ function sameDesktopStatus(previous: DesktopStatus | null, next: DesktopStatus):
     previous.workers.every((row, index) => {
       const other = next.workers[index]
       return row.sessionFile === other.sessionFile && row.running === other.running && row.cwd === other.cwd
-    })
+    }) && cpuSame && termsSame
   )
 }
 type Popover = 'workers' | 'board' | null
@@ -46,9 +52,6 @@ const GROUPS: SessionAttention[] = ['needs-you', 'working', 'done']
 
 export function StatusBar() {
   const currentWorkspace = useUIStore((s) => s.currentWorkspace)
-  const terminalTabs = useTerminalStore((s) => s.tabs.filter((tab) => currentWorkspace ? workspacePathsEqual(tab.workspace, currentWorkspace) : !tab.workspace).length)
-  const activePanel = useUIStore((s) => s.activePanel)
-  const rightHidden = useRightPanelHidden()
   const { t, i18n } = useTranslation()
   const attention = useUIStore((s) => s.sessionAttention)
   const sessions = useUIStore((s) => s.sessions)
@@ -57,7 +60,6 @@ export function StatusBar() {
   const [sessionsByWorkspace, setSessionsByWorkspace] = useState<Record<string, SessionItem[]>>({})
   const [loadError, setLoadError] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
-  const [openUpdate, setOpenUpdate] = useState<(() => void) | null>(null)
   const [popover, setPopover] = useState<Popover>(null)
   const [confirmStop, setConfirmStop] = useState<string | null>(null)
   const [stopping, setStopping] = useState(false)
@@ -72,7 +74,7 @@ export function StatusBar() {
   const refresh = useCallback(async () => {
     try {
       const res = await ipcClient.invoke('desktop.status', {})
-      const next = { rss: res.rss, total: res.total, app: res.app, workers: res.workers ?? [] }
+      const next = { rss: res.rss, total: res.total, app: res.app, workers: res.workers ?? [], cpu: res.cpu, terminals: res.terminals ?? [] }
       setStatus((previous) => (sameDesktopStatus(previous, next) ? previous : next))
       setLoadError(false)
     } catch {
@@ -80,7 +82,7 @@ export function StatusBar() {
     }
   }, [])
 
-  useVisibleInterval(() => void refresh(), 5000)
+  useVisibleInterval(() => void refresh(), popover ? 4000 : 12_000)
   useEffect(() => {
     if (!popover) return
     let cancelled = false
@@ -105,10 +107,6 @@ export function StatusBar() {
     }
     return () => { cancelled = true }
   }, [popover, status?.workers, currentWorkspace, sessions, attention])
-  useEffect(
-    () => onAppUpdateAvailable((update) => setOpenUpdate(() => () => showAppUpdateDialog(update))),
-    [],
-  )
 
   useEffect(() => {
     const busy = counts.working + counts.needsYou > 0
@@ -168,6 +166,41 @@ export function StatusBar() {
     return `${new Intl.NumberFormat(i18n.language, { maximumFractionDigits: gib ? 1 : 0 }).format(bytes / 1024 ** (gib ? 3 : 2))} ${gib ? 'GB' : 'MB'}`
   }
   const memory = rss ? fmt(rss) : '—'
+  const cpuText = status?.cpu ? `${new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 1 }).format(status.cpu.percent)}%` : '—'
+  const stopTerminal = async (id: string) => {
+    setStopping(true)
+    setActionError(null)
+    try {
+      await ipcClient.invoke('desktop.killTerminal', { id })
+      await refresh()
+    } catch {
+      setActionError(t('common:operationFailed'))
+    } finally {
+      setStopping(false)
+    }
+  }
+  const cleanIdleResources = async () => {
+    setStopping(true)
+    setActionError(null)
+    try {
+      const res = (await ipcClient.invoke('desktop.cleanupIdleResources', {})) as {
+        workers?: number
+        terminals?: number
+      } | null
+      const workers = res?.workers ?? 0
+      const terminals = res?.terminals ?? 0
+      if (workers + terminals > 0) {
+        toast.message(t('common:statusBar.cleanIdleDone', { workers, terminals }))
+      } else {
+        toast.message(t('common:statusBar.cleanIdleNone'))
+      }
+      await refresh()
+    } catch {
+      setActionError(t('common:operationFailed'))
+    } finally {
+      setStopping(false)
+    }
+  }
   const runFailed = useUIStore((s) => s.runState.status === 'failed')
   const runRunning = useUIStore((s) => s.runState.status === 'running')
   const ratio = status?.total ? rss / status.total : 0
@@ -197,22 +230,9 @@ export function StatusBar() {
         <FeedbackInboxButton />
       </div>
       <div className="ml-auto flex shrink-0 items-center">
-        <button type="button" className="workbench-status-trigger" aria-pressed={!rightHidden && activePanel === 'terminal'} title={t('common:terminal.toggle')} aria-label={t('common:terminal.toggle')} onClick={() => {
-          const state = useUIStore.getState()
-          const visible = !rightHidden && state.activePanel === 'terminal'
-          if (visible) state.toggleRightPanel()
-          else if (terminalTabs === 0) void openTerminalTab()
-          else {
-            state.setActivePanel('terminal')
-            state.revealRightPanel()
-          }
-        }}>
-          <Terminal className="h-3 w-3" />{terminalTabs > 0 ? <span className="tabular-nums">{terminalTabs}</span> : null}
-        </button>
         <button ref={workersAnchor} type="button" className="workbench-status-trigger tabular-nums" data-level={level} aria-haspopup="dialog" aria-expanded={popover === 'workers'} aria-label={t('common:statusBar.resources')} title={t('common:statusBar.memoryHint')} onClick={() => { setPopover((v) => v === 'workers' ? null : 'workers'); void refresh() }}>
-          <Cpu className="h-3 w-3" /><span>{memory}</span>
+          <Cpu className="h-3 w-3" /><span>{memory} · {cpuText}</span>
         </button>
-        {openUpdate && <button type="button" className="workbench-status-trigger" title={t('common:statusBar.update')} aria-label={t('common:statusBar.update')} onClick={openUpdate}><ArrowUp className="h-3 w-3" /></button>}
       </div>
 
       {popover && (
@@ -239,7 +259,7 @@ export function StatusBar() {
             )
           ) : (
             <>
-              <div className="workbench-resource-summary"><div><span className="workbench-row-detail">{t('common:statusBar.memory')}</span><strong className="block text-xl font-medium tabular-nums">{memory}</strong></div><button type="button" className="workbench-icon" aria-label={t('common:refresh')} onClick={() => void refresh()}><RefreshCw className="h-4 w-4" /></button></div>
+              <div className="workbench-resource-summary"><div><span className="workbench-row-detail">{t('common:statusBar.memory')}</span><strong className="block text-xl font-medium tabular-nums">{memory}</strong></div><div><span className="workbench-row-detail">{t('common:statusBar.cpu')}</span><strong className="block text-xl font-medium tabular-nums">{cpuText}</strong></div><button type="button" className="workbench-button ml-auto" disabled={stopping} onClick={() => void cleanIdleResources()}>{t('common:statusBar.cleanIdle')}</button><button type="button" className="workbench-icon" aria-label={t('common:refresh')} onClick={() => void refresh()}><RefreshCw className="h-4 w-4" /></button></div>
               {status?.app ? (
                 <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 px-4 pb-2 text-xs">
                   {MEMORY_KINDS.filter((k) => (status.app?.byKind[k] ?? 0) > 0).map((k) => (
@@ -251,18 +271,34 @@ export function StatusBar() {
                 </dl>
               ) : null}
               <p className="px-4 pb-3 text-xs leading-relaxed text-foreground-secondary">{t('common:statusBar.memoryHint', { count: status?.app?.processes ?? 0 })}</p>
+              <p className="px-4 pb-3 text-xs leading-relaxed text-foreground-secondary">{t('common:statusBar.cpuHint')}</p>
               {loadError && <p role="alert" className="workbench-error">{t('common:statusBar.loadFailed')}</p>}
-              {!status && !loadError ? <p role="status" className="workbench-empty">{t('common:loading')}</p> : status?.workers.length === 0 ? <p className="workbench-empty">{t('common:statusBar.noWorkers')}</p> : (
-                <section className="workbench-group" aria-label={t('common:statusBar.workers')}>
-                  <h3 className="workbench-group-heading">{t('common:statusBar.workers')}<span>{status?.workers.length}</span></h3>
-                  {status?.workers.map((row) => {
-                    const match = findSession(row.sessionFile)
-                    return <div key={row.sessionFile} className="workbench-resource-row">
-                      <div className="flex min-w-0 flex-1 items-start gap-2.5"><SessionAttentionDot attention={row.running ? 'working' : 'idle'} className="mt-1" /><div className="min-w-0"><div className="workbench-row-title">{match?.title || t('common:split.untitled')}</div><div className="workbench-row-detail">{row.cwd.split(/[\\/]/).pop()} · {row.running ? t('common:app.status.running') : t('common:app.status.idle')}</div></div></div>
-                      {confirmStop === row.sessionFile ? <div className="basis-full rounded-md border border-border p-3"><p className="mb-2 text-xs leading-relaxed">{t('common:statusBar.stopConfirm')}</p><div className="flex justify-end gap-2"><button type="button" className="workbench-button" disabled={stopping} onClick={() => setConfirmStop(null)}>{t('common:cancel')}</button><button type="button" className="workbench-button text-destructive" disabled={stopping} onClick={() => void stopWorker(row.sessionFile)}>{stopping ? t('common:loading') : t('common:statusBar.kill')}</button></div></div> : <button type="button" className="workbench-button" disabled={!row.running} onClick={() => setConfirmStop(row.sessionFile)}>{t('common:statusBar.kill')}</button>}
-                    </div>
-                  })}
-                </section>
+              {!status && !loadError ? <p role="status" className="workbench-empty">{t('common:loading')}</p> : (
+                <>
+                  {status?.workers.length === 0 ? <p className="workbench-empty">{t('common:statusBar.noWorkers')}</p> : (
+                    <section className="workbench-group" aria-label={t('common:statusBar.workers')}>
+                      <h3 className="workbench-group-heading">{t('common:statusBar.workers')}<span>{status?.workers.length}</span></h3>
+                      {status?.workers.map((row) => {
+                        const match = findSession(row.sessionFile)
+                        return <div key={row.sessionFile} className="workbench-resource-row">
+                          <div className="flex min-w-0 flex-1 items-start gap-2.5"><SessionAttentionDot attention={row.running ? 'working' : 'idle'} className="mt-1" /><div className="min-w-0"><div className="workbench-row-title">{match?.title || t('common:split.untitled')}</div><div className="workbench-row-detail">{row.cwd.split(/[\\/]/).pop()} · {row.running ? t('common:app.status.running') : t('common:app.status.idle')}</div></div></div>
+                          {confirmStop === row.sessionFile ? <div className="basis-full rounded-md border border-border p-3"><p className="mb-2 text-xs leading-relaxed">{t('common:statusBar.stopConfirm')}</p><div className="flex justify-end gap-2"><button type="button" className="workbench-button" disabled={stopping} onClick={() => setConfirmStop(null)}>{t('common:cancel')}</button><button type="button" className="workbench-button text-destructive" disabled={stopping} onClick={() => void stopWorker(row.sessionFile)}>{stopping ? t('common:loading') : t('common:statusBar.kill')}</button></div></div> : <button type="button" className="workbench-button" disabled={!row.running} onClick={() => setConfirmStop(row.sessionFile)}>{t('common:statusBar.kill')}</button>}
+                        </div>
+                      })}
+                    </section>
+                  )}
+                  {!(status?.terminals?.length) ? <p className="workbench-empty">{t('common:statusBar.noTerminals')}</p> : (
+                    <section className="workbench-group" aria-label={t('common:statusBar.terminals')}>
+                      <h3 className="workbench-group-heading">{t('common:statusBar.terminals')}<span>{status?.terminals?.length}</span></h3>
+                      {status?.terminals?.map((term) => (
+                        <div key={term.id} className="workbench-resource-row">
+                          <div className="flex min-w-0 flex-1 items-start gap-2.5"><SessionAttentionDot attention={term.state === 'busy' ? 'working' : 'idle'} className="mt-1" /><div className="min-w-0"><div className="workbench-row-title flex items-center gap-1.5"><span className="truncate">{term.workspace.split(/[\\/]/).pop() || term.cwd.split(/[\\/]/).pop()}{term.profileName ? ` · ${term.profileName}` : ''}</span>{term.owner === 'ai' ? <span className="shrink-0 rounded bg-primary/10 px-1 py-px text-[10px] font-medium text-primary">{t('common:statusBar.ownerAi')}</span> : null}</div><div className="workbench-row-detail">{term.cwd}{term.command ? ` · ${term.command.slice(0, 60)}` : ''}</div></div></div>
+                          <button type="button" className="workbench-button text-destructive" disabled={stopping} onClick={() => void stopTerminal(term.id)}>{t('common:statusBar.closeTerminal')}</button>
+                        </div>
+                      ))}
+                    </section>
+                  )}
+                </>
               )}
             </>
           )}

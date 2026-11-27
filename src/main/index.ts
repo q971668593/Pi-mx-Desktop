@@ -2,7 +2,7 @@ import './bootstrap-path'
 import { join } from 'node:path'
 import { app, shell, type BrowserWindow, dialog, session, Menu } from 'electron'
 import { createWindow, getMainWindow } from './window'
-import { refreshGitWorkspaceWatch } from './git-workspace-watch'
+import { refreshGitWorkspaceWatch, stopGitWorkspaceWatch } from './git-workspace-watch'
 import { startModelsJsonWatch, type ModelsJsonWatch } from './models-json-watch'
 import { resolveActiveAgentDir } from './agent-dir'
 import { registerAllHandlers } from './ipc'
@@ -222,9 +222,22 @@ async function performGracefulShutdown(): Promise<void> {
     console.error('[Main] graceful worker stop failed:', error)
   } finally {
     sessionPreviewProcess.stop()
+    stopGitWorkspaceWatch()
     disposeCompletionNotifications()
     disposeAiActivityGlow()
     shutdownTerminals()
+  }
+  try {
+    const ses = await import('./browser/electron-session')
+    ses.peekDownloadManager()?.shutdown()
+  } catch {
+    /* optional */
+  }
+  try {
+    const bh = await import('./browser/browser-host')
+    bh.peekBrowserHost()?.shutdown()
+  } catch {
+    /* optional */
   }
   try {
     const asr = await import('./asr/codex-asr-manager')

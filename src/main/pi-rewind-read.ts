@@ -63,15 +63,29 @@ export function listRewindCheckpoints(cwd: string, sessionId?: string): RewindCh
   const shas = revR.stdout.split('\n').map((s) => s.trim()).filter(Boolean)
   if (shas.length !== refs.length) return []
 
+  // Batch: 一次 git log 批量读取所有 checkpoint 的 commit 正文，避免循环 24 次起子进程阻塞主线程。
+  const shaToRef = new Map<string, string>()
+  for (let i = 0; i < shas.length; i++) shaToRef.set(shas[i], refs[i])
   const out: RewindCheckpointRow[] = []
-  // Single cat-file per checkpoint still heavy — cap already at 24; 3s total budget via short timeout each
-  for (let i = 0; i < refs.length; i++) {
-    const cat = runGit(cwd, ['cat-file', 'commit', shas[i]], { timeout: 2000, maxBuffer: 128 * 1024 })
-    if (!cat.ok) continue
-    const row = parseCommitMessage(cat.stdout, refs[i])
-    if (!row) continue
-    if (sessionId && row.sessionId !== sessionId) continue
-    out.push(row)
+  const batch = runGit(cwd, ['log', '--no-walk=unsorted', '--format=%H%x1f%B%x1e', ...shas], {
+    timeout: 6000,
+    maxBuffer: 2 * 1024 * 1024,
+  })
+  if (batch.ok) {
+    for (const record of batch.stdout.split('\x1e')) {
+      const trimmed = record.trim()
+      if (!trimmed) continue
+      const sep = trimmed.indexOf('\x1f')
+      if (sep <= 0) continue
+      const sha = trimmed.slice(0, sep).trim()
+      const body = trimmed.slice(sep + 1)
+      const ref = shaToRef.get(sha)
+      if (!ref) continue
+      const row = parseCommitMessage(body, ref)
+      if (!row) continue
+      if (sessionId && row.sessionId !== sessionId) continue
+      out.push(row)
+    }
   }
   out.sort((a, b) => b.timestamp - a.timestamp)
   return out

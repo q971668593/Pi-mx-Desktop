@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, X } from '@renderer/components/icons'
+import { ChevronDown } from '@renderer/components/icons'
 import { cn } from '@renderer/lib/utils'
-import { useExtensionUIStore } from '@renderer/stores/extension-ui-store'
+import { findSuspendedForSession, pendingMatchesCurrentSession, useExtensionUIStore } from '@renderer/stores/extension-ui-store'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { QuestionnairePanel } from './questionnaire-panel'
-import { answerQuestionnaire, cancelQuestionnaire, suspendActiveDialog } from './extension-ui-actions'
+import { answerQuestionnaire, cancelQuestionnaire } from './extension-ui-actions'
 
 /**
  * 「确认问题」坞：停在输入框正上方的一条可折叠卡，不再整屏弹窗 ——
@@ -13,14 +13,67 @@ import { answerQuestionnaire, cancelQuestionnaire, suspendActiveDialog } from '.
  */
 export function QuestionnaireDock() {
   const pending = useExtensionUIStore((s) => s.activePending)
-  // 时间线工具行自己已经画了行内小卡时，这里不再叠一份。
-  const claimedInline = useUIStore((s) =>
-    !!pending && s.timelineItems.some((item) => item.extensionUiRequestId === pending.id),
+  const suspendedList = useExtensionUIStore((s) => s.suspendedList)
+  const suspendedFallback = useExtensionUIStore((s) => s.suspended)
+  const resumeSuspended = useExtensionUIStore((s) => s.resumeSuspended)
+  const historySessionFile = useUIStore((s) => s.historySessionFile)
+  const suspended = findSuspendedForSession(suspendedList, suspendedFallback, historySessionFile)
+  if (pending && pending.method === 'ask_user_question' && pendingMatchesCurrentSession(pending, historySessionFile)) {
+    // key = 请求 id：下一个提问不会继承上一次的收起状态。
+    return <DockCard key={pending.id} id={pending.id} questions={pending.questions} />
+  }
+  if (
+    !pending &&
+    suspended &&
+    suspended.pending.method === 'ask_user_question' &&
+    pendingMatchesCurrentSession(suspended.pending, historySessionFile)
+  ) {
+    return (
+      <SuspendedDockBar
+        summary={suspended.pending.questions[0]?.question ?? ''}
+        count={suspended.pending.questions.length}
+        onResume={resumeSuspended}
+      />
+    )
+  }
+  return null
+}
+
+function SuspendedDockBar({
+  summary,
+  count,
+  onResume,
+}: {
+  summary: string
+  count: number
+  onResume: () => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <section
+      className="questionnaire-dock mb-2 flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/[0.05] px-3 py-2 shadow-sm"
+      data-testid="questionnaire-dock-suspended"
+      aria-label={t('extension:qDockTitle')}
+    >
+      <span className="relative flex h-1.5 w-1.5 shrink-0" aria-hidden>
+        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
+      </span>
+      <span className="shrink-0 text-[12px] font-medium text-primary">{t('extension:qDockTitle')}</span>
+      {count > 1 && (
+        <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-px text-[10.5px] tabular-nums text-primary">
+          {t('extension:qDockCount', { count })}
+        </span>
+      )}
+      <span className="min-w-0 flex-1 truncate text-[12.5px] text-foreground-secondary">{summary}</span>
+      <button
+        type="button"
+        onClick={onResume}
+        className="shrink-0 rounded-md bg-primary px-2.5 py-1 text-[11.5px] font-medium text-primary-foreground hover:bg-primary/90"
+      >
+        {t('timeline:continueAnswering')}
+      </button>
+    </section>
   )
-  if (!pending || pending.method !== 'ask_user_question') return null
-  if (claimedInline) return null
-  // key = 请求 id：下一个提问不会继承上一次的收起状态。
-  return <DockCard key={pending.id} id={pending.id} questions={pending.questions} />
 }
 
 function DockCard({ id, questions }: { id: string; questions: Parameters<typeof QuestionnairePanel>[0]['questions'] }) {
@@ -63,15 +116,6 @@ function DockCard({ id, questions }: { id: string; questions: Parameters<typeof 
             aria-hidden
           />
         </button>
-        <button
-          type="button"
-          className="shrink-0 rounded-md p-1 text-foreground-tertiary transition-colors hover:bg-[var(--bg-hover)] hover:text-foreground"
-          aria-label={t('extension:answerLater')}
-          title={t('extension:answerLater')}
-          onClick={() => suspendActiveDialog()}
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
       </div>
 
       {!collapsed && (
@@ -81,7 +125,6 @@ function DockCard({ id, questions }: { id: string; questions: Parameters<typeof 
             questions={questions}
             variant="dock"
             onSubmit={(answers) => answerQuestionnaire(id, answers)}
-            onSuspend={() => suspendActiveDialog()}
             onCancel={() => cancelQuestionnaire(id)}
           />
         </div>

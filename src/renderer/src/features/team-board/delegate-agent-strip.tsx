@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bot, ChevronDown, Loader2, X } from '@renderer/components/icons'
+import { ipcClient } from '@renderer/lib/ipc-client'
 import { cn } from '@renderer/lib/utils'
 import { selectDelegateRuns, type DelegateRun } from '@renderer/lib/delegate-runs'
 import { openDelegateSessionPreview } from '@renderer/lib/delegate-session-navigation'
@@ -45,14 +46,49 @@ export function DelegateAgentStrip() {
   const [expanded, setExpanded] = useState(false)
   const [opening, setOpening] = useState('')
   const [dismissed, setDismissed] = useState<Set<string>>(() => readDismissed())
+  const [probedStates, setProbedStates] = useState<Record<string, 'running' | 'completed' | 'stale'>>({})
   const seenRunIds = useRef<Set<string>>(new Set())
   const firstSignature = useRef(true)
 
-  const visible = useMemo(
-    () => runs.filter((run) => !dismissed.has(run.runId)),
+  const candidateRunning = useMemo(
+    () => runs.filter((run) => !dismissed.has(run.runId) && run.state === 'running'),
     [runs, dismissed],
   )
-  const running = useMemo(() => visible.filter((run) => run.state === 'running'), [visible])
+  const candidateIdsKey = candidateRunning.map((run) => run.runId).join('|')
+
+  useEffect(() => {
+    if (!candidateIdsKey) {
+      setProbedStates({})
+      return
+    }
+    let cancelled = false
+    const runIds = candidateIdsKey.split('|')
+    const probe = async () => {
+      try {
+        const res = (await ipcClient.invoke('delegate.runStates', { runIds })) as {
+          states?: Record<string, 'running' | 'completed' | 'stale'>
+        }
+        if (!cancelled && res?.states) setProbedStates(res.states)
+      } catch {
+        /* 探活失败保留时间线原始判定 */
+      }
+    }
+    void probe()
+    const timer = setInterval(() => void probe(), 15_000)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [candidateIdsKey])
+
+  const running = useMemo(
+    () =>
+      candidateRunning.filter((run) => {
+        const probed = probedStates[run.runId]
+        return probed !== 'completed' && probed !== 'stale'
+      }),
+    [candidateRunning, probedStates],
+  )
 
   // 换会话就收起来，见过集合也清掉：新会话的在跑项要当成新的看一次。
   useEffect(() => {
@@ -83,6 +119,15 @@ export function DelegateAgentStrip() {
       return next
     })
   }, [])
+
+  const dismissAll = useCallback(() => {
+    setDismissed((previous) => {
+      const next = new Set(previous)
+      for (const run of running) next.add(run.runId)
+      persistDismissed(next)
+      return next
+    })
+  }, [running])
 
   const open = useCallback(
     async (run: DelegateRun) => {
@@ -118,6 +163,16 @@ export function DelegateAgentStrip() {
           data-independent-scroll
           className="flex max-h-64 w-full flex-col gap-0.5 overflow-y-auto rounded-lg border border-border/60 bg-card/95 p-1 shadow-lg"
         >
+          <div className="flex items-center justify-between px-1 py-0.5 text-[10px] text-foreground-tertiary">
+            <span>{t('team:delegate.running', { count: running.length })}</span>
+            <button
+              type="button"
+              onClick={dismissAll}
+              className="rounded px-1 py-0.5 hover:bg-[var(--bg-hover)] hover:text-foreground"
+            >
+              全部隐藏
+            </button>
+          </div>
           {running.map((run) => (
             <DelegateRunRow
               key={run.runId}

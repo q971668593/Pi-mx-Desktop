@@ -93,7 +93,8 @@ export function dismissExtensionDialogState(id?: string): void {
   const st = useExtensionUIStore.getState()
   const activeId = st.activePending?.id
   const suspendedId = st.suspended?.requestId
-  if (id && activeId !== id && suspendedId !== id) return
+  const inList = !!id && st.suspendedList.some((s) => s.requestId === id)
+  if (id && activeId !== id && suspendedId !== id && !inList) return
   if (id) seenDialogIds.delete(id)
   if (!id) {
     st.clearAllDialogs()
@@ -156,7 +157,10 @@ export function ensureExtensionUIChannel(): void {
 
     traceAudioRenderer('extension-ui.dialog', { method: p.method, id: p.id })
     const viewFile = useUIStore.getState().historySessionFile
-    const isBackground = !!p.sessionFile && !!viewFile && !sessionFilesEqual(p.sessionFile, viewFile)
+    const isBackground = !!p.sessionFile && (!viewFile || !sessionFilesEqual(p.sessionFile, viewFile))
+    if (!isBackground && !p.sessionFile && viewFile) {
+      p.sessionFile = viewFile
+    }
     if (isBackground) {
       useExtensionUIStore.getState().setActivePending(p)
       useExtensionUIStore.getState().suspendActive({ background: true })

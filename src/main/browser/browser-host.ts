@@ -35,7 +35,12 @@ interface Tab {
   pointer: Pointer
   /** Serializes agent actions on this tab. */
   queue: Promise<unknown>
+  lastVisibleAt: number
+  hibernatedUrl?: string
 }
+
+const BROWSER_IDLE_CHECK_MS = 2 * 60 * 1000
+const BROWSER_IDLE_HIBERNATE_MS = 10 * 60 * 1000
 
 /** Layout size for tabs the user has not shown yet (agent-opened tabs still need a viewport). */
 const DEFAULT_VIEW_SIZE = { width: 1280, height: 800 }
@@ -80,8 +85,41 @@ export class BrowserHost implements AgentBrowserHost {
   private activeTabId: string | null = null
   private activeSessionKey: string | null = null
   private readonly activeTabBySession = new Map<string, string>()
+  private idleTimer: ReturnType<typeof setInterval> | null = null
 
   constructor(private readonly getWindow: () => BrowserWindow | null) {}
+
+  private ensureIdleTimer(): void {
+    if (this.idleTimer) return
+    this.idleTimer = setInterval(() => {
+      try {
+        this.hibernateIdleTabs()
+      } catch {
+        /* ignore */
+      }
+    }, BROWSER_IDLE_CHECK_MS)
+    this.idleTimer.unref?.()
+  }
+
+  private hibernateIdleTabs(now = Date.now()): void {
+    for (const tab of this.tabs.values()) {
+      if (tab.info.tabId === this.activeTabId || tab.info.pinned || tab.hibernatedUrl) continue
+      if (!isAllowedBrowserUrl(tab.info.url)) continue
+      if (now - tab.lastVisibleAt < BROWSER_IDLE_HIBERNATE_MS) continue
+      const wc = tab.view.webContents
+      if (wc.isDestroyed()) continue
+      tab.hibernatedUrl = tab.info.url
+      void wc.loadURL('about:blank').catch(() => {})
+    }
+  }
+
+  private wakeIfHibernated(tab: Tab): void {
+    tab.lastVisibleAt = Date.now()
+    if (!tab.hibernatedUrl) return
+    const url = tab.hibernatedUrl
+    tab.hibernatedUrl = undefined
+    void this.load(tab, url)
+  }
 
   /** OS process ids of the pages in open tabs (for the app memory breakdown). */
   pageProcessIds(): number[] {
@@ -126,8 +164,11 @@ export class BrowserHost implements AgentBrowserHost {
         nodeIntegration: false,
         webviewTag: false,
         spellcheck: false,
+        backgroundThrottling: true,
       },
     })
+    view.webContents.setBackgroundThrottling(true)
+    this.ensureIdleTimer()
     view.setVisible(false)
     // A real page is never wider or taller than its window (innerWidth > outerWidth gives automation away).
     const content = win.getContentBounds()
@@ -168,7 +209,7 @@ export class BrowserHost implements AgentBrowserHost {
         return { x: c.x + v.x, y: c.y + v.y }
       },
     })
-    const tab: Tab = { info, view, logs: [], engine, pointer: new Pointer(engine), queue: Promise.resolve() }
+    const tab: Tab = { info, view, logs: [], engine, pointer: new Pointer(engine), queue: Promise.resolve(), lastVisibleAt: Date.now() }
     this.tabs.set(info.tabId, tab)
     this.wire(tab)
     this.emit({ type: 'tab-updated', tab: info })
@@ -225,8 +266,15 @@ export class BrowserHost implements AgentBrowserHost {
     if (opts?.sessionKey && this.activeSessionKey && targetSession !== this.activeSessionKey && !tab.info.pinned && !opts?.window) {
       return
     }
-    if (this.activeTabId && this.activeTabId !== tabId) this.tabs.get(this.activeTabId)?.view.setVisible(false)
+    if (this.activeTabId && this.activeTabId !== tabId) {
+      const prev = this.tabs.get(this.activeTabId)
+      if (prev) {
+        prev.lastVisibleAt = Date.now()
+        prev.view.setVisible(false)
+      }
+    }
     this.activeTabId = tabId
+    this.wakeIfHibernated(tab)
     this.emit({ type: 'tab-focused', tabId })
   }
 
@@ -290,7 +338,10 @@ export class BrowserHost implements AgentBrowserHost {
     }
     if (op.history === 'back' && wc.navigationHistory.canGoBack()) wc.navigationHistory.goBack()
     else if (op.history === 'forward' && wc.navigationHistory.canGoForward()) wc.navigationHistory.goForward()
-    else if (op.history === 'reload') wc.reload()
+    else if (op.history === 'reload') {
+      if (tab.hibernatedUrl) await this.load(tab, tab.hibernatedUrl)
+      else wc.reload()
+    }
     else if (op.history === 'stop') wc.stop()
   }
 
@@ -311,6 +362,7 @@ export class BrowserHost implements AgentBrowserHost {
     tab.view.setBounds(rect)
     const zoom = bounds.pageZoom ?? 1
     if (Math.abs(tab.view.webContents.getZoomFactor() - zoom) > 0.001) tab.view.webContents.setZoomFactor(zoom)
+    this.wakeIfHibernated(tab)
     tab.view.setVisible(true)
   }
 
@@ -382,6 +434,7 @@ export class BrowserHost implements AgentBrowserHost {
     const run = tab.queue.catch(() => undefined).then(async () => {
       this.emit({ type: 'agent-action', tabId, action })
       try {
+        if (tab.hibernatedUrl) await this.load(tab, tab.hibernatedUrl)
         return await work()
       } finally {
         this.emit({ type: 'agent-action', tabId, action: null })
@@ -421,6 +474,10 @@ export class BrowserHost implements AgentBrowserHost {
   }
 
   shutdown(): void {
+    if (this.idleTimer) {
+      clearInterval(this.idleTimer)
+      this.idleTimer = null
+    }
     for (const tabId of [...this.tabs.keys()]) this.closeTab(tabId)
     this.activeTabId = null
   }
@@ -428,10 +485,13 @@ export class BrowserHost implements AgentBrowserHost {
   private requireTab(tabId: string): Tab {
     const tab = this.tabs.get(tabId)
     if (!tab) throw new Error(`browser: unknown tab ${tabId}`)
+    tab.lastVisibleAt = Date.now()
     return tab
   }
 
   private async load(tab: Tab, url: string): Promise<void> {
+    tab.lastVisibleAt = Date.now()
+    tab.hibernatedUrl = undefined
     tab.info = { ...tab.info, url, loading: true }
     this.emit({ type: 'tab-updated', tab: tab.info })
     try {
@@ -446,6 +506,8 @@ export class BrowserHost implements AgentBrowserHost {
     const wc = tab.view.webContents
     const update = (patch: Partial<BrowserTabInfo> = {}) => {
       if (wc.isDestroyed()) return
+      // 休眠占位加载 about:blank 时保留原 URL 和标题，切回标签时自动恢复原网页。
+      if (tab.hibernatedUrl) return
       tab.info = {
         ...tab.info,
         url: wc.getURL() || tab.info.url,

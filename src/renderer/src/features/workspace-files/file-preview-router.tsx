@@ -268,7 +268,11 @@ export function FilePreviewRouter({
     }
     const onFocus = () => void poll()
     window.addEventListener('focus', onFocus)
-    const timer = window.setInterval(() => void poll(), 2500)
+    // 空闲时不做周期性整文件重读；仅在 AI 运行中以 4s 节拍同步变更，失焦切回时会主动刷新一次。
+    const timer = window.setInterval(() => {
+      if (useUIStore.getState().runState.status !== 'running') return
+      void poll()
+    }, 4000)
     return () => { cancelled = true; window.removeEventListener('focus', onFocus); window.clearInterval(timer) }
   }, [absPath, workspaceRoot, relativePath, mode, maxBytes, gitDiff, readText])
   const wrap = (node: ReactNode) => (

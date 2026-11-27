@@ -121,8 +121,9 @@ export function seedSessionState(key: string, defaults: SessionDefaults): Sessio
   const state = emptySessionState(key)
   const runState: RunState = { ...state.runState }
   const draft = isDraftSessionKey(key)
-  const model = defaults.lastModel || (draft ? defaults.runState?.model : undefined)
-  const thinkingLevel = defaults.lastThinking || (draft ? defaults.runState?.thinkingLevel : undefined)
+  // 只有空白新草稿才继承上一个会话的 lastModel；已有历史会话必须以自身记录/覆盖为准，防止串扰。
+  const model = draft ? (defaults.lastModel || defaults.runState?.model) : undefined
+  const thinkingLevel = draft ? (defaults.lastThinking || defaults.runState?.thinkingLevel) : undefined
   if (model) runState.model = model
   if (thinkingLevel) runState.thinkingLevel = thinkingLevel
   return {

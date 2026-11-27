@@ -8,10 +8,13 @@
 import { existsSync } from 'node:fs'
 import { z } from 'zod'
 import {
+  TEAM_MAX_CONCURRENCY_MAX,
+  TEAM_MAX_CONCURRENCY_MIN,
   TEAM_STATUSES,
   buildTeamPrompt,
   buildTeamRoleIntro,
   canonicalTeamRole,
+  clampTeamConcurrency,
   isTeamRole,
   sanitizeTeamText,
   splitTeamModel,
@@ -22,6 +25,8 @@ import { authorizeProjectCwd } from '../../trusted-workspace'
 import { configStore } from '../../config-store'
 import { workerManager } from '../../worker-manager'
 import {
+  appendTeamMemory,
+  archiveTeamBatch,
   bindTeamSession,
   createTeamTask,
   initTeamProject,
@@ -33,7 +38,7 @@ import {
   sweepTeamRuns,
   teamSpecPath,
 } from '../../team-board'
-import { applyRoleRoute, dispatchTeamTask, roleBinding, titleRoleSession } from '../../team-board-ops'
+import { applyRoleRoute, dispatchTeamReview, dispatchTeamTask, mergeTeamTaskWorktree, roleBinding, submitTeamReviewVerdict, titleRoleSession } from '../../team-board-ops'
 import { registerHandlerWithSchema } from '../registry'
 
 const workspace = z.string().min(1).max(4096)
@@ -74,6 +79,8 @@ export function registerTeamBoardHandlers(): void {
       .object({
         workspaceId: workspace,
         defaultModelOverride: z.string().trim().max(200).refine((value) => !value || !!splitTeamModel(value)).optional(),
+        maxConcurrency: z.number().int().min(TEAM_MAX_CONCURRENCY_MIN).max(TEAM_MAX_CONCURRENCY_MAX).optional(),
+        autoReview: z.boolean().optional(),
         roles: z
           .array(
             z
@@ -90,11 +97,13 @@ export function registerTeamBoardHandlers(): void {
           .max(10),
       })
       .strict(),
-    async ({ workspaceId, roles, defaultModelOverride }) => {
+    async ({ workspaceId, roles, defaultModelOverride, maxConcurrency, autoReview }) => {
       const cwd = authorizedCwd(workspaceId)
       const spec = teamSpecPath(cwd)
       const saved = saveTeamRoles(spec, roles)
       if (defaultModelOverride !== undefined) configStore.set('teamDefaultModel', defaultModelOverride)
+      if (maxConcurrency !== undefined) configStore.set('teamMaxConcurrency', clampTeamConcurrency(maxConcurrency))
+      if (autoReview !== undefined) configStore.set('teamAutoReview', autoReview)
       return { ok: true, roles: saved, snapshot: readTeamSnapshot(cwd) }
     },
   )
@@ -142,10 +151,11 @@ export function registerTeamBoardHandlers(): void {
         output: z.string().max(2000).optional(),
         note: z.string().max(2000).optional(),
         dependsOn: z.array(z.string().max(20)).max(20).optional(),
+        ownedPaths: z.array(z.string().max(300)).max(30).optional(),
         acceptance: z.array(z.string().max(300)).max(20).optional(),
       })
       .strict(),
-    async ({ workspaceId, title, role, status, wave, input, output, note, dependsOn, acceptance }) => {
+    async ({ workspaceId, title, role, status, wave, input, output, note, dependsOn, ownedPaths, acceptance }) => {
       const cwd = authorizedCwd(workspaceId)
       const canonical = canonicalTeamRole(role)
       if (!isTeamRole(canonical)) throw new Error(`任务卡角色无效：${role}`)
@@ -158,6 +168,7 @@ export function registerTeamBoardHandlers(): void {
         output,
         note,
         dependsOn,
+        ownedPaths,
         acceptance,
       })
       return { ok: true, snapshot }
@@ -191,6 +202,82 @@ export function registerTeamBoardHandlers(): void {
     async ({ workspaceId, taskId }) => {
       const cwd = authorizedCwd(workspaceId)
       return dispatchTeamTask(cwd, taskId, { trigger: 'panel' })
+    },
+  )
+
+  registerHandlerWithSchema(
+    'ipc:teamBoard.merge',
+    z
+      .object({
+        workspaceId: workspace,
+        taskId: z.string().min(1).max(20),
+      })
+      .strict(),
+    async ({ workspaceId, taskId }) => {
+      const cwd = authorizedCwd(workspaceId)
+      return mergeTeamTaskWorktree(cwd, taskId)
+    },
+  )
+
+  registerHandlerWithSchema(
+    'ipc:teamBoard.dispatchReview',
+    z
+      .object({
+        workspaceId: workspace,
+        taskId: z.string().min(1).max(20),
+      })
+      .strict(),
+    async ({ workspaceId, taskId }) => {
+      const cwd = authorizedCwd(workspaceId)
+      return dispatchTeamReview(cwd, taskId)
+    },
+  )
+
+  registerHandlerWithSchema(
+    'ipc:teamBoard.reviewVerdict',
+    z
+      .object({
+        workspaceId: workspace,
+        taskId: z.string().min(1).max(20),
+        verdict: z.enum(['pass', 'reject']),
+        summary: z.string().min(1).max(600),
+        issues: z.array(z.string().max(300)).max(20).optional(),
+      })
+      .strict(),
+    async ({ workspaceId, taskId, verdict, summary, issues }) => {
+      const cwd = authorizedCwd(workspaceId)
+      return submitTeamReviewVerdict(cwd, { taskId, verdict, summary, issues })
+    },
+  )
+
+  registerHandlerWithSchema(
+    'ipc:teamBoard.archiveBatch',
+    z
+      .object({
+        workspaceId: workspace,
+        nextBatch: z.string().max(80).optional(),
+        nextGoal: z.string().max(300).optional(),
+      })
+      .strict(),
+    async ({ workspaceId, nextBatch, nextGoal }) => {
+      const cwd = authorizedCwd(workspaceId)
+      return archiveTeamBatch(cwd, { nextBatch, nextGoal })
+    },
+  )
+
+  registerHandlerWithSchema(
+    'ipc:teamBoard.appendMemory',
+    z
+      .object({
+        workspaceId: workspace,
+        kind: z.enum(['lesson', 'taste']),
+        text: z.string().min(1).max(500),
+        taskId: z.string().max(20).optional(),
+      })
+      .strict(),
+    async ({ workspaceId, kind, text, taskId }) => {
+      const cwd = authorizedCwd(workspaceId)
+      return appendTeamMemory(cwd, { kind, text, taskId })
     },
   )
 
@@ -304,6 +391,16 @@ export function registerTeamBoardHandlers(): void {
       const cwd = authorizedCwd(workspaceId)
       const spec = teamSpecPath(cwd)
       const result = settleTeamRun(spec, cwd, sessionFile, outcome, { note, closedBy })
+      if (
+        result.movedTo === '待审查' &&
+        result.run &&
+        canonicalTeamRole(result.run.role) === 'Builder' &&
+        configStore.get('teamAutoReview') === true
+      ) {
+        await dispatchTeamReview(cwd, result.run.taskId).catch((error) => {
+          console.warn('[team-board] 自动派发 Verifier 失败：', error)
+        })
+      }
       return { ok: true, ...result, snapshot: readTeamSnapshot(cwd) }
     },
   )

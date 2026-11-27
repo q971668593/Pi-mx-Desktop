@@ -49,7 +49,6 @@
     "fork": "Fork a new session from a user message",
     "clone": "Clone current branch into a new session",
     "tree": "Open session tree panel",
-    "clarify": "Start requirement clarification (/clarify …)",
     "purge": "Prompt injection: on / status / off"
   },
   "toast": {
@@ -65,10 +64,6 @@
     "slashNoPanel": "Slash command has no panelId configured",
     "modelSet": "Model set to {{model}}",
     "needWorkspace": "Open a project or temp chat section first",
-    "growNeedText": "/clarify needs one line after it, e.g. /clarify build a reading tracker mini-app",
-    "growFailed": "Could not start the requirement session ({{reason}}), try again later",
-    "growStarted": "Requirement clarification started",
-    "growBusy": "Wait for the current reply to finish before starting clarification.",
     "newSessionReady": "New session created — send a message to start",
     "newSessionFailed": "Failed to create session",
     "continueTyping": "/{{cmd}} — keep typing to see available options",

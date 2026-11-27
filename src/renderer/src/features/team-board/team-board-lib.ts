@@ -23,7 +23,7 @@ export const STAGE_TONES: Record<TeamStage, 'danger' | 'warning' | 'success' | '
   'awaiting-review': 'warning',
   blocked: 'danger',
   failed: 'danger',
-  implemented: 'info',
+  passed: 'info',
   accepted: 'success',
 }
 
@@ -44,15 +44,17 @@ export function needsAttention(task: TeamTask): boolean {
 
 export const TEAM_AVATARS: Record<TeamRole, { face: string; full: string }> = {
   Leader: { face: leaderFace, full: leaderFull },
-  设计师: { face: designerFace, full: designerFull },
-  前端: { face: frontendFace, full: frontendFull },
-  后端: { face: backendFace, full: backendFull },
-  质量测试: { face: testerFace, full: testerFull },
+  Builder: { face: frontendFace, full: frontendFull },
+  Verifier: { face: testerFace, full: testerFull },
+  Designer: { face: designerFace, full: designerFull },
 }
 
-/** 角色色只表示身份，不随状态/主题变；和 DSH flow-board 的配色保持同一族。 */
+/** 角色色只表示身份，不随状态/主题变。 */
 export const ROLE_COLORS: Record<string, string> = {
   Leader: '#f59e0b',
+  Builder: '#3b82f6',
+  Verifier: '#eab308',
+  Designer: '#ec4899',
   设计师: '#ec4899',
   前端: '#3b82f6',
   后端: '#10b981',
@@ -66,8 +68,8 @@ export const STATUS_COLORS: Record<TeamStatus, string> = {
   待办: '#94a3b8',
   进行中: '#3b82f6',
   待审查: '#f59e0b',
+  已通过: '#6366f1',
   阻塞: '#ef4444',
-  实现完成: '#6366f1',
   已验收: '#10b981',
 }
 
@@ -76,12 +78,12 @@ export function roleColor(role: string): string {
 }
 
 export function roleAvatar(role: string): string {
-  const meta = TEAM_AVATARS[role as TeamRole]
+  const meta = TEAM_AVATARS[role as TeamRole] ?? (role === '后端' ? { face: backendFace, full: backendFull } : undefined)
   return meta?.face || meta?.full || TEAM_AVATARS.Leader.face
 }
 
 export function roleFullAvatar(role: string): string {
-  const meta = TEAM_AVATARS[role as TeamRole]
+  const meta = TEAM_AVATARS[role as TeamRole] ?? (role === '后端' ? { face: backendFace, full: backendFull } : undefined)
   return meta?.full || TEAM_AVATARS.Leader.full
 }
 
@@ -89,6 +91,12 @@ export function roleLabel(role: string, t: (key: string) => string): string {
   switch (role) {
     case 'Leader':
       return t('team:roles.Leader')
+    case 'Builder':
+      return t('team:roles.builder')
+    case 'Verifier':
+      return t('team:roles.verifier')
+    case 'Designer':
+      return t('team:roles.designer')
     case '设计师':
       return t('team:roles.designer')
     case '前端':
@@ -110,10 +118,10 @@ export function statusLabel(status: TeamStatus, t: (key: string) => string): str
       return t('team:statuses.inProgress')
     case '待审查':
       return t('team:statuses.review')
+    case '已通过':
+      return t('team:statuses.passed')
     case '阻塞':
       return t('team:statuses.blocked')
-    case '实现完成':
-      return t('team:statuses.implemented')
     case '已验收':
       return t('team:statuses.accepted')
     default:

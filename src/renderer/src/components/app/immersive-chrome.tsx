@@ -3,6 +3,7 @@ import { PanelLeft, PanelRight } from '@renderer/components/icons'
 import { useRightPanelHidden } from '@renderer/lib/use-right-panel-hidden'
 import { PiMark } from '@renderer/components/brand/pi-mark'
 import { WindowControls } from '@renderer/components/app/window-controls'
+import { AppUpdateBadge } from '@renderer/features/shell/app-update-badge'
 import { NotificationInbox } from '@renderer/features/shell/notification-inbox'
 import { cn } from '@renderer/lib/utils'
 import { useUIStore } from '@renderer/stores/ui-store'
@@ -55,6 +56,7 @@ export function ImmersiveChrome({
         </div>
       </div>
       <div className="electron-no-drag flex h-9 items-center gap-2">
+        <AppUpdateBadge />
         <NotificationInbox />
         <button
           type="button"

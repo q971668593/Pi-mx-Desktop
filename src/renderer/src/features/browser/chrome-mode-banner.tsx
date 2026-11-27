@@ -24,8 +24,9 @@ export function ChromeModeBanner() {
   useEffect(() => setDismissed(dismissedSessions.has(sessionKey)), [sessionKey])
 
   useEffect(() => {
-    if (!usesChrome) return
+    if (!usesChrome || dismissed) return
     const refresh = () => {
+      if (typeof document !== 'undefined' && document.hidden) return
       void ipcClient
         .invoke('browser.chrome.tabs', sessionFile ? { sessionFile } : {})
         .then((res: { tabs?: ChromeTab[] }) => setTabs(res?.tabs ?? []))
@@ -36,9 +37,9 @@ export function ChromeModeBanner() {
         .catch(() => setConnected(false))
     }
     refresh()
-    const timer = setInterval(refresh, 2000)
+    const timer = setInterval(refresh, 5000)
     return () => clearInterval(timer)
-  }, [usesChrome, sessionFile])
+  }, [usesChrome, dismissed, sessionFile])
 
   if (!usesChrome || dismissed) return null
   return (

@@ -230,15 +230,18 @@ export async function handleFlushqueue(msg: WorkerIncomingMessage, reply: Worker
   const busy = session.isStreaming || st.agentTurnActive
   if (busy) {
     try {
-      for (const text of texts) await session.steer(text)
-      reply({ type: 'flushQueue-done', flushed: texts.length, mode: 'steer' })
+      if (st.promptPreflightActive) st.abortAfterPreflight = true
+      await session.abort()
+      st.agentTurnActive = false
+      st.promptPreflightActive = false
+      st.abortAfterPreflight = false
     } catch (e: unknown) {
       reply({ type: 'flushQueue-done', flushed: 0, mode: 'error', error: errorMessage(e) })
+      return
     }
-    return
   }
   reply({ type: 'flushQueue-done', flushed: texts.length, mode: 'prompt' })
-  // 空闲时直接开一轮：复用 handlePrompt 的运行账本、run 事件与错误处理。
+  // 空闲或刚中断当前轮：直接开新一轮把消息立刻发出去。
   await handlePrompt({ ...msg, type: 'prompt', text: texts.join('\n\n') }, () => {})
   return
 }

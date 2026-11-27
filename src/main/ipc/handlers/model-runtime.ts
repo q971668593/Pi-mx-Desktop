@@ -195,7 +195,7 @@ export function registerModelRuntimeHandlers(): void {
     }
     // Same key the worker pool and the apply step use (separators / drive letter normalized),
     // otherwise a re-rendered `C:/x/y.jsonl` would never match the pool key `C:\\x\\y.jsonl`.
-    getSessionModelOverrides().set(normalizeSessionKey(sessionFile), provider, modelId)
+    getSessionModelOverrides().set(normalizeSessionKey(sessionFile), provider, modelId, thinkingLevel)
     return {
       modelId: `${provider}/${modelId}`,
       thinkingLevel,
@@ -251,8 +251,33 @@ export function registerModelRuntimeHandlers(): void {
     const stateOpts = { includeTools: req?.includeTools === true }
     if (sessionFile) {
       try {
-        return { state: await workerManager.getState(sessionFile, stateOpts) }
+        const state = await workerManager.getState(sessionFile, stateOpts)
+        if (state?.bound === false && !state.model) {
+          const pending = getSessionModelOverrides().get(normalizeSessionKey(sessionFile))
+          if (pending) {
+            return {
+              state: {
+                ...state,
+                model: `${pending.provider}/${pending.modelId}`,
+                ...(pending.thinkingLevel ? { thinkingLevel: pending.thinkingLevel } : {}),
+              },
+            }
+          }
+        }
+        return { state }
       } catch {
+        const pending = getSessionModelOverrides().get(normalizeSessionKey(sessionFile))
+        if (pending) {
+          return {
+            state: {
+              bound: false,
+              sessionFile: normalizeSessionKey(sessionFile),
+              isStreaming: false,
+              model: `${pending.provider}/${pending.modelId}`,
+              ...(pending.thinkingLevel ? { thinkingLevel: pending.thinkingLevel } : {}),
+            },
+          }
+        }
         return { state: null }
       }
     }

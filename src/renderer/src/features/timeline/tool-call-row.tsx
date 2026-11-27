@@ -5,7 +5,6 @@ import { ChevronRight, BookOpen } from '@renderer/components/icons'
 import { cn } from '@renderer/lib/utils'
 import { normalizeSessionFileKey } from '@renderer/lib/session-file-key'
 import { ToolIcon } from './tool-icon'
-import { AskUserInlineCard } from './ask-user-inline-card'
 import { renderToolCard } from './tool-card-templates'
 import {
   ChatImageGallery,
@@ -102,17 +101,14 @@ function ToolCallRowImpl({
     return s.toolExpandBySession[sessionKey]?.[expandKey]
   })
   const setToolCallExpanded = useUIStore((s) => s.setToolCallExpanded)
-  // 行内问答：模型用 ask_user_question 时，这张卡直接长在工具行下面。
-  const askRequest = useExtensionUIStore((s) =>
-    s.activePending && s.activePending.method === 'ask_user_question' ? s.activePending : null,
-  )
   // Local fallback when store key missing or store write fails — click must always toggle.
   const [localExpanded, setLocalExpanded] = useState<boolean | null>(null)
   const isCurrentRun = !!item.runId && item.runId === activeRunId
   const isRunning = item.toolPhase === 'start' || item.toolPhase === 'update'
+  const isAskToolRow = item.toolName === 'ask_user_question'
   const isGeneratingImage = isRunning && isImageGenerationTool(item.toolName, item.toolArgs, item.toolDetails)
   const hasToolBody = !!(item.toolOutput || item.toolDetails || item.toolArgs || item.toolDetail)
-  const autoExpanded = autoExpandedInBudget && agentRunning && isCurrentRun && hasToolBody
+  const autoExpanded = autoExpandedInBudget && agentRunning && isCurrentRun && hasToolBody && !(isRunning && isAskToolRow)
   const expanded =
     localExpanded ?? rememberedExpanded ?? autoExpanded
   const mcpTool = useMemo(
@@ -237,16 +233,6 @@ function ToolCallRowImpl({
       {!isGeneratingImage && imageRefs.length ? (
         <div className="ml-3.5 pl-1.5 pb-1">
           <ChatImageGallery refs={imageRefs} />
-        </div>
-      ) : null}
-      {askRequest && item.extensionUiRequestId === askRequest.id ? (
-        <div className="ml-3.5 pl-1.5 pb-1">
-          <AskUserInlineCard
-            requestId={askRequest.id}
-            questions={askRequest.questions}
-            timelineItemId={item.id}
-            onDone={() => useExtensionUIStore.getState().clearAfterRespond()}
-          />
         </div>
       ) : null}
       {expanded && hasToolBody ? (

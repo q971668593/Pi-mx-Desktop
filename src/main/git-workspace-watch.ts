@@ -22,9 +22,19 @@ let watchGeneration = 0
 
 function shouldNotifyGitWorkspaceChange(filename: string | Buffer | null): boolean {
   if (filename == null) return true
-  const basename = filename.toString().replace(/\\/g, '/').split('/').pop() || ''
+  const normalized = filename.toString().replace(/\\/g, '/')
+  if (
+    normalized.startsWith('objects/') ||
+    normalized.includes('/objects/') ||
+    normalized.startsWith('logs/') ||
+    normalized.includes('/logs/')
+  ) {
+    return false
+  }
+  const basename = normalized.split('/').pop() || ''
   return !(
     basename.endsWith('.lock') ||
+    basename.endsWith('.tmp') ||
     basename === 'gc.log' ||
     basename === 'gc.pid' ||
     basename === 'maintenance.lock'

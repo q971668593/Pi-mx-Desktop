@@ -1,6 +1,6 @@
 /** 右侧栏 Tab：核心栏目 + 适配器声明的 sidePanel（合并后用于 Tab / 设置开关） */
 
-export const CORE_RIGHT_PANEL_IDS = ['files', 'git', 'team', 'terminal', 'browser', 'run', 'review', 'context', 'tree', 'grow'] as const
+export const CORE_RIGHT_PANEL_IDS = ['files', 'git', 'team', 'terminal', 'browser', 'run', 'review', 'context', 'tree'] as const
 
 export type CoreRightPanelId = (typeof CORE_RIGHT_PANEL_IDS)[number]
 
@@ -32,7 +32,6 @@ export const CORE_RIGHT_PANEL_CATALOG: RightPanelCatalogItem[] = [
   { id: 'review', labelKey: 'panel.review', fallbackLabel: 'Review', description: 'Git changes & diff (read-only)', descriptionKey: 'panel.reviewDesc', icon: 'GitBranch', source: 'core' },
   { id: 'context', labelKey: 'panel.context', fallbackLabel: 'Context', description: 'Session context preview', descriptionKey: 'panel.contextDesc', icon: 'FileSearch', source: 'core' },
   { id: 'tree', labelKey: 'panel.tree', fallbackLabel: 'Tree', description: 'Session tree / rewind (like /tree)', descriptionKey: 'panel.treeDesc', icon: 'ListTree', source: 'core' },
-  { id: 'grow', labelKey: 'panel.grow', fallbackLabel: '需求树', description: '需求澄清：聊天答题、右侧看树、果子即方案', descriptionKey: 'panel.growDesc', icon: 'Sprout', source: 'core' },
 ]
 
 /** @deprecated */
@@ -52,7 +51,6 @@ export function defaultCoreRightPanelPrefs(): RightPanelPrefs {
     review: false,
     context: false,
     tree: false,
-    grow: true,
   }
 }
 

@@ -19,8 +19,9 @@ export function TeamTaskCreateSheet({
 }) {
   const { t } = useTranslation()
   const [title, setTitle] = useState('')
-  const [role, setRole] = useState(defaultRole || '前端')
+  const [role, setRole] = useState(defaultRole || 'Builder')
   const [output, setOutput] = useState('')
+  const [ownedPaths, setOwnedPaths] = useState('')
   const [note, setNote] = useState('')
   const [acceptance, setAcceptance] = useState('')
   const [busy, setBusy] = useState(false)
@@ -31,11 +32,16 @@ export function TeamTaskCreateSheet({
     setBusy(true)
     setError('')
     try {
+      const parsedOwnedPaths = ownedPaths
+        .split(/[、,，;；\s]+/)
+        .map((item) => item.trim())
+        .filter(Boolean)
       const response = await ipcClient.invoke('teamBoard.task.create', {
         workspaceId,
         title: title.trim(),
         role,
         output: output.trim() || undefined,
+        ...(parsedOwnedPaths.length ? { ownedPaths: parsedOwnedPaths } : {}),
         note: note.trim() || undefined,
         acceptance: acceptance
           .split(/\r?\n/)
@@ -110,6 +116,16 @@ export function TeamTaskCreateSheet({
             value={output}
             onChange={(event) => setOutput(event.target.value)}
             placeholder="src/…"
+            className="team-sheet-input mt-1 font-mono"
+          />
+        </label>
+
+        <label className="mt-2 block text-2xs text-foreground-secondary">
+          {t('team:ownedPaths')}
+          <input
+            value={ownedPaths}
+            onChange={(event) => setOwnedPaths(event.target.value)}
+            placeholder={t('team:ownedPathsPlaceholder')}
             className="team-sheet-input mt-1 font-mono"
           />
         </label>

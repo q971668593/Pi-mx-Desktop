@@ -50,6 +50,8 @@ function normalizeRun(value: unknown): TeamRun | null {
     ...(typeof run.endedAt === 'number' ? { endedAt: run.endedAt } : {}),
     ...(typeof run.settledTo === 'string' ? { settledTo: run.settledTo as TeamStatus } : {}),
     ...(report ? { report } : {}),
+    ...(typeof run.worktreePath === 'string' && run.worktreePath ? { worktreePath: sanitizeTeamText(run.worktreePath, 500) } : {}),
+    ...(typeof run.branch === 'string' && run.branch ? { branch: sanitizeTeamText(run.branch, 120) } : {}),
     ...(typeof run.staleAt === 'number' ? { staleAt: run.staleAt } : {}),
     ...(run.closedBy === 'human' || run.closedBy === 'host' ? { closedBy: run.closedBy } : {}),
   }

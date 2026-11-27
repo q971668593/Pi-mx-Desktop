@@ -10,6 +10,7 @@ import { StringDecoder } from 'node:string_decoder'
 import type { UtilityProcess } from 'electron'
 import { decodeWorkerFrameLine } from '@shared/worker-frame'
 import type { WorkerResponsePayload } from '@shared/worker-rpc-types'
+import { killProcessTree } from './process-tree-kill'
 import { spawnWorkerInWsl } from './wsl/worker-host'
 
 export interface WorkerTransport {
@@ -57,11 +58,13 @@ export function createUtilityProcessTransport(proc: UtilityProcess): WorkerTrans
       }
     },
     kill: () => {
+      const pid = proc.pid
       try {
         proc.kill()
       } catch {
         /* ignore */
       }
+      killProcessTree(pid)
     },
   }
 }
@@ -128,11 +131,13 @@ export function createWslWorkerTransport(opts: {
       stderrCb = cb
     },
     kill: () => {
+      const pid = child.pid
       try {
         child.kill()
       } catch {
         /* ignore */
       }
+      killProcessTree(pid)
     },
   }
 }

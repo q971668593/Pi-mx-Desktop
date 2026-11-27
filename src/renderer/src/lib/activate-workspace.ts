@@ -198,6 +198,7 @@ export async function switchSessionInPlace(sessionId: string, sessionFile?: stri
 
   // Capture live running state BEFORE focus changes (runtime map + live timeline cache).
   captureVisibleLiveSessionTimeline()
+  useExtensionUIStore.getState().parkForSessionSwitch()
 
   // focusSessionSync below re-points the view synchronously; clearing here would wipe the
   // leaving session's own state (its in-flight turn markers), not just the display.
@@ -221,6 +222,7 @@ export async function previewSessionInPlace(
   store.clearPendingNewSessionPlaceholder()
 
   captureVisibleLiveSessionTimeline()
+  useExtensionUIStore.getState().parkForSessionSwitch()
   store.setCurrentSession(sessionId)
   focusSessionSync(sessionId, sessionFile)
 

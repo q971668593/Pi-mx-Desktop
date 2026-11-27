@@ -17,6 +17,8 @@ type OpenTerminal = ReturnType<ReturnType<typeof terminals>['list']>[number]
  * another is needed, so running a check ten times does not leave ten panes in the sidebar.
  */
 const MAX_AI_TERMINALS = 3
+/** 硬上限兜底：即使命令卡住未返回（一直处于 busy），非服务类 AI 终端也不允许无限堆积。 */
+const MAX_AI_HARD_CAP = 5
 
 let sequence = 0
 
@@ -236,7 +238,8 @@ export async function handleTerminalToolRequest(data: Record<string, unknown>, s
       })
     }
 
-    // 3. Keep the sidebar tidy: close the oldest finished AI terminal before adding another.
+    // 3. Keep the sidebar tidy: close the oldest finished AI terminal before adding another;
+    //    if stuck busy non-server terminals exceed MAX_AI_HARD_CAP, evict the stalest one too.
     const closedIdle: string[] = []
     let liveCount = aiOpen.length
     for (const item of aiOpen) {
@@ -245,6 +248,18 @@ export async function handleTerminalToolRequest(data: Record<string, unknown>, s
       manager.close(item.id)
       closedIdle.push(item.id)
       liveCount -= 1
+    }
+    if (liveCount >= MAX_AI_HARD_CAP) {
+      const closedSet = new Set(closedIdle)
+      const staleBusy = aiOpen
+        .filter((item) => !closedSet.has(item.id) && !isServerTerminal(item))
+        .sort((a, b) => a.lastActivityAt - b.lastActivityAt)
+      for (const item of staleBusy) {
+        if (liveCount < MAX_AI_HARD_CAP) break
+        manager.close(item.id)
+        closedIdle.push(item.id)
+        liveCount -= 1
+      }
     }
 
     const marker = completionMarker()

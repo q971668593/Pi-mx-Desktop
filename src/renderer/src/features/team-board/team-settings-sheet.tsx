@@ -11,16 +11,27 @@ import {
 } from '@renderer/lib/available-models-cache'
 import { ipcClient } from '@renderer/lib/ipc-client'
 import type { ModelInfo } from '@shared/ipc-contract'
-import type { TeamRoleBinding, TeamSnapshot } from '@shared/team-board'
+import {
+  TEAM_MAX_CONCURRENCY_MAX,
+  TEAM_MAX_CONCURRENCY_MIN,
+  type TeamRoleBinding,
+  type TeamSnapshot,
+} from '@shared/team-board'
 import { effortLabel, roleAvatar, roleColor, roleLabel } from './team-board-lib'
 
 const ALL_EFFORTS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
+const CONCURRENCY_OPTIONS = Array.from(
+  { length: TEAM_MAX_CONCURRENCY_MAX - TEAM_MAX_CONCURRENCY_MIN + 1 },
+  (_, i) => TEAM_MAX_CONCURRENCY_MIN + i,
+)
 
 export function TeamSettingsSheet({
   workspaceId,
   roles,
   defaultModel,
   defaultModelOverride,
+  maxConcurrency,
+  autoReview,
   onClose,
   onSaved,
 }: {
@@ -28,6 +39,8 @@ export function TeamSettingsSheet({
   roles: TeamRoleBinding[]
   defaultModel: string
   defaultModelOverride: string
+  maxConcurrency: number
+  autoReview: boolean
   onClose: () => void
   onSaved: (snapshot: TeamSnapshot) => void
 }) {
@@ -38,6 +51,8 @@ export function TeamSettingsSheet({
   const [loadError, setLoadError] = useState('')
   const [saving, setSaving] = useState(false)
   const [preset, setPreset] = useState(defaultModelOverride)
+  const [concurrency, setConcurrency] = useState(maxConcurrency)
+  const [autoReviewDraft, setAutoReviewDraft] = useState(autoReview)
   const effectivePreset = preset || defaultModel
 
   useEffect(() => {
@@ -96,7 +111,13 @@ export function TeamSettingsSheet({
   const save = async () => {
     setSaving(true)
     try {
-      const response = await ipcClient.invoke('teamBoard.roles.save', { workspaceId, roles: draft, ...(preset !== defaultModelOverride ? { defaultModelOverride: preset } : {}) })
+      const response = await ipcClient.invoke('teamBoard.roles.save', {
+        workspaceId,
+        roles: draft,
+        ...(preset !== defaultModelOverride ? { defaultModelOverride: preset } : {}),
+        ...(concurrency !== maxConcurrency ? { maxConcurrency: concurrency } : {}),
+        ...(autoReviewDraft !== autoReview ? { autoReview: autoReviewDraft } : {}),
+      })
       if (response?.snapshot) onSaved(response.snapshot)
       toast.success(t('team:saved'))
       onClose()
@@ -144,6 +165,31 @@ export function TeamSettingsSheet({
           </select>
         </label>
         <p className="mt-1 text-2xs text-foreground-secondary">{t('team:defaultModelHint')}</p>
+        <label className="mt-2 block text-2xs text-foreground-secondary">
+          {t('team:maxConcurrency')}
+          <select
+            value={concurrency}
+            onChange={(event) => setConcurrency(Number(event.target.value))}
+            className="team-sheet-input mt-0.5"
+          >
+            {CONCURRENCY_OPTIONS.map((count) => (
+              <option key={count} value={count}>
+                {count}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="mt-1 text-2xs text-foreground-secondary">{t('team:maxConcurrencyHint')}</p>
+        <label className="mt-2 flex cursor-pointer items-center gap-1.5 text-2xs text-foreground-secondary">
+          <input
+            type="checkbox"
+            checked={autoReviewDraft}
+            onChange={(event) => setAutoReviewDraft(event.target.checked)}
+            className="h-3 w-3"
+          />
+          <span>{t('team:autoReview')}</span>
+        </label>
+        <p className="mt-0.5 text-2xs text-foreground-tertiary">{t('team:autoReviewHint')}</p>
         {effectivePreset ? null : <p className="mt-1 text-2xs text-foreground-secondary">{t('team:globalDefaultMissing')}</p>}
         {loading ? <p className="mt-1 text-2xs text-foreground-tertiary">{t('team:loadingModels')}</p> : null}
         {loadError ? <p className="mt-1 text-2xs text-amber-600">{t('team:modelLoadFailed')}</p> : null}

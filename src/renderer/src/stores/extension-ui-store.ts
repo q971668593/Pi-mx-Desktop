@@ -25,6 +25,7 @@ export type ExtensionUISuspended = {
 type ExtensionUIState = {
   activePending: ExtensionUIPending | null
   suspended: ExtensionUISuspended | null
+  suspendedList: ExtensionUISuspended[]
   setActivePending: (p: ExtensionUIPending | null) => void
   suspendActive: (meta: { toolCallId?: string; toolName?: string; timelineItemId?: string; background?: boolean }) => void
   resumeSuspended: () => void
@@ -43,23 +44,67 @@ function hasOpenExtensionDialog(): boolean {
   return useExtensionUIStore.getState().activePending != null
 }
 
+export function findSuspendedForSession(
+  list: readonly ExtensionUISuspended[],
+  fallback: ExtensionUISuspended | null,
+  sessionFile: string | null | undefined,
+): ExtensionUISuspended | null {
+  if (sessionFile) {
+    const exact = [...list].reverse().find((s) => s.pending.sessionFile && sessionFilesEqual(s.pending.sessionFile, sessionFile))
+    if (exact) return exact
+  }
+  if (fallback && pendingMatchesCurrentSession(fallback.pending, sessionFile)) return fallback
+  return null
+}
+
+function upsertSuspended(list: readonly ExtensionUISuspended[], next: ExtensionUISuspended): ExtensionUISuspended[] {
+  const sf = next.pending.sessionFile
+  const filtered = list.filter(
+    (s) => s.requestId !== next.requestId && (!sf || !s.pending.sessionFile || !sessionFilesEqual(s.pending.sessionFile, sf)),
+  )
+  return [...filtered, next]
+}
+
 function pruneStaleSuspension(): void {
-  const { activePending, suspended } = useExtensionUIStore.getState()
+  const { activePending, suspended, suspendedList } = useExtensionUIStore.getState()
   if (activePending) return
-  if (!suspended) return
-  if (suspended.background) return
+  if (!suspended && suspendedList.length === 0) return
   const items = useUIStore.getState().timelineItems
-  const tid = suspended.timelineItemId
+  const historySessionFile = useUIStore.getState().historySessionFile
+  const current = findSuspendedForSession(suspendedList, suspended, historySessionFile)
+  if (!current || current.background) return
+  const tid = current.timelineItemId
   if (!tid) {
-    useExtensionUIStore.setState({ suspended: null })
+    const nextList = suspendedList.filter((s) => s.requestId !== current.requestId)
+    useExtensionUIStore.setState({ suspendedList: nextList, suspended: nextList[nextList.length - 1] ?? null })
     return
   }
   const row = items.find((i) => i.id === tid)
-  if (!row?.extensionUiSuspended) useExtensionUIStore.setState({ suspended: null })
+  // 只有工具行明确结束（toolPhase === 'end'）或时间线里没有任何进行中的问答工具行时才清理；
+  // 翻页/重载导致内存标记 extensionUiSuspended 丢失时，绝不能把挂起的问答误删。
+  const hasLiveAskRow = items.some(
+    (i) =>
+      i.type === 'tool-call' &&
+      (i.toolPhase === 'start' || i.toolPhase === 'update') &&
+      (!current.toolCallId || i.toolCallId === current.toolCallId || i.toolName === current.toolName),
+  )
+  if (row?.toolPhase === 'end' || (!row && !hasLiveAskRow)) {
+    const nextList = suspendedList.filter((s) => s.requestId !== current.requestId)
+    useExtensionUIStore.setState({ suspendedList: nextList, suspended: nextList[nextList.length - 1] ?? null })
+  }
 }
 
 function pendingSessionFile(pending: ExtensionUIPending | null | undefined): string | undefined {
   return pending?.sessionFile
+}
+
+export function pendingMatchesCurrentSession(
+  pending: ExtensionUIPending | null | undefined,
+  currentSessionFile: string | null | undefined,
+): boolean {
+  if (!pending) return false
+  if (!pending.sessionFile) return true
+  return !!currentSessionFile && sessionFilesEqual(pending.sessionFile, currentSessionFile)
 }
 
 function syncWaitingUi(sessionFile: string | undefined, waiting: boolean): void {
@@ -77,6 +122,7 @@ function cancelPendingDialog(reason: string): void {
 export const useExtensionUIStore = create<ExtensionUIState>((set, get) => ({
   activePending: null,
   suspended: null,
+  suspendedList: [],
 
   setActivePending: (p) => {
     const prev = get().activePending
@@ -89,7 +135,6 @@ export const useExtensionUIStore = create<ExtensionUIState>((set, get) => ({
     const active = get().activePending
     if (!active) return
     syncWaitingUi(pendingSessionFile(active), true)
-    const parked = get().suspended
     const next: ExtensionUISuspended = {
       requestId: active.id,
       pending: active,
@@ -99,37 +144,46 @@ export const useExtensionUIStore = create<ExtensionUIState>((set, get) => ({
       background: meta.background === true || (!meta.timelineItemId && !!active.sessionFile),
       suspendedAt: Date.now(),
     }
-    const keepParked =
-      parked && parked.requestId !== next.requestId && parked.background === true ? parked : null
+    const nextList = upsertSuspended(get().suspendedList, next)
     set({
       activePending: null,
-      suspended: next.background || !keepParked ? next : keepParked,
+      suspendedList: nextList,
+      suspended: next,
     })
   },
 
   resumeSuspended: () => {
-    const s = get().suspended
-    if (!s) return
-    syncWaitingUi(pendingSessionFile(s.pending), true)
-    set({ activePending: s.pending, suspended: null })
+    const { suspendedList, suspended } = get()
+    const currentFile = useUIStore.getState().historySessionFile
+    const target = findSuspendedForSession(suspendedList, suspended, currentFile) ?? suspended
+    if (!target) return
+    syncWaitingUi(pendingSessionFile(target.pending), true)
+    const nextList = suspendedList.filter((s) => s.requestId !== target.requestId)
+    set({
+      activePending: target.pending,
+      suspendedList: nextList,
+      suspended: nextList[nextList.length - 1] ?? null,
+    })
   },
 
   clearAfterRespond: () => {
-    const { activePending, suspended } = get()
+    const { activePending, suspended, suspendedList } = get()
     syncWaitingUi(pendingSessionFile(activePending), false)
-    const keep =
-      suspended &&
-      suspended.background &&
-      (!activePending || suspended.requestId !== activePending.id)
-        ? suspended
-        : null
-    if (!keep) syncWaitingUi(pendingSessionFile(suspended?.pending), false)
-    set({ activePending: null, suspended: keep })
+    const nextList = activePending
+      ? suspendedList.filter((s) => s.requestId !== activePending.id)
+      : suspendedList.filter((s) => s.background)
+    if (!nextList.length) syncWaitingUi(pendingSessionFile(suspended?.pending), false)
+    set({
+      activePending: null,
+      suspendedList: nextList,
+      suspended: nextList[nextList.length - 1] ?? null,
+    })
   },
 
   cancelForSession: (sessionFile) => {
-    const { activePending, suspended } = get()
-    const pending = [activePending, suspended?.pending].filter(
+    const { activePending, suspended, suspendedList } = get()
+    const all = [activePending, ...suspendedList.map((s) => s.pending), suspended?.pending]
+    const pending = all.filter(
       (p): p is ExtensionUIPending => !!p && (!p.sessionFile || sessionFilesEqual(p.sessionFile, sessionFile)),
     )
     for (const id of new Set(pending.map((p) => p.id))) {
@@ -141,42 +195,67 @@ export const useExtensionUIStore = create<ExtensionUIState>((set, get) => ({
   pruneStaleSuspension: () => pruneStaleSuspension(),
 
   clearAllDialogs: () => {
-    const { activePending, suspended } = get()
+    const { activePending, suspended, suspendedList } = get()
     syncWaitingUi(pendingSessionFile(activePending || suspended?.pending), false)
-    set({ activePending: null, suspended: null })
+    for (const item of suspendedList) syncWaitingUi(pendingSessionFile(item.pending), false)
+    set({ activePending: null, suspended: null, suspendedList: [] })
   },
 
   dismissById: (id) => {
-    const { activePending, suspended } = get()
+    const { activePending, suspended, suspendedList } = get()
     if (activePending?.id === id) {
       syncWaitingUi(pendingSessionFile(activePending), false)
       set({ activePending: null })
       return
     }
-    if (suspended?.requestId === id) {
-      syncWaitingUi(pendingSessionFile(suspended.pending), false)
-      set({ suspended: null })
+    const target = suspendedList.find((s) => s.requestId === id) ?? (suspended?.requestId === id ? suspended : null)
+    if (target) {
+      syncWaitingUi(pendingSessionFile(target.pending), false)
+      const nextList = suspendedList.filter((s) => s.requestId !== id)
+      set({ suspendedList: nextList, suspended: nextList[nextList.length - 1] ?? null })
     }
   },
 
   parkForSessionSwitch: () => {
     const active = get().activePending
-    if (active) get().suspendActive({})
+    if (!active) return
+    if (!active.sessionFile) {
+      const currentFile = useUIStore.getState().historySessionFile
+      if (currentFile) {
+        set({ activePending: { ...active, sessionFile: currentFile } })
+      }
+    }
+    get().suspendActive({ background: true })
   },
 
   restoreForSession: (sessionFile: string) => {
-    const s = get().suspended
-    if (!s) return
-    if (s.pending.sessionFile && !sessionFilesEqual(s.pending.sessionFile, sessionFile)) return
-    get().resumeSuspended()
+    const { suspendedList, suspended } = get()
+    const match =
+      [...suspendedList].reverse().find((s) => s.pending.sessionFile && sessionFilesEqual(s.pending.sessionFile, sessionFile)) ??
+      (suspended?.pending.sessionFile && sessionFilesEqual(suspended.pending.sessionFile, sessionFile) ? suspended : null)
+    if (!match) return
+    syncWaitingUi(pendingSessionFile(match.pending), true)
+    const nextList = suspendedList.filter((s) => s.requestId !== match.requestId)
+    set({
+      activePending: match.pending,
+      suspendedList: nextList,
+      suspended: nextList[nextList.length - 1] ?? null,
+    })
   },
 
   resetForSessionContext: () => {
-    const { activePending, suspended } = get()
-    const pendingFile = pendingSessionFile(activePending || suspended?.pending)
-    cancelPendingDialog('session-reset')
-    syncWaitingUi(pendingFile, false)
-    set({ activePending: null, suspended: null })
+    const { activePending, suspended, suspendedList } = get()
+    const currentFile = useUIStore.getState().historySessionFile
+    const matched = findSuspendedForSession(suspendedList, suspended, currentFile)
+    const targetId = activePending?.id ?? matched?.requestId
+    if (targetId) void ipcClient.invoke('extension.cancelUI', { id: targetId, reason: 'session-reset' }).catch(() => {})
+    syncWaitingUi(pendingSessionFile(activePending || matched?.pending), false)
+    const nextList = matched ? suspendedList.filter((s) => s.requestId !== matched.requestId) : suspendedList
+    set({
+      activePending: null,
+      suspendedList: nextList,
+      suspended: nextList[nextList.length - 1] ?? null,
+    })
     void import('@renderer/lib/extension-ui-channel').then((m) => m.clearExtensionDialogDedupe())
   },
 }))
@@ -184,10 +263,12 @@ export const useExtensionUIStore = create<ExtensionUIState>((set, get) => ({
 export function extensionUiBlocksComposer(): boolean {
   pruneStaleSuspension()
   if (!hasOpenExtensionDialog()) return false
-  const running = useUIStore.getState().runState.status === 'running'
+  const { runState, historySessionFile } = useUIStore.getState()
+  const running = runState.status === 'running'
   // 无弹窗宿主可渲染的 pending（如 Worker 已超时 resolve）不应阻塞
   const p = useExtensionUIStore.getState().activePending
   if (!p) return false
+  if (!pendingMatchesCurrentSession(p, historySessionFile)) return false
   if (!running) return false
   return true
 }

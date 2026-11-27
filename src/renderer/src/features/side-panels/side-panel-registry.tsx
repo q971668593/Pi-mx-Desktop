@@ -13,14 +13,12 @@ const LazyReview = lazy(() => import('@renderer/features/review/review-panel').t
 const LazyRun = lazy(() => import('@renderer/features/run/run-panel').then((m) => ({ default: m.RunPanel })))
 const LazyContext = lazy(() => import('@renderer/features/context/context-panel').then((m) => ({ default: m.ContextPanel })))
 const LazyTree = lazy(() => import('@renderer/features/rewind/tree-panel').then((m) => ({ default: m.TreePanel })))
-const LazyGrow = lazy(() => import('@renderer/features/grow/grow-panel').then((m) => ({ default: m.GrowPanel })))
 
 const CORE_BY_ID: Record<string, ComponentType<SidePanelComponentProps>> = {
   review: () => <LazyReview />,
   run: () => <LazyRun />,
   context: () => <LazyContext />,
   tree: () => <LazyTree />,
-  grow: () => <LazyGrow />,
 }
 
 const BY_COMPONENT: Record<string, ComponentType<SidePanelComponentProps>> = {

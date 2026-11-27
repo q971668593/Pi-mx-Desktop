@@ -133,6 +133,12 @@ export function registerSettingsHandlers(): void {
         downloadName: result.downloadName,
         assets: result.assets,
       }
+      const { APP_UPDATE_AVAILABLE_CHANNEL, setPendingAppUpdate } = await import('../../updater')
+      setPendingAppUpdate(update)
+      const win = getMainWindow()
+      if (win && !win.isDestroyed()) {
+        win.webContents.send(APP_UPDATE_AVAILABLE_CHANNEL, update)
+      }
       return { status: 'available', update }
     } catch {
       return { status: 'error', reason: 'unknown' }

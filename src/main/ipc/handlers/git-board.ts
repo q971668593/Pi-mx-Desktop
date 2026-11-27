@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { lstat, mkdir, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, relative, resolve, sep } from 'node:path'
 import { authorizeProjectCwd } from '../../trusted-workspace'
-import { gitExec, isGitRepository, runGit } from '../../git-workspace'
+import { gitExec, isGitRepository } from '../../git-workspace'
 import { discardGitChanges } from '../../git-conflict-discard'
 import { stageSelectedHunks } from '../../git-stage-hunk'
 import { clearGitCommandLog, gitCommandLog, isLoggedGitCommand, parseRemotes, parseStatus, parseStatusV2, parseStashes, parseTags, parseWorktrees, recordGitCommand, sanitizeCloneUrl, unstageArgs } from '../../git-board-parse'
@@ -180,11 +180,13 @@ export function registerGitBoardHandlers(): void {
   registerHandlerWithSchema('ipc:gitBoard.suggestCommit', cwdSchema.extend({ prompt: z.string().trim().max(8000).optional() }), async ({ cwd, prompt }) => {
     const repo = await authorized(cwd)
     if (!repo.ok) return repo
-    const staged = runGit(repo.cwd, ['diff', '--cached', '--stat', '--patch', '--', '.'], { maxBuffer: 300_000 })
-    const unstaged = runGit(repo.cwd, ['diff', '--stat', '--patch', '--', '.'], { maxBuffer: 300_000 })
+    const [staged, unstaged, untracked] = await Promise.all([
+      git(repo.cwd, ['diff', '--cached', '--stat', '--patch', '--', '.']),
+      git(repo.cwd, ['diff', '--stat', '--patch', '--', '.']),
+      git(repo.cwd, ['ls-files', '--others', '--exclude-standard', '-z']),
+    ])
     if (!staged.ok) return staged
     if (!unstaged.ok) return unstaged
-    const untracked = runGit(repo.cwd, ['ls-files', '--others', '--exclude-standard', '-z'], { maxBuffer: 300_000 })
     if (!untracked.ok) return untracked
     const sections = [staged.stdout.trim(), unstaged.stdout.trim()].filter(Boolean)
     const root = await realpath(repo.cwd).catch(() => null)

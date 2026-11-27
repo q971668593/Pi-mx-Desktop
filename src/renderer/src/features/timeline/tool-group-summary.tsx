@@ -33,7 +33,11 @@ export function groupExpanded(sessionMap: Record<string, boolean> | undefined, g
  * user's answer. Failures are counted on the summary line instead of listed.
  */
 export function attentionTools(tools: ToolTimelineItem[]): ToolTimelineItem[] {
-  return tools.filter((tool) => tool.extensionUiSuspended)
+  return tools.filter(
+    (tool) =>
+      tool.extensionUiSuspended ||
+      (tool.toolName === 'ask_user_question' && (tool.toolPhase === 'start' || tool.toolPhase === 'update')),
+  )
 }
 
 /**

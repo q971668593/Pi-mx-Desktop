@@ -26,6 +26,7 @@ import {
   forkWorkerForCwd,
   getBackgroundWorkerState,
   pruneIdleWorkersByTimeout,
+  pruneIdleWorkersNow,
   remapSessionWorkerSlot,
   slotRequest,
 } from './worker-manager-pool'
@@ -97,6 +98,11 @@ export class WorkerManager {
     if (typeof this.idleTimer === 'object' && this.idleTimer && 'unref' in this.idleTimer) {
       ;(this.idleTimer as NodeJS.Timeout).unref?.()
     }
+  }
+
+  /** 手动一键清理所有非前台空闲会话进程，返回释放数量。 */
+  pruneIdleWorkersNow(): number {
+    return pruneIdleWorkersNow(this.pool, this.foregroundPoolKey, this.mainWindow)
   }
 
   async start(cwd: string): Promise<InitResult> {

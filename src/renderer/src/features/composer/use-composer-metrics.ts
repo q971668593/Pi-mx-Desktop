@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { lookupContextWindow } from '@renderer/lib/model-context-window'
 import { useUIStore } from '@renderer/stores/ui-store'
-import { formatTokens, estTokensFromChars } from '@renderer/lib/format-tokens'
+import { formatTokens, estTokensFromChars, estTokensFromText } from '@renderer/lib/format-tokens'
 import type { ContextRoleSlice } from '@renderer/features/run/context-donut'
 import { useSessionContextPreview } from '@renderer/features/context/use-session-context-preview'
 import { noteStreamProgress } from '@renderer/lib/token-stream-clock'
@@ -13,15 +13,22 @@ export function useComposerMetrics(options?: { enabled?: boolean }) {
   const usage = useUIStore((s) => s.runState.usage)
   const isRunning = useUIStore((s) => s.runState.status === 'running')
   const streamingId = useUIStore((s) => s.streamingAssistantId)
-  const streamLen = useUIStore((s) => {
-    if (!s.streamingAssistantId) return 0
+  const streamSample = useUIStore((s) => {
+    if (!s.streamingAssistantId) return '0:0'
     // Runs on every store update while streaming; the streaming row sits at the tail.
     for (let index = s.timelineItems.length - 1; index >= 0; index--) {
       const item = s.timelineItems[index]
-      if (item.id === s.streamingAssistantId) return item.text?.length ?? 0
+      if (item.id === s.streamingAssistantId) {
+        const text = item.text ?? ''
+        const thinking = item.thinking ?? ''
+        const chars = text.length + thinking.length
+        const tokens = estTokensFromText(text) + estTokensFromText(thinking)
+        return `${chars}:${tokens}`
+      }
     }
-    return 0
+    return '0:0'
   })
+  const [streamLen, streamTokens] = streamSample.split(':').map(Number)
 
   const { preview: rawContextPreview } = useSessionContextPreview({ enabled: metricsEnabled })
   const contextPreview = rawContextPreview
@@ -61,7 +68,7 @@ export function useComposerMetrics(options?: { enabled?: boolean }) {
       setTps(null)
       return
     }
-    // 写字时钟：只在正文变长时累计，工具调用和等待不计入写字耗时。
+    // 写字时钟：只在正文/思考内容变长时累计，工具调用和等待不计入写字耗时。
     noteStreamProgress(streamingId, streamLen)
     const now = performance.now()
     if (!streamingId) {
@@ -74,20 +81,26 @@ export function useComposerMetrics(options?: { enabled?: boolean }) {
     if (streamState.id !== streamingId) {
       streamState.id = streamingId
       streamState.start = now
-      streamState.lastLen = streamLen
+      streamState.lastLen = streamTokens
       streamState.lastAt = now
       setTps(null)
       return
     }
     const elapsedSeconds = (now - streamState.lastAt) / 1000
-    const deltaChars = streamLen - streamState.lastLen
-    if (elapsedSeconds >= 0.25 && deltaChars > 0) {
-      const instantRate = deltaChars / elapsedSeconds
+    const deltaTokens = streamTokens - streamState.lastLen
+    if (elapsedSeconds > 1.5 && deltaTokens <= 0) {
+      // 工具调用或停顿期间重置采样锚点，避免把等待时间平摊到下一拍或制造虚高跳变。
+      streamState.lastAt = now
+      streamState.lastLen = streamTokens
+      return
+    }
+    if (elapsedSeconds >= 0.25 && deltaTokens > 0) {
+      const instantRate = deltaTokens / Math.min(elapsedSeconds, 1.5)
       setTps((previous) => (previous == null ? instantRate : previous * 0.65 + instantRate * 0.35))
-      streamState.lastLen = streamLen
+      streamState.lastLen = streamTokens
       streamState.lastAt = now
     }
-  }, [metricsEnabled, streamingId, streamLen, isRunning])
+  }, [metricsEnabled, streamingId, streamLen, streamTokens, isRunning])
   const contextUsage = contextPreview?.contextUsage
   const contextWindow = contextUsage?.contextWindow ?? catalogContextWindow
   const estimatedContextTokens = contextUsage

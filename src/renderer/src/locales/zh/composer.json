@@ -49,7 +49,6 @@
     "fork": "从某条用户消息 Fork 新会话",
     "clone": "Clone 当前分支到新会话",
     "tree": "打开会话树面板",
-    "clarify": "开始需求树澄清（/澄清 需求…）",
     "purge": "提示词注入：开启 / 状态 / off 关闭"
   },
   "toast": {
@@ -65,10 +64,6 @@
     "slashNoPanel": "斜杠未配置 panelId",
     "modelSet": "模型已设为 {{model}}",
     "needWorkspace": "请先打开项目或临时对话分区",
-    "growNeedText": "/澄清 后面要跟一句你要做的事，例如：/澄清 做一个读书打卡小程序",
-    "growFailed": "需求树会话建不起来（{{reason}}），稍后再试",
-    "growStarted": "已开始需求澄清",
-    "growBusy": "等当前回复结束后，再开始需求澄清。",
     "newSessionReady": "已新建对话，发送首条消息即可开始",
     "newSessionFailed": "新建会话失败",
     "continueTyping": "/{{cmd}} 请直接在输入框继续输入查看可用列表",

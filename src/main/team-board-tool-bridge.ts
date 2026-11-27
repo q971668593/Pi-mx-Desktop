@@ -8,18 +8,21 @@ import {
   canonicalTeamRole,
   isTeamRole,
   TEAM_BLOCK_TYPES,
+  TEAM_ROLES,
   TEAM_STATUSES,
   type TeamStatus,
   type TeamTaskDraft,
 } from '@shared/team-board'
+import { listGitWorktrees } from './git-worktrees'
 import { authorizeProjectCwd } from './trusted-workspace'
 import {
+  appendTeamMemory,
   createTeamTask,
   readTeamSnapshot,
   setTeamTaskStatus,
   teamSpecPath,
 } from './team-board'
-import { dispatchTeamTask } from './team-board-ops'
+import { dispatchTeamReview, dispatchTeamTask, mergeTeamTaskWorktree, submitTeamReviewVerdict } from './team-board-ops'
 
 type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean }
 
@@ -32,6 +35,7 @@ type TaskDraftInput = {
   note?: unknown
   wave?: unknown
   dependsOn?: unknown
+  ownedPaths?: unknown
   status?: unknown
 }
 
@@ -43,6 +47,10 @@ type Args = {
   reason?: unknown
   blockType?: unknown
   note?: unknown
+  verdict?: unknown
+  summary?: unknown
+  issues?: unknown
+  memoryKind?: unknown
 }
 
 const MAX_BATCH_TASKS = 12
@@ -77,6 +85,9 @@ function summarizeBoard(cwd: string): Record<string, unknown> {
       status: task.status,
       acceptance: `${task.acceptance.filter((item) => item.done).length}/${task.acceptance.length}`,
       dependsOn: task.dependsOn.length ? task.dependsOn : undefined,
+      branch: task.branch || undefined,
+      ownedPaths: task.ownedPaths.length ? task.ownedPaths : undefined,
+      reworkCount: task.reworkCount || undefined,
       blockType: task.blockType || undefined,
       approval: task.approval || undefined,
     })),
@@ -95,7 +106,7 @@ function normalizeDraft(raw: TaskDraftInput): TeamTaskDraft | string {
   const title = str(raw.title, 200)
   if (!title) return '每张卡都要有 title'
   const role = canonicalTeamRole(raw.role)
-  if (!isTeamRole(role)) return `role 必须是 ${['Leader', '设计师', '前端', '后端', '质量测试'].join(' / ')} 之一`
+  if (!isTeamRole(role)) return `role 必须是 ${TEAM_ROLES.join(' / ')} 之一`
   const status = raw.status === undefined ? undefined : (String(raw.status) as TeamStatus)
   if (status && !TEAM_STATUSES.includes(status)) return `status 必须是 ${TEAM_STATUSES.join(' / ')} 之一`
   return {
@@ -107,8 +118,20 @@ function normalizeDraft(raw: TaskDraftInput): TeamTaskDraft | string {
     ...(str(raw.output, 2000) ? { output: str(raw.output, 2000) } : {}),
     ...(str(raw.note, 2000) ? { note: str(raw.note, 2000) } : {}),
     ...(lines(raw.dependsOn).length ? { dependsOn: lines(raw.dependsOn) } : {}),
+    ...(lines(raw.ownedPaths, 30).length ? { ownedPaths: lines(raw.ownedPaths, 30) } : {}),
     ...(lines(raw.acceptance).length ? { acceptance: lines(raw.acceptance) } : {}),
   }
+}
+
+async function resolveBoardCwd(slotCwd: string): Promise<string | null> {
+  const direct = authorizeProjectCwd(slotCwd)
+  if (!direct.ok) return null
+  const listing = await listGitWorktrees(direct.cwd).catch(() => null)
+  if (listing?.ok && listing.repositoryPath) {
+    const repo = authorizeProjectCwd(listing.repositoryPath)
+    if (repo.ok) return repo.cwd
+  }
+  return direct.cwd
 }
 
 export async function handleTeamToolRequest(
@@ -129,9 +152,8 @@ export async function handleTeamToolRequest(
     })
 
   try {
-    const project = authorizeProjectCwd(slot.cwd)
-    if (!project.ok) return reply(`工作区不可用（${project.error}），先让主人在侧栏打开这个项目`, true)
-    const cwd = project.cwd
+    const cwd = await resolveBoardCwd(slot.cwd)
+    if (!cwd) return reply('工作区不可用或未受信任，先让主人在侧栏打开这个项目', true)
     const args = (data.args || {}) as Args
     const action = str(args.action, 40)
 
@@ -197,7 +219,63 @@ export async function handleTeamToolRequest(
         role: result.role,
         sessionFile: result.sessionFile,
         model: result.model,
+        ...(result.worktreePath ? { worktreePath: result.worktreePath } : {}),
+        ...(result.branch ? { branch: result.branch } : {}),
         note: '已在后台开会话开工；它结束后看板会自动落到「待审查」，不用手动改状态',
+        board: summarizeBoard(cwd),
+      })
+    }
+
+    if (action === 'merge_task') {
+      const taskId = str(args.taskId, 20)
+      if (!taskId) return reply('action=merge_task 需要 taskId', true)
+      const result = await mergeTeamTaskWorktree(cwd, taskId)
+      return reply({
+        ok: true,
+        taskId: result.taskId,
+        branch: result.branch,
+        note: `已合并分支 ${result.branch} 并清理独立工作区`,
+        board: summarizeBoard(cwd),
+      })
+    }
+
+    if (action === 'dispatch_review') {
+      const taskId = str(args.taskId, 20)
+      if (!taskId) return reply('action=dispatch_review 需要 taskId', true)
+      const result = await dispatchTeamReview(cwd, taskId)
+      return reply({
+        ok: true,
+        taskId: result.taskId,
+        sessionFile: result.sessionFile,
+        model: result.model,
+        note: '已派发 Verifier 在隔离上下文中独立审查，完成后将通过 review_verdict 提交裁决',
+        board: summarizeBoard(cwd),
+      })
+    }
+
+    if (action === 'review_verdict') {
+      const taskId = str(args.taskId, 20)
+      const verdict = str(args.verdict, 20)
+      const summary = str(args.summary, 600)
+      if (!taskId) return reply('action=review_verdict 需要 taskId', true)
+      if (verdict !== 'pass' && verdict !== 'reject') {
+        return reply('action=review_verdict 的 verdict 必须是 pass 或 reject', true)
+      }
+      if (!summary) return reply('action=review_verdict 需要 summary（一句话结论）', true)
+      const result = await submitTeamReviewVerdict(cwd, {
+        taskId,
+        verdict,
+        summary,
+        issues: lines(args.issues, 20),
+      })
+      return reply({
+        ok: true,
+        taskId: result.taskId,
+        verdict: result.verdict,
+        status: result.status,
+        reworkCount: result.reworkCount,
+        ...(result.circuitBroken ? { circuitBroken: true } : {}),
+        ...(result.resumed !== undefined ? { resumed: result.resumed } : {}),
         board: summarizeBoard(cwd),
       })
     }
@@ -215,8 +293,20 @@ export async function handleTeamToolRequest(
       return reply({ ok: true, board: summarizeBoard(cwd) })
     }
 
+    if (action === 'append_memory') {
+      const memoryKind = str(args.memoryKind, 20)
+      const note = str(args.note, 500)
+      const taskId = str(args.taskId, 20)
+      if (memoryKind !== 'lesson' && memoryKind !== 'taste') {
+        return reply('action=append_memory 的 memoryKind 必须是 lesson 或 taste', true)
+      }
+      if (!note) return reply('action=append_memory 需要 note（记录内容）', true)
+      const result = appendTeamMemory(cwd, { kind: memoryKind, text: note, ...(taskId ? { taskId } : {}) })
+      return reply({ ok: true, file: result.file })
+    }
+
     return reply(
-      'action 必须是 snapshot / create_task / move_task / dispatch / comment；' +
+      'action 必须是 snapshot / create_task / move_task / dispatch / dispatch_review / review_verdict / merge_task / comment / append_memory；' +
         `看板文件：${teamSpecPath(cwd)}/看板/当前批次.md`,
       true,
     )

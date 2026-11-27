@@ -262,8 +262,7 @@ export default function App() {
       }
     }
     window.addEventListener('focus', check)
-    const timer = window.setInterval(check, 5000)
-    return () => { window.removeEventListener('focus', check); window.clearInterval(timer) }
+    return () => { window.removeEventListener('focus', check) }
   }, [])
 
   useEffect(() => {

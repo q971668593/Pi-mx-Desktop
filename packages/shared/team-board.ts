@@ -14,30 +14,49 @@ export const TEAM_BOARD_RELATIVE_PATH = '看板/当前批次.md'
 export const TEAM_ROLES_FILE = '角色配置.json'
 export const TEAM_STATE_RELATIVE_PATH = '协作/团队.json'
 
-export const TEAM_ROLES = ['Leader', '设计师', '前端', '后端', '质量测试'] as const
+export const TEAM_ROLES = ['Leader', 'Builder', 'Verifier', 'Designer'] as const
 export type TeamRole = (typeof TEAM_ROLES)[number]
 
-/** 泳道顺序与 DSH flow-board 保持一致，避免同一个项目在两处看出不同顺序。 */
-export const TEAM_STATUSES = ['待办', '进行中', '待审查', '阻塞', '实现完成', '已验收'] as const
+export const TEAM_MAX_CONCURRENCY_DEFAULT = 3
+export const TEAM_MAX_CONCURRENCY_MIN = 1
+export const TEAM_MAX_CONCURRENCY_MAX = 6
+export const TEAM_MAX_REWORK_ROUNDS = 3
+
+export function clampTeamConcurrency(value: unknown): number {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return TEAM_MAX_CONCURRENCY_DEFAULT
+  return Math.min(TEAM_MAX_CONCURRENCY_MAX, Math.max(TEAM_MAX_CONCURRENCY_MIN, Math.round(num)))
+}
+
+/** 泳道顺序：精简为 5 主泳道 + 阻塞侧挂道，已通过即解锁下游依赖。 */
+export const TEAM_STATUSES = ['待办', '进行中', '待审查', '已通过', '阻塞', '已验收'] as const
 export type TeamStatus = (typeof TEAM_STATUSES)[number]
 
 /** 旧卡片/旧配置里的状态别名；看清是历史写法，不能当成新状态。 */
 const STATUS_ALIASES: Record<string, TeamStatus> = {
   待认领: '待办',
   完成: '已验收',
-  已实现: '实现完成',
+  已实现: '已通过',
+  实现完成: '已通过',
   审查中: '待审查',
 }
 
 const ROLE_ALIASES: Record<string, TeamRole> = {
   产品经理: 'Leader',
-  UI审查: '质量测试',
-  测试: '质量测试',
-  质量: '质量测试',
-  设计: '设计师',
+  前端: 'Builder',
+  后端: 'Builder',
+  全栈: 'Builder',
+  开发: 'Builder',
+  UI审查: 'Verifier',
+  测试: 'Verifier',
+  质量: 'Verifier',
+  质检: 'Verifier',
+  质量测试: 'Verifier',
+  设计: 'Designer',
+  设计师: 'Designer',
 }
 
-export const TEAM_BLOCK_TYPES = ['待用户确认', '缺环境/工具', '外部依赖', '执行失败'] as const
+export const TEAM_BLOCK_TYPES = ['待用户确认', '合并冲突', '缺环境/工具', '外部依赖', '执行失败'] as const
 export type TeamBlockType = (typeof TEAM_BLOCK_TYPES)[number]
 
 /** 需要主人拍板的阻塞一律落到这个分型上，面板据此识别「待批准」。 */
@@ -113,6 +132,14 @@ export type TeamTask = {
   approval: string
   /** 最近一次批准/驳回记录（`- 批准：` / `- 驳回：`） */
   approvalNote: string
+  /** 独立 Git Worktree 路径（`- 工作区：`） */
+  worktreePath: string
+  /** 独立任务分支名（`- 分支：`） */
+  branch: string
+  /** 卡片允许修改的目录/文件边界（`- 文件边界：`） */
+  ownedPaths: string[]
+  /** Verifier 打回返工计数（`- 返工次数：`） */
+  reworkCount: number
   /** 卡片详情原文，用于复制派发包与「看板原文」 */
   raw: string
 }
@@ -181,6 +208,9 @@ export type TeamRun = {
   settledTo?: TeamStatus
   /** 结束时写下的结构化回执 */
   report?: TeamRunReport
+  /** 独立工作树路径与分支名 */
+  worktreePath?: string
+  branch?: string
   /** 看门狗判定「超时无结束事件」的时间；只标记一次，用于面板提示 */
   staleAt?: number
   /** 主人/宿主主动结束这次派发（覆盖看门狗结论，避免再被标记） */
@@ -207,7 +237,7 @@ export type TeamStage =
   | 'awaiting-review'
   | 'blocked'
   | 'failed'
-  | 'implemented'
+  | 'passed'
   | 'accepted'
 
 export function deriveTeamStage(input: { task: TeamTask; run?: TeamRun | null; now?: number }): TeamStage {
@@ -218,7 +248,7 @@ export function deriveTeamStage(input: { task: TeamTask; run?: TeamRun | null; n
     return task.blockType === TEAM_APPROVAL_BLOCK_TYPE ? 'awaiting-approval' : 'blocked'
   }
   if (task.status === '待审查') return 'awaiting-review'
-  if (task.status === '实现完成') return 'implemented'
+  if (task.status === '已通过') return 'passed'
   if (isTeamRunActive(run)) {
     if (run?.staleAt) return 'stale'
     return run?.report?.kind === 'waiting' || run?.status === 'starting' ? 'queued' : 'running'
@@ -249,6 +279,8 @@ export type TeamSnapshot = {
   defaultModel?: string
   defaultModelOverride?: string
   globalDefaultModel?: string
+  maxConcurrency: number
+  autoReview: boolean
 }
 
 export function emptyTeamState(): TeamState {
@@ -410,6 +442,16 @@ function parseCard(section: string, index: IndexRow | undefined): TeamTask | nul
     autoNote: fieldOf(section, '自动推进'),
     approval: fieldOf(section, TEAM_APPROVAL_REQUEST_LABEL),
     approvalNote: fieldOf(section, TEAM_APPROVAL_APPROVED_LABEL) || fieldOf(section, TEAM_APPROVAL_DENIED_LABEL),
+    worktreePath: fieldOf(section, '工作区'),
+    branch: fieldOf(section, '分支'),
+    ownedPaths: fieldOf(section, '文件边界')
+      .split(/[、,，;； ]+/)
+      .map((item) => item.trim())
+      .filter(Boolean),
+    reworkCount: (() => {
+      const n = Number.parseInt(fieldOf(section, '返工次数'), 10)
+      return Number.isFinite(n) && n > 0 ? n : 0
+    })(),
     acceptance,
     raw: section.trim(),
   }
@@ -466,6 +508,10 @@ export function parseTeamBoard(markdown: string): TeamBoard {
       autoNote: '',
       approval: '',
       approvalNote: '',
+      worktreePath: '',
+      branch: '',
+      ownedPaths: [],
+      reworkCount: 0,
       acceptance: [],
       raw: '',
     })
@@ -499,6 +545,11 @@ export type TeamStatusWriteInput = {
   autoNote?: string
   /** 移到阻塞时的分型 */
   blockType?: string
+  /** 独立 Worktree 路径与分支（传 null/空串表示清除） */
+  worktreePath?: string | null
+  branch?: string | null
+  /** 返工次数（传 0 表示清除） */
+  reworkCount?: number
 }
 
 export type TeamStatusWriteResult =
@@ -558,6 +609,18 @@ export function updateTeamTaskStatus(markdown: string, input: TeamStatusWriteInp
   } else if (to !== '阻塞') {
     next = removeField(next, '阻塞分型')
   }
+  if (input.worktreePath !== undefined) {
+    const wt = sanitizeTeamText(input.worktreePath, 500)
+    next = wt ? setField(next, '工作区', `- 工作区：${wt}`, '状态') : removeField(next, '工作区')
+  }
+  if (input.branch !== undefined) {
+    const br = sanitizeTeamText(input.branch, 120)
+    next = br ? setField(next, '分支', `- 分支：${br}`, '状态') : removeField(next, '分支')
+  }
+  if (input.reworkCount !== undefined) {
+    const rc = Number.isFinite(input.reworkCount) && input.reworkCount > 0 ? Math.floor(input.reworkCount) : 0
+    next = rc > 0 ? setField(next, '返工次数', `- 返工次数：${rc}`, '状态') : removeField(next, '返工次数')
+  }
 
   next = next
     .split(LF)
@@ -579,7 +642,18 @@ export function updateTeamTaskStatus(markdown: string, input: TeamStatusWriteInp
     md = updated.markdown
   }
 
-  return { ok: true, markdown: md.split(LF).join(eol), from, changed: from !== to || manual || !!autoNote }
+  return {
+    ok: true,
+    markdown: md.split(LF).join(eol),
+    from,
+    changed:
+      from !== to ||
+      manual ||
+      !!autoNote ||
+      input.worktreePath !== undefined ||
+      input.branch !== undefined ||
+      input.reworkCount !== undefined,
+  }
 }
 
 function updateIndexRow(markdown: string, id: string, status: TeamStatus): { markdown: string; found: boolean } {
@@ -686,11 +760,10 @@ export function resolveTeamApproval(markdown: string, input: TeamApprovalWriteIn
 /* ---------------- 角色绑定 ---------------- */
 
 const DEFAULT_ROLE_NOTES: Record<TeamRole, string> = {
-  Leader: '需求、拆解、派发与收口',
-  设计师: '视觉方向、设计稿与配套资源',
-  前端: '界面还原、交互与接口对接',
-  后端: '接口、数据与服务行为',
-  质量测试: '独立验证功能、交互与视觉还原',
+  Leader: 'S级直干；M/L级定契约、并发拆卡、合并与收口',
+  Builder: '1卡1Worktree并发全栈实现与S2自检',
+  Verifier: '隔离上下文独立审查（Diff、契约、实测与视觉）',
+  Designer: '前置设计：直出稿、HTML原型→设计稿或单页多版式',
 }
 
 export function defaultTeamRoleBindings(): TeamRoleBinding[] {
@@ -746,30 +819,26 @@ export function splitTeamModel(model: string): { provider: string; modelId: stri
 
 const ROLE_CORE_RULES: Record<TeamRole, string[]> = {
   Leader: [
-    '你负责需求澄清、拆解、派发与收口，不写业务代码。',
-    '每张卡开工前确认输入、范围、交付标准与依赖；范围不清先问，不要自行扩范围。',
-    '验收只认实际证据；没有实测不得声称通过。',
-    '需要用户决定时，给出一句话选项与推荐值，不要替用户拍板。',
+    '先做 Gate 0 复杂度路由并一句话报备（主人可随时覆写）：S 级小活（小 Bug/文案/配置/单文件）直接在主工作区动手改完自检交付，不建卡不派发；M 级写一页轻契约后自干或拆 1~3 卡；L 级走完整团队流程。',
+    'L 级先确认 PRD 与技术方案契约（含公共骨架、接口与并发目录边界 `ownedPaths`）；有 UI 时按需选「直出设计稿 / HTML 原型→设计稿 / 单页多版式」，由 Designer 定稿冻结后再并发派发。',
+    '卡一旦派发给 Builder，不要自己抢写那张卡的业务代码；通过 `team_board action=merge_task` 合并「已通过」的分支。',
+    '需要用户拍板时给出一句话选项与推荐值；「已验收」只能主人人工确认。',
   ],
-  设计师: [
-    '先复用现有风格、组件与素材，再决定是否生图或画矢量；不重画品牌 Logo。',
-    '设计稿必须能拆出前端真正需要的资源：真透明、主体完整、动态文案不烤进图。',
-    '方向未确认前不做全部页面；新方向先给 1 个代表页的可比较版本。',
+  Builder: [
+    '你在独立 Git Worktree 中纵向打通单张模块卡（数据库/接口/页面/单测）与 S2 自检。',
+    '改动严格限定在任务卡 `文件边界（ownedPaths）` 与任务范围内；需要改公共文件或扩范围时先停下报告。',
+    '按 PRD、方案契约、冻结的原型/设计稿实现，覆盖空态、加载、失败、禁用、重复提交与权限。',
+    '交付前必须跑通实际构建/单测或截图自查，在当前任务分支 `git add` 并 `git commit` 改动，并在回执里给真实命令与证据路径；没跑的项标 `unverified`。',
   ],
-  前端: [
-    '按 PRD、设计稿与接口契约实现；覆盖空态、加载、失败、禁用、重复提交与权限。',
-    '改动严格限定在任务范围；范围外的问题只报告，不顺手改。',
-    '交付前必须自己跑构建或截图自查，并给出证据路径；没跑的项标 unverified。',
+  Verifier: [
+    '你是独立裁判：隔离上下文，不读执行者的聊天记录，只看方案契约、冻结原型/设计稿、任务验收项、Worktree Diff 与实测证据。',
+    '只做验证与审查，不改业务代码；代码质量、功能断言与视觉还原分开给结论，视觉项无截图证据只能标 `unverified`。',
+    '一次集中列出所有阻断与非阻断问题；不要用「源码存在」「退出码 0」推断行为通过。',
   ],
-  后端: [
-    '先明确参数、错误码、权限、幂等与并发，再实现；契约变更要同步给前端。',
-    '自测要核对实际断言与结果，不能把「退出码 0」「文件存在」当成通过。',
-    '不擅自改业务规则与安全策略；发现缺口先报告。',
-  ],
-  质量测试: [
-    '只读任务标准、实际产物和验证入口，不读执行方的聊天，不重复理解整个项目。',
-    '代码质量与视觉还原分开给结论；视觉项没有截图证据只能标 unverified。',
-    '一次集中报告问题；不要用源码存在推断行为通过。',
+  Designer: [
+    '你是前置设计专才，支持三种工作流：直出大致设计稿、基于冻结 HTML 简易原型出精修设计稿、或维护期单页出 2~3 个版式供比选。',
+    '先复用现有风格、组件与素材，再决定是否生图或画矢量；动态文案不烤进图，资源可直接被前端还原。',
+    '方向未确认前不做全部页面；定稿冻结后即可退场，由 Builder 还原、Verifier 截图核对。',
   ],
 }
 
@@ -781,6 +850,82 @@ export type TeamPromptInput = {
   task?: TeamTask | null
   /** 直接对话（头像进入角色会话）时的一句话引导 */
   topic?: string
+  lessonsSnippet?: string
+  tasteSnippet?: string
+}
+
+export type TeamGateResult =
+  | { ok: true }
+  | { ok: false; gate: 'gate1_prd' | 'gate2_contract' | 'gate2_hard_gate'; message: string }
+
+function extractDocStatus(markdown: string): string | null {
+  const match = markdown.match(/^>\s*状态[：:]\s*(.+)$/m)
+  return match ? match[1].trim() : null
+}
+
+/**
+ * Gate 1 / Gate 2 系统级硬门禁校验：仅在派发 `Builder` 编码卡前卡控。
+ * 老项目缺少契约文件或 PRD 无状态行时默认放行，保持兼容。
+ */
+export function checkTeamDispatchGates(input: {
+  role: string
+  prdText?: string | null
+  contractText?: string | null
+}): TeamGateResult {
+  if (canonicalTeamRole(input.role) !== 'Builder') return { ok: true }
+  if (input.prdText) {
+    const status = extractDocStatus(input.prdText)
+    if (status && !status.startsWith('已确认')) {
+      return {
+        ok: false,
+        gate: 'gate1_prd',
+        message: `Gate 1 未通过：PRD.md 当前状态为「${status}」，需与主人确认并将状态改为「已确认」后再派发 Builder`,
+      }
+    }
+  }
+  if (input.contractText) {
+    const status = extractDocStatus(input.contractText)
+    if (status && !status.startsWith('已冻结')) {
+      return {
+        ok: false,
+        gate: 'gate2_contract',
+        message: `Gate 2 未通过：02-方案契约.md 当前状态为「${status}」，需冻结并将状态改为「已冻结」后再派发 Builder`,
+      }
+    }
+    const secMatch = input.contractText.match(/^##\s*2\.[^\r\n]*([\s\S]*?)(?=\r?\n##\s|$)/m)
+    if (secMatch) {
+      const unchecked = (secMatch[1].match(/(?:\|\s*\[\s*\]\s*\||^\s*[-*]\s*\[\s*\])/gm) ?? []).length
+      if (unchecked > 0) {
+        return {
+          ok: false,
+          gate: 'gate2_hard_gate',
+          message: `Gate 2 未通过：02-方案契约.md 中仍有 ${unchecked} 项开工硬门禁未勾选（[ ]）`,
+        }
+      }
+    }
+  }
+  return { ok: true }
+}
+
+/**
+ * 从错题本 / 品味账本截取最近有效记录，注入到派发提示词中。
+ */
+export function extractRecentMemorySnippet(
+  markdown: string | null | undefined,
+  maxLines = 12,
+  maxChars = 1200,
+): string {
+  const raw = normalizeEol(String(markdown ?? '')).trim()
+  if (!raw) return ''
+  const marker = raw.indexOf(`${LF}## 记录`)
+  const body = marker >= 0 ? raw.slice(marker + `${LF}## 记录`.length) : raw
+  const lines = body
+    .split(LF)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#') && !line.startsWith('>'))
+  if (!lines.length) return ''
+  const selected = lines.slice(-maxLines).join(LF)
+  return selected.length > maxChars ? selected.slice(-maxChars) : selected
 }
 
 /**
@@ -807,10 +952,22 @@ export function buildTeamPrompt(input: TeamPromptInput): string {
   }
   if (input.task) {
     lines.push('', `# 你认领的任务卡（${input.task.id}）`, '', '```markdown', input.task.raw.trim() || `${input.task.id} ${input.task.title}`, '```')
+    if (input.task.branch || input.task.worktreePath || input.task.ownedPaths.length) {
+      lines.push('', '## 执行隔离与边界')
+      if (input.task.branch) lines.push(`- 独立分支：\`${input.task.branch}\``)
+      if (input.task.worktreePath) lines.push(`- 独立工作区：\`${input.task.worktreePath}\``)
+      if (input.task.ownedPaths.length) lines.push(`- 允许修改的文件边界：${input.task.ownedPaths.map((p) => `\`${p}\``).join('、')}`)
+    }
     if (input.task.acceptance.length) {
       lines.push('', '## 验收标准（逐项给实际结果与证据）', '')
       for (const item of input.task.acceptance) lines.push(`- [${item.done ? 'x' : ' '}] ${item.text}`)
     }
+  }
+  if (input.lessonsSnippet) {
+    lines.push('', '## 历史错题提醒（来自错题本，避免再踩坑）', '', input.lessonsSnippet)
+  }
+  if (input.tasteSnippet && (role === 'Builder' || role === 'Designer' || role === 'Verifier')) {
+    lines.push('', '## 主人审美与品味偏好（来自品味账本）', '', input.tasteSnippet)
   }
   lines.push(
     '',
@@ -821,6 +978,71 @@ export function buildTeamPrompt(input: TeamPromptInput): string {
     '- 需要主人拍板才能做的动作（外发消息、删数据、改权限、花钱、发布）：`team_board action=move_task status=阻塞 blockType=待用户确认`，再 `action=comment` 写明「<一句话动作> · <为什么需要批准>」，然后停下等批准；不要自己代主人决定。',
     '- 结束时在回复末尾写两行：`交付摘要：…` 与 `验证：…（实际命令/截图路径；没做就写 unverified）`。',
     '- 缺环境、缺工具、需要用户决定时直接说清阻塞点和下一步，不要用「应该可以」代替实际验证。',
+  )
+  return lines.join(LF)
+}
+
+/**
+ * 独立 Verifier 审查提示词：隔离上下文，不看执行者聊天记录，
+ * 只看方案契约、冻结原型/设计稿、任务验收项、Worktree Diff 与实测/截图证据，
+ * 强制通过 `team_board action=review_verdict` 提交裁决。
+ */
+export function buildTeamReviewPrompt(input: {
+  batch: string
+  goal: string
+  task: TeamTask
+  specRelativeDir?: string
+  lessonsSnippet?: string
+  tasteSnippet?: string
+}): string {
+  const spec = input.specRelativeDir || TEAM_SPEC_RELATIVE_DIR
+  const lines: string[] = [
+    '# 角色：Verifier（独立质检裁判）',
+    '',
+    '## 你的核心规则',
+    ...ROLE_CORE_RULES.Verifier.map((rule) => `- ${rule}`),
+    '',
+    '## 审查上下文',
+    `- 项目规范目录：\`${spec}\``,
+    `- 当前批次：${input.batch || '当前批次'}`,
+  ]
+  if (input.goal) lines.push(`- 本轮目标：${input.goal}`)
+  lines.push(
+    '- 请对照 `02-方案契约.md`、`PRD.md` 及 `设计/`（如有冻结原型或设计稿）独立验证本卡交付质量。',
+    `- 当前返工轮次：${input.task.reworkCount}/${TEAM_MAX_REWORK_ROUNDS}（连续 ${TEAM_MAX_REWORK_ROUNDS} 轮不通过将自动熔断交主人拍板）。`,
+    '',
+    `# 待审查任务卡（${input.task.id}）`,
+    '',
+    '```markdown',
+    input.task.raw.trim() || `${input.task.id} ${input.task.title}`,
+    '```',
+  )
+  if (input.task.branch || input.task.worktreePath || input.task.ownedPaths.length) {
+    lines.push('', '## 代码变更定位')
+    if (input.task.branch) lines.push(`- 任务分支：\`${input.task.branch}\``)
+    if (input.task.worktreePath) lines.push(`- 工作区路径：\`${input.task.worktreePath}\``)
+    if (input.task.ownedPaths.length) {
+      lines.push(`- 预期文件边界：${input.task.ownedPaths.map((p) => `\`${p}\``).join('、')}（检查是否有越界修改）`)
+    }
+  }
+  if (input.task.acceptance.length) {
+    lines.push('', '## 验收标准（逐项实测核对）')
+    for (const item of input.task.acceptance) lines.push(`- [${item.done ? 'x' : ' '}] ${item.text}`)
+  }
+  if (input.lessonsSnippet) {
+    lines.push('', '## 历史错题提醒（重点检查是否复发）', '', input.lessonsSnippet)
+  }
+  if (input.tasteSnippet) {
+    lines.push('', '## 主人审美与品味标准', '', input.tasteSnippet)
+  }
+  lines.push(
+    '',
+    '## 裁决要求（必做）',
+    '- 先检查 `git diff` / `git status`、运行实际测试/构建命令，有 UI 时核对页面实际效果与截图。',
+    '- 验证完成后，**必须**调用 `team_board` 提交裁决：',
+    `  • 全部达标：\`action="review_verdict" taskId="${input.task.id}" verdict="pass" summary="一句话通过结论"\``,
+    `  • 存在缺陷：\`action="review_verdict" taskId="${input.task.id}" verdict="reject" summary="核心问题概述" issues=["具体缺陷1（含文件/复现路径）", "具体缺陷2"]\``,
+    '- 不要只口头回复，不调用 `review_verdict` 无法推进看板状态或触发自动返工。',
   )
   return lines.join(LF)
 }
@@ -836,6 +1058,7 @@ export type TeamTaskDraft = {
   output?: string
   note?: string
   dependsOn?: string[]
+  ownedPaths?: string[]
   acceptance?: string[]
 }
 
@@ -884,6 +1107,7 @@ export function appendTeamTask(
   }
 
   const dependsOn = (draft.dependsOn ?? []).map((dep) => sanitizeTeamText(dep, 20)).filter(Boolean)
+  const ownedPaths = (draft.ownedPaths ?? []).map((p) => sanitizeTeamText(p, 200)).filter(Boolean)
   const acceptance = (draft.acceptance ?? []).map((item) => sanitizeTeamText(item, 300)).filter(Boolean)
   const wave = sanitizeTeamText(draft.wave, 80)
   const input = sanitizeTeamText(draft.input, 2000)
@@ -893,6 +1117,7 @@ export function appendTeamTask(
   if (input) card.push(`- 输入：${input}`)
   if (output) card.push(`- 产出：${output}`)
   if (dependsOn.length) card.push(`- 依赖：${dependsOn.join('、')}`)
+  if (ownedPaths.length) card.push(`- 文件边界：${ownedPaths.join('、')}`)
   if (summary) card.push(`- 备注：${summary}`)
   card.push('')
   if (acceptance.length) {
@@ -929,16 +1154,18 @@ export function buildTeamRoleIntro(input: { role: string; batch: string; goal: s
     `项目规范目录：${spec}（相对项目根目录）。当前批次：${input.batch || '当前批次'}${input.goal ? `；本轮目标：${input.goal}` : ''}。`,
     '先读 `00-总入口.md` 与 `PRD.md` 里与你职责相关的章节（存在才读），然后等待主人的具体指示。',
   ]
-  // Leader 是唯一负责「拆卡 + 派发」的角色：它有用 team_board 写看板的能力。
+  // Leader 是总控与 S 级独行侠；M/L 级使用 team_board 拆卡并并发派发。
   const leader = [
-    '需求/PRD 确认后，用 `team_board` 工具把工作拆成任务卡（action=create_task，一次 1-12 张，每张写清 role 与可验证的 acceptance），再用 action=dispatch 逐张派发；面板会立刻显示这些卡和运行状态。',
-    '拆卡与派发是你的主要交付：卡一旦派发，执行由对应角色的会话完成，你不要自己写业务代码、也不要自己改页面。',
-    '动手前先 action=snapshot 看清现有卡与依赖；有依赖的卡先确认前置已验收再派。',
-    '`已验收` 只能由主人人工确认：你最多把卡推进到 `待审查`，不要替主人验收。',
-    '看板只通过 `team_board` 写，不要手改 `看板/当前批次.md` 或 `角色配置.json`。',
+    '先做 Gate 0 复杂度路由并一句话报备（主人可随时覆写）：',
+    '• S 级（小 Bug、文案、配置、单文件改动）：直接自己在当前工作区修改并自检交付，不要建卡也不要派发。',
+    '• M 级（小功能、单页维护、跨 2~5 文件）：先确认一页轻契约，可自己做或拆 1~3 张卡派发。',
+    '• L 级（新项目/大模块/多模块并发）：确认 PRD（有 UI 时先走 Designer 出稿/HTML 原型→设计稿/多版式并冻结）→ 冻结技术契约与公共骨架 → 按模块纵向拆卡（带 `ownedPaths` 文件边界与可验证 `acceptance`）并用 `team_board action=dispatch` 并发派发给 `Builder`。',
+    '卡一旦派发给 `Builder`，执行在独立 Worktree 进行，你不要自己抢写那张卡的业务代码；卡片进入 `已通过` 后可用 `team_board action=merge_task` 一键合并。',
+    '动手前先 action=snapshot 看清现有卡与依赖；有依赖的卡等前置进入 `已通过` 或 `已验收` 再派。',
+    '`已验收` 只能由主人人工确认；看板只通过 `team_board` 写，不要手改 `看板/当前批次.md` 或 `角色配置.json`。',
   ]
   const others = [
-    '收到具体任务后先确认范围与验收标准；需要扩范围、改需求或用户决定时停下说明。',
+    '收到具体任务后先确认范围、契约与验收标准；需要扩范围、改需求或用户决定时停下说明。',
     '`team_board` 可以用来读自己的卡（action=snapshot）和写一句备注（action=comment）；改状态、派发与验收由主人和宿主完成，不要自己动。',
     '看板只通过 `team_board` 写，不要手改 `看板/当前批次.md` 或 `角色配置.json`。',
   ]

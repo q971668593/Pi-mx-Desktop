@@ -59,7 +59,7 @@ export function invalidateSdkManagerCaches(): void {
 export function checkNpmAvailable(): boolean {
   if (npmAvailableCache !== null) return npmAvailableCache
   try {
-    const r = spawnSync('npm', ['--version'], { encoding: 'utf-8', shell: true, timeout: 3000 })
+    const r = spawnSync('npm', ['--version'], { encoding: 'utf-8', shell: true, timeout: 3000, windowsHide: true })
     npmAvailableCache = !r.error && r.status === 0 && !!(r.stdout || '').trim()
   } catch (e) {
     npmAvailableCache = false

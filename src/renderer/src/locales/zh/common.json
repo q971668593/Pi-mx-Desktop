@@ -174,9 +174,7 @@
     "browserDesc": "内置浏览器（实验）",
     "unregistered": "未注册面板: {{id}}",
     "team": "工作团队",
-    "teamDesc": "五角色协作看板：任务泳道拖拽改状态、一键派发后台开工",
-    "grow": "需求树",
-    "growDesc": "需求澄清：聊天答题、右侧看树、果子即方案"
+    "teamDesc": "五角色协作看板：任务泳道拖拽改状态、一键派发后台开工"
   },
   "settings": {
     "title": "设置",
@@ -387,6 +385,8 @@
     "speedLiveHint": "按流式回复字符数估算输出 token 速度，实际数值因模型而异。",
     "speedAverageHint": "本次任务的模型输出 token 总数除以任务总耗时，包含工具运行和等待时间。",
     "memory": "应用内存",
+    "cpu": "应用 CPU",
+    "cpuHint": "整个应用所有进程的 CPU 占用之和，多核下可超过 100%。如果持续偏高，一般是某个会话/终端里有吃 CPU 的任务，可以在下面关掉。",
     "memoryHint": "整个应用 {{count}} 个进程的常驻内存之和；在 WSL 中运行的会话不计入。",
     "loadFailed": "资源信息暂时不可用；已有数据可能已过时。",
     "workers": "会话进程",
@@ -395,6 +395,13 @@
     "running": "{{count}} 条运行中",
     "needsYou": "{{count}} 条等你",
     "noWorkers": "暂无运行中的会话进程",
+    "terminals": "终端",
+    "noTerminals": "暂无运行中的终端",
+    "closeTerminal": "关闭终端",
+    "cleanIdle": "清理空闲",
+    "cleanIdleDone": "已清理 {{workers}} 个空闲会话进程、{{terminals}} 个闲置 AI 终端",
+    "cleanIdleNone": "当前没有可清理的空闲资源",
+    "ownerAi": "AI",
     "kill": "停止运行",
     "stopConfirm": "停止这条会话当前的运行？已保存的聊天记录不会删除。",
     "failed": "出错",

@@ -47,7 +47,7 @@ function createInstance(pane: TerminalPaneState): Instance {
     cursorBlink: false,
     cursorStyle: 'bar',
     cursorWidth: 2,
-    scrollback: 10000,
+    scrollback: 4000,
     allowProposedApi: true,
     macOptionIsMeta: true,
     rightClickSelectsWord: true,
@@ -291,7 +291,7 @@ export function TerminalPane({ tabId, index, pane, active, visible, split, onClo
   useEffect(() => {
     const inst = instances.get(pane.ptyId)
     if (!inst) return
-    const gpuActive = visible && windowVisible && windowFocused
+    const gpuActive = visible && active && windowVisible && windowFocused
     inst.setWebglEnabled(gpuActive)
     inst.setCursorBlink(gpuActive && active)
     if (visible && windowVisible) {

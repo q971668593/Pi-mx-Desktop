@@ -129,7 +129,7 @@ export async function applyComposerDisplayMeta(meta?: SessionDisplayMeta | null)
     // session (Settings / skills / SDK restarts start the workspace worker) — #100.
     // A new draft has no worker; its defaults must not come from another session.
     const res = previewFile
-      ? await ipcClient.invoke('ipc:runtime.getState', { sessionFile: previewFile })
+      ? await ipcClient.invoke('runtime.getState', { sessionFile: previewFile })
       : null
     const st = res?.state as {
       sessionFile?: string
@@ -144,6 +144,12 @@ export async function applyComposerDisplayMeta(meta?: SessionDisplayMeta | null)
       workerThinking = normalizeThinkingLevel(st.thinkingLevel)
       if (workerModel) patch.model = workerModel
       if (workerThinking) patch.thinkingLevel = workerThinking
+    } else if (st && st.bound === false && (!st.sessionFile || sessionFilesEqual(previewFile, st.sessionFile))) {
+      // 冷会话在主进程存在待生效模型覆盖（sessionModelOverrides）时，优先显示该会话自己的选择。
+      const pendingModel = normalizeModelKey(st.model)
+      const pendingThinking = normalizeThinkingLevel(st.thinkingLevel)
+      if (pendingModel) patch.model = pendingModel
+      if (pendingThinking) patch.thinkingLevel = pendingThinking
     }
   } catch {
     /* worker not ready */
@@ -185,8 +191,9 @@ export async function applyComposerDisplayMeta(meta?: SessionDisplayMeta | null)
 
   const lm = normalizeModelKey(store.lastModel)
   const lt = normalizeThinkingLevel(store.lastThinking)
-  if (!workerBoundToView && !patch.model && lm) patch.model = lm
-  if (!patch.thinkingLevel && lt) patch.thinkingLevel = lt
+  // 只有新建草稿（无 previewFile）才回落到全局 lastModel；历史会话只认自身记录或全局默认。
+  if (!previewFile && !workerBoundToView && !patch.model && lm) patch.model = lm
+  if (!previewFile && !patch.thinkingLevel && lt) patch.thinkingLevel = lt
 
   // Switching sessions fires several refreshes and explicit choices supersede them; only the
   // newest may write. It writes the session it was started for, never whichever is visible now.

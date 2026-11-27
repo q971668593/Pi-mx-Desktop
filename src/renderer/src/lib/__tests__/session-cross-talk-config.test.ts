@@ -88,7 +88,7 @@ describe('session model / thinking cross-talk', () => {
     focusSessionSync('sid-a', A)
     const runtime = deferred<unknown>()
     ipcMock.invoke.mockImplementation((method: string) => {
-      if (method === 'ipc:runtime.getState') return runtime.promise
+      if (method === 'runtime.getState') return runtime.promise
       return Promise.resolve({})
     })
 

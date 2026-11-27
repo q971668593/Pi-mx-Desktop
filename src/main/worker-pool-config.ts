@@ -4,7 +4,7 @@ import { configStore } from './config-store'
 export const MAX_TIMER_DELAY_MS = 2_147_483_647
 
 export const DEFAULT_MAX_SESSION_WORKERS = 6
-export const DEFAULT_SESSION_WORKER_IDLE_TIMEOUT_MINUTES = 15
+export const DEFAULT_SESSION_WORKER_IDLE_TIMEOUT_MINUTES = 8
 
 export function normalizeMaxSessionWorkers(raw: unknown): number {
   const n = typeof raw === 'number' ? raw : Number(raw)

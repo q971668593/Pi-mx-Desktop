@@ -1,13 +1,17 @@
 import { registerHandlerWithSchema } from '../registry'
 import { delegateSessionFilesSchema } from '../schemas'
-import { resolveDelegateSessionFiles } from '../../delegate-sessions'
+import { probeDelegateRunStates, resolveDelegateSessionFiles } from '../../delegate-sessions'
 
 /**
- * 子 Agent（acp_delegate）的会话文件解析：
- * 工具结果只带 runId，渲染层拿不到宿主进程的 temp 目录，这里替它补上路径。
+ * 子 Agent（acp_delegate）的会话文件解析与状态探活：
+ * 工具结果只带 runId，渲染层拿不到宿主进程的 temp 目录，这里替它补上路径与真实状态。
  */
 export function registerDelegateHandlers(): void {
   registerHandlerWithSchema('ipc:delegate.sessionFiles', delegateSessionFilesSchema, async (request) => ({
     files: resolveDelegateSessionFiles(request.runIds),
+  }))
+
+  registerHandlerWithSchema('ipc:delegate.runStates', delegateSessionFilesSchema, async (request) => ({
+    states: probeDelegateRunStates(request.runIds),
   }))
 }

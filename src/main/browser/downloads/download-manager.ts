@@ -8,6 +8,7 @@ import { basename, delimiter, dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { shell, type DownloadItem, type Session, type WebContents } from 'electron'
 import type { BrowserDownloadInfo, BrowserDownloader, BrowserEvent } from '@shared/browser-types'
+import { killProcessTree } from '../../process-tree-kill'
 import { aria2InputFile, parseReadout } from './aria2-readout'
 
 export interface DownloaderSettings {
@@ -184,7 +185,9 @@ export class DownloadManager {
     if (!entry || entry.info.state !== 'progressing') return
     if (entry.item) entry.item.cancel()
     if (entry.proc) {
+      const pid = entry.proc.pid
       entry.proc.kill()
+      killProcessTree(pid)
       // A cancelled aria2 download leaves the partial file and its .aria2 control file.
       for (const p of [entry.info.savePath, `${entry.info.savePath}.aria2`]) rmSync(p, { force: true })
       this.update(entry, { state: 'cancelled', speed: 0 }, true)
@@ -203,6 +206,11 @@ export class DownloadManager {
   }
 
   shutdown(): void {
-    for (const e of this.entries.values()) e.proc?.kill()
+    for (const e of this.entries.values()) {
+      if (!e.proc) continue
+      const pid = e.proc.pid
+      e.proc.kill()
+      killProcessTree(pid)
+    }
   }
 }

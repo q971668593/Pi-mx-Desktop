@@ -77,7 +77,7 @@ describe('session-display-meta model authority', () => {
   ])('shows saved defaults in a new chat when $name', async ({ state }) => {
     view.historySessionFile = null
     invoke.mockImplementation(async (method: string) => {
-      if (method === 'ipc:runtime.getState') return { state }
+      if (method === 'runtime.getState') return { state }
       if (method === 'pi.settings.get') return {
         settings: { defaultProvider: 'custom', defaultModel: 'default-model', defaultThinkingLevel: 'high' },
       }
@@ -87,13 +87,13 @@ describe('session-display-meta model authority', () => {
     await applyComposerDisplayMeta()
 
     expect(setRunState).toHaveBeenLastCalledWith({ model: 'custom/default-model', thinkingLevel: 'high' })
-    expect(invoke).not.toHaveBeenCalledWith('ipc:runtime.getState', expect.anything())
+    expect(invoke).not.toHaveBeenCalledWith('runtime.getState', expect.anything())
   })
 
   it('uses the created session runtime after leaving the draft', async () => {
     view.historySessionFile = null
     invoke.mockImplementation(async (method: string) => {
-      if (method === 'ipc:runtime.getState') return {
+      if (method === 'runtime.getState') return {
         state: { sessionFile: '/proj/sessions/new.jsonl', model: 'custom/runtime-model', thinkingLevel: 'low' },
       }
       if (method === 'pi.settings.get') return {
@@ -108,7 +108,7 @@ describe('session-display-meta model authority', () => {
     view.historySessionFile = '/proj/sessions/new.jsonl'
     await applyComposerDisplayMeta()
 
-    expect(invoke).toHaveBeenCalledWith('ipc:runtime.getState', { sessionFile: '/proj/sessions/new.jsonl' })
+    expect(invoke).toHaveBeenCalledWith('runtime.getState', { sessionFile: '/proj/sessions/new.jsonl' })
     expect(setRunState).toHaveBeenLastCalledWith({ model: 'custom/runtime-model', thinkingLevel: 'low' })
   })
 
@@ -120,7 +120,7 @@ describe('session-display-meta model authority', () => {
     const olderDefaults = deferred<unknown>()
     let settingsCalls = 0
     invoke.mockImplementation(async (method: string, req?: { sessionFile?: string }) => {
-      if (method === 'ipc:runtime.getState') {
+      if (method === 'runtime.getState') {
         return { state: { sessionFile: req?.sessionFile, bound: false } }
       }
       if (method === 'pi.settings.get') {
@@ -146,7 +146,7 @@ describe('session-display-meta model authority', () => {
   it('drops a refresh whose session was switched away mid-flight', async () => {
     const state = deferred<unknown>()
     invoke.mockImplementation(async (method: string) => {
-      if (method === 'ipc:runtime.getState') return state.promise
+      if (method === 'runtime.getState') return state.promise
       return { settings: {} }
     })
 
@@ -162,7 +162,7 @@ describe('session-display-meta model authority', () => {
   // another session (e.g. Settings started the workspace worker).
   it('queries the viewed session worker, not the foreground worker', async () => {
     invoke.mockImplementation(async (method: string, req?: { sessionFile?: string }) => {
-      if (method === 'ipc:runtime.getState') {
+      if (method === 'runtime.getState') {
         if (req?.sessionFile === '/proj/sessions/a.jsonl') {
           return {
             state: {
@@ -191,7 +191,7 @@ describe('session-display-meta model authority', () => {
 
   it('keeps the session model learned from JSONL when a later refresh has no meta', async () => {
     invoke.mockImplementation(async (method: string, req?: { sessionFile?: string }) => {
-      if (method === 'ipc:runtime.getState') {
+      if (method === 'runtime.getState') {
         // No worker slot for the viewed session yet (lazy bind).
         return { state: { sessionFile: req?.sessionFile, isStreaming: false, bound: false } }
       }
@@ -239,7 +239,7 @@ describe('session-display-meta model authority', () => {
       },
     })
     invoke.mockImplementation(async (method: string) => {
-      if (method === 'ipc:runtime.getState') {
+      if (method === 'runtime.getState') {
         return {
           state: {
             sessionFile: '/proj/sessions/a.jsonl',
@@ -265,7 +265,7 @@ describe('session-display-meta model authority', () => {
 
   it('when unbound preview, keeps JSONL meta for display', async () => {
     invoke.mockImplementation(async (method: string) => {
-      if (method === 'ipc:runtime.getState') {
+      if (method === 'runtime.getState') {
         return { state: { sessionFile: '/other/session.jsonl', model: 'other/model' } }
       }
       if (method === 'pi.settings.get') return { settings: {} }

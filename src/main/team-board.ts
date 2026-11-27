@@ -22,6 +22,7 @@ import {
   TEAM_SPEC_RELATIVE_DIR,
   TEAM_STATE_RELATIVE_PATH,
   canonicalTeamRole,
+  clampTeamConcurrency,
   defaultTeamRoleBindings,
   isTeamRole,
   isTeamRunActive,
@@ -251,7 +252,7 @@ function withTeamState<T>(spec: string, mutate: (state: TeamState) => T): T {
 
 export function recordTeamDispatch(
   spec: string,
-  input: { taskId: string; role: string; sessionFile: string; sessionId?: string },
+  input: { taskId: string; role: string; sessionFile: string; sessionId?: string; worktreePath?: string; branch?: string },
 ): TeamRun {
   const role = canonicalTeamRole(input.role)
   const run: TeamRun = {
@@ -260,6 +261,8 @@ export function recordTeamDispatch(
     role,
     sessionFile: input.sessionFile,
     ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+    ...(input.worktreePath ? { worktreePath: sanitizeTeamText(input.worktreePath, 500) } : {}),
+    ...(input.branch ? { branch: sanitizeTeamText(input.branch, 120) } : {}),
     status: 'starting',
     startedAt: Date.now(),
   }
@@ -331,6 +334,8 @@ export function snapshotFor(spec: string, workspaceId: string): TeamSnapshot {
     defaultModelOverride,
     globalDefaultModel,
     defaultModel: defaultModelOverride || globalDefaultModel,
+    maxConcurrency: clampTeamConcurrency(configStore.get('teamMaxConcurrency')),
+    autoReview: configStore.get('teamAutoReview') === true,
   }
 }
 
@@ -445,6 +450,18 @@ export function settleTeamRun(
   if (!task) return { settled: true, run: settledRun, movedTo: null }
   // 已经有待批事项的卡不自动推进：人在等一个决定，不是等一次落账。
   if (task.approval) return { settled: true, run: settledRun, movedTo: null }
+
+  if (canonicalTeamRole(settledRun.role) === 'Verifier') {
+    if (outcome === 'success' && task.status === '待审查') {
+      setTeamTaskStatusInSpec(spec, workspaceId, {
+        id: settledRun.taskId,
+        to: task.status,
+        from: task.status,
+        autoNote: 'Verifier 会话已结束但未提交裁决，请核对会话后手动裁决或重派审查',
+      })
+    }
+    return { settled: true, run: settledRun, movedTo: null }
+  }
 
   if (outcome === 'success') {
     if (task.status !== '进行中') return { settled: true, run: settledRun, movedTo: null }
@@ -691,29 +708,73 @@ const LEGACY_PRD_TEMPLATE = `# PRD（老项目接管 · 待盘点）
 - [ ] （逐条可验证，例如：某页面在某操作下表现如何）
 `
 
+const CONSTITUTION_TEMPLATE = `# {项目名} · 项目宪法（00-宪法）
+
+> 技术栈、目录红线、编码约定与全局硬门禁。长期稳定，不随单次批次频繁改动。
+
+## 1. 技术栈与运行环境
+
+- 前端：
+- 后端：
+- 数据库：
+- 运行与部署：
+
+## 2. 架构红线与代码约定
+
+- 
+
+## 3. 全局硬门禁
+
+- 未通过验收命令与实测证据，禁止标为已通过。
+- 禁止密钥或凭证入库。
+`
+
+const CONTRACT_TEMPLATE = `# 方案契约（02-方案契约）
+
+> 状态：草稿（Leader 冻结技术方案、UI 模式、公共骨架与文件边界后改为「已冻结」再并发派发）
+
+## 1. UI 准备模式（四选一）
+
+- 当前选择：\`无 UI（跳过）\` / \`直接出设计稿\` / \`HTML 原型 → 设计稿\` / \`单页多版式比选\`
+- 冻结产物路径（如有）：\`设计/\` 或 \`原型/\`
+
+## 2. 开工决策与硬门禁
+
+| # | 议题 / 门禁 | 决策 / 解锁条件 | 状态 |
+|---|---|---|---|
+| 1 | Wave 0 公共骨架（Schema / 共享类型 / 路由） | 先在主干落地再并发拆卡 | [ ] |
+
+## 3. 接口、数据与目录边界（Owned Paths）
+
+- 模块 A：\`src/...\`, 负责人：Builder（T-001）
+`
+
 const ENTRY_TEMPLATE = `# {项目名} · 开发总入口
 
-> 团队开工先读这里，再按需读 PRD、看板与清单；不要通读整套资料。
+> 团队开工先读这里，再按需读 \`00-宪法.md\`、\`PRD.md\`、\`02-方案契约.md\` 与看板；不要通读整套资料。
 
 ## 项目
 
 - 名称：{项目名}
-- 看板：\`看板/当前批次.md\`
+- 宪法：\`00-宪法.md\`
 - 需求：\`PRD.md\`
+- 契约：\`02-方案契约.md\`
+- 看板：\`看板/当前批次.md\`
 - 角色：\`角色配置.json\`（模型与思考深度在「工作团队」面板维护）
 
-## 工作节奏
+## 工作节奏（工作团队 2.0）
 
-1. Leader 确认需求与技术栈，把 PRD 状态改为「已确认」。
-2. 拆任务卡：一张卡只做一件事，写清输入、产出、依赖与验收标准。
-3. 面板派发 → 角色在后台会话开工 → 会话结束卡片进「待审查」。
-4. 质量测试独立验证；人工决定「实现完成 / 已验收」。
-5. 出错写 \`错题本.md\`；审美与取舍写 \`品味账本.md\`。
+1. **Gate 0 分级路由**：S 级小活（小 Bug/文案/配置/单文件）由 Leader 在主工作区直接改完自检；M/L 级走协作流程。
+2. **需求与 UI 准备**：确认 PRD；有 UI 时由 Designer 按需走「直出稿 / HTML 原型→设计稿 / 单页多版式」并定稿冻结。
+3. **契约与底座**：冻结 \`02-方案契约.md\`（含公共骨架与每张卡的 \`文件边界\`），再按模块纵向拆卡。
+4. **并发 Worktree 执行**：Leader 派发 \`Builder\` 卡时自动开独立 Git Worktree 并发执行（默认上限 3），卡结束进「待审查」。
+5. **独立裁判与合并**：\`Verifier\` 隔离上下文审查后推进到「已通过」（解锁下游依赖，打回原地返工，满 3 轮熔断）；面板或 Leader 一键合并清理 Worktree；主人最终确认「已验收」。
+6. 踩坑写 \`错题本.md\`；审美与取舍写 \`品味账本.md\`。
 
 ## 目录
 
 - \`看板/\` 任务与轮次
-- \`设计/\` 设计稿与资源
+- \`设计/\` 设计稿、原型与资源
 - \`协作/\` 派发记录、验证证据
 
 ## 看板卡格式（写卡/改卡按这个来）
@@ -721,25 +782,26 @@ const ENTRY_TEMPLATE = `# {项目名} · 开发总入口
 一张卡 = 索引行 + 详情段，两处一起写：
 
 \`\`\`markdown
-| T-004 | 标题 | 前端 | 待办 | 一句话 |
+| T-004 | 标题 | Builder | 待办 | 一句话 |
 \`\`\`
 
 \`\`\`markdown
 ### T-004 标题
 
-- 角色：前端
+- 角色：Builder
 - 状态：待办
 - 输入：…
 - 产出：…
 - 依赖：T-001、T-002
+- 文件边界：src/features/xxx/**
 
 - [ ] 可验证的验收标准
 \`\`\`
 
 - 编号续写最大 T-xxx +1，不复用、不改旧卡编号。
-- 状态只用：\`待办 / 进行中 / 待审查 / 阻塞 / 实现完成 / 已验收\`。
+- 状态只用：\`待办 / 进行中 / 待审查 / 已通过 / 阻塞 / 已验收\`。
 - 改状态时索引行与详情段必须同时改，否则面板与看板会不一致。
-- 阻塞要写 \`- 阻塞分型：\`（\`待用户确认 / 缺环境/工具 / 外部依赖 / 执行失败\`）。
+- 阻塞要写 \`- 阻塞分型：\`（\`待用户确认 / 合并冲突 / 缺环境/工具 / 外部依赖 / 执行失败\`）。
 
 ### 需要主人批准时
 
@@ -792,7 +854,9 @@ export function initTeamProject(
   const files: Record<string, string> = {
     [boardFile]: BOARD_TEMPLATE,
     [join(spec, '00-总入口.md')]: ENTRY_TEMPLATE.replaceAll('{项目名}', name),
+    [join(spec, '00-宪法.md')]: CONSTITUTION_TEMPLATE.replaceAll('{项目名}', name),
     [join(spec, 'PRD.md')]: legacy ? LEGACY_PRD_TEMPLATE : NEW_PRD_TEMPLATE,
+    [join(spec, '02-方案契约.md')]: CONTRACT_TEMPLATE,
     [join(spec, '错题本.md')]: LESSONS_TEMPLATE,
     [join(spec, '品味账本.md')]: TASTE_TEMPLATE,
   }
@@ -802,4 +866,92 @@ export function initTeamProject(
   }
   if (!existsSync(join(spec, '角色配置.json'))) saveTeamRoles(spec, defaultTeamRoleBindings())
   return snapshotFor(spec, root)
+}
+
+/* ---------------- 批次归档与记忆沉淀 ---------------- */
+
+export function archiveTeamBatch(
+  workspaceRoot: string,
+  options: { nextBatch?: string; nextGoal?: string } = {},
+): { ok: true; archivedTo: string; snapshot: TeamSnapshot } {
+  const spec = teamSpecPath(workspaceRoot)
+  const boardFile = join(spec, TEAM_BOARD_RELATIVE_PATH)
+  const archiveDir = withLock(boardLockRoot(spec), () => {
+    const markdown = textFile(boardFile)
+    if (markdown == null) throw new Error('当前项目还没有看板，无法归档')
+    const board = parseTeamBoard(markdown)
+    const activeTasks = board.tasks.filter((task) => task.status === '进行中')
+    if (activeTasks.length > 0) {
+      throw new Error(`仍有 ${activeTasks.length} 张卡片处于「进行中」，请先收口后再归档`)
+    }
+    const unmerged = board.tasks.filter((task) => task.branch.trim())
+    if (unmerged.length > 0) {
+      throw new Error(`仍有 ${unmerged.length} 张卡片存在未合并分支（${unmerged.map((t) => t.id).join('、')}），请先合并或清理后再归档`)
+    }
+
+    const date = new Date().toISOString().slice(0, 10)
+    const slug = sanitizeTeamText(board.batch || '批次', 60).replace(/[\\/:*?"<>|\s]+/g, '-').replace(/^-+|-+$/g, '') || 'batch'
+    let dir = join(spec, '归档', `${date}-${slug}`)
+    if (existsSync(dir)) {
+      dir = join(spec, '归档', `${date}-${slug}-${Date.now().toString().slice(-4)}`)
+    }
+    mkdirSync(dir, { recursive: true })
+    writeAtomic(join(dir, '当前批次.md'), markdown)
+
+    const contractFile = join(spec, '02-方案契约.md')
+    const contractText = textFile(contractFile)
+    if (contractText != null) {
+      writeAtomic(join(dir, '02-方案契约.md'), contractText)
+    }
+
+    const stateText = textFile(join(spec, TEAM_STATE_RELATIVE_PATH))
+    if (stateText != null) {
+      writeAtomic(join(dir, '团队.json'), stateText)
+    }
+
+    const nextBatch = sanitizeTeamText(options.nextBatch, 80) || '下一批次'
+    const nextGoal = sanitizeTeamText(options.nextGoal, 300) || '确认本轮需求与契约后拆解并发开工。'
+    const resetBoard = BOARD_TEMPLATE
+      .replace('- 当前批次：需求梳理', `- 当前批次：${nextBatch}`)
+      .replace('- 目标：先与 Leader 确认需求；PRD 确认后拆解任务并开工。', `- 目标：${nextGoal}`)
+    writeAtomic(boardFile, resetBoard)
+    return dir
+  })
+
+  withTeamState(spec, (state) => {
+    state.runs = []
+  })
+
+  return {
+    ok: true as const,
+    archivedTo: archiveDir,
+    snapshot: snapshotFor(spec, workspaceRoot),
+  }
+}
+
+export function appendTeamMemory(
+  workspaceRoot: string,
+  input: { kind: 'lesson' | 'taste'; text: string; taskId?: string },
+): { ok: true; file: string; snapshot: TeamSnapshot } {
+  const spec = teamSpecPath(workspaceRoot)
+  const text = sanitizeTeamText(input.text, 500)
+  if (!text) throw new Error('记录内容不能为空')
+  const isLesson = input.kind === 'lesson'
+  const file = join(spec, isLesson ? '错题本.md' : '品味账本.md')
+  const date = new Date().toISOString().slice(0, 10)
+  const taskTag = sanitizeTeamText(input.taskId, 20)
+  const entry = `- [${date}]${taskTag ? ` [${taskTag}]` : ''} ${text}`
+
+  return withLock(join(spec, '协作'), () => {
+    mkdirSync(spec, { recursive: true })
+    const existing = textFile(file) ?? (isLesson ? LESSONS_TEMPLATE : TASTE_TEMPLATE)
+    const eol = existing.includes('\r\n') ? '\r\n' : '\n'
+    const trimmed = existing.replace(/[\r\n]+$/, '')
+    writeAtomic(file, `${trimmed}${eol}${entry}${eol}`)
+    return {
+      ok: true as const,
+      file,
+      snapshot: snapshotFor(spec, workspaceRoot),
+    }
+  })
 }

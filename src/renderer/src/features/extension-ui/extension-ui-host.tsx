@@ -6,6 +6,7 @@ import { ImageReviewDialog, type ImageReviewPayload } from './image-review-dialo
 import { ExtensionDialogShell } from './extension-dialog-shell'
 import { findToolContextForUi, suspendActiveDialog } from './extension-ui-actions'
 import {
+  pendingMatchesCurrentSession,
   useExtensionUIStore,
   type ExtensionUIPending,
 } from '@renderer/stores/extension-ui-store'
@@ -175,6 +176,7 @@ function InputDialog({ title, placeholder, onSubmit, onSuspend, onCancel }: {
 
 export function ExtensionUIHost() {
   const pending = useExtensionUIStore((s) => s.activePending)
+  const historySessionFile = useUIStore((s) => s.historySessionFile)
   const clearAfterRespond = useExtensionUIStore((s) => s.clearAfterRespond)
 
   const cancelWorker = (id: string) => {
@@ -186,6 +188,7 @@ export function ExtensionUIHost() {
   }
 
   if (!pending) return null
+  if (!pendingMatchesCurrentSession(pending, historySessionFile)) return null
   // 问答不再走整屏弹窗：输入框上方的坞（QuestionnaireDock）或时间线工具行接管。
   if (pending.method === 'ask_user_question') return null
 

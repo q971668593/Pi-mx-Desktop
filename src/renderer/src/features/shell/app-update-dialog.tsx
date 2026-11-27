@@ -20,9 +20,11 @@ function plainReleaseNotes(markdown: string): string {
 export function AppUpdateDialog({
   info,
   onDismiss,
+  onIgnore,
 }: {
   info: AppUpdateAvailableInfo
   onDismiss: () => void
+  onIgnore?: () => void
 }) {
   const { t } = useTranslation()
   const [busy, setBusy] = useState(false)
@@ -53,7 +55,7 @@ export function AppUpdateDialog({
 
   const ignoreThisVersion = async () => {
     await ipcClient.invoke('app.ignoreUpdateVersion', { version: info.latestVersion })
-    onDismiss()
+    ;(onIgnore ?? onDismiss)()
   }
 
   const startUpdate = async () => {
@@ -139,11 +141,20 @@ export function AppUpdateDialog({
               {progressLabel}
             </p>
           ) : null}
-          {progress && progress.phase === 'downloading' && progress.percent >= 0 ? (
+          {progress && progress.phase !== 'error' ? (
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
               <div
-                className="h-full rounded-full bg-primary transition-[width] duration-200"
-                style={{ width: `${progress.percent}%` }}
+                className={cn(
+                  'h-full rounded-full bg-primary transition-[width] duration-200',
+                  progress.phase === 'downloading' && progress.percent < 0 && 'w-2/5 animate-pulse',
+                )}
+                style={
+                  progress.phase === 'launching' || progress.phase === 'done'
+                    ? { width: '100%' }
+                    : progress.percent >= 0
+                      ? { width: `${progress.percent}%` }
+                      : undefined
+                }
               />
             </div>
           ) : null}

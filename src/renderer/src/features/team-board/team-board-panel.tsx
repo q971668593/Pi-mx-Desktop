@@ -3,8 +3,10 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import {
   AlertTriangle,
+  CheckCheck,
   ChevronLeft,
   ChevronRight,
+  GitBranch,
   Loader2,
   MessageSquare,
   Plus,
@@ -83,9 +85,15 @@ export function TeamBoardPanel() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [initMode, setInitMode] = useState<'new' | 'legacy' | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  const [archiveOpen, setArchiveOpen] = useState(false)
+  const [nextBatchName, setNextBatchName] = useState('')
+  const [nextBatchGoal, setNextBatchGoal] = useState('')
+  const [archiving, setArchiving] = useState(false)
   const [draggingId, setDraggingId] = useState('')
   const [overStatus, setOverStatus] = useState<TeamStatus | null>(null)
   const [busyTaskId, setBusyTaskId] = useState('')
+  const [mergingTaskId, setMergingTaskId] = useState('')
+  const [reviewingTaskId, setReviewingTaskId] = useState('')
   const [roleBusy, setRoleBusy] = useState('')
 
   const requestSeq = useRef(0)
@@ -271,6 +279,39 @@ export function TeamBoardPanel() {
     }
   }
 
+  const mergeTask = async (task: TeamTask) => {
+    setMergingTaskId(task.id)
+    try {
+      const response = await ipcClient.invoke('teamBoard.merge', { workspaceId, taskId: task.id })
+      if (response?.snapshot) setSnapshot(response.snapshot as TeamSnapshot)
+      notifyTeamBoardChanged()
+      toast.success(t('team:merged', { branch: task.branch }))
+    } catch (caught) {
+      await refresh({ silent: true })
+      toast.error(t('team:mergeFailed'), { description: String((caught as Error)?.message || caught) })
+    } finally {
+      setMergingTaskId('')
+    }
+  }
+
+  const dispatchReviewTask = async (task: TeamTask) => {
+    setReviewingTaskId(task.id)
+    try {
+      const response = await ipcClient.invoke('teamBoard.dispatchReview', { workspaceId, taskId: task.id })
+      if (response?.snapshot) setSnapshot(response.snapshot as TeamSnapshot)
+      notifyTeamRunsChanged()
+      notifyTeamBoardChanged()
+      void loadWorkspaceSessionList(workspaceId)
+      toast.success(t('team:reviewStarted'), {
+        description: response?.model ? shortModel(String(response.model)) : undefined,
+      })
+    } catch (caught) {
+      toast.error(t('team:reviewFailed'), { description: String((caught as Error)?.message || caught) })
+    } finally {
+      setReviewingTaskId('')
+    }
+  }
+
   const openRole = async (binding: TeamRoleBinding) => {
     if (!binding.enabled) {
       toast.message(t('team:roleDisabled'))
@@ -308,7 +349,11 @@ export function TeamBoardPanel() {
 
   const openRunSession = async (run: TeamRun) => {
     try {
-      await openTeamSession({ workspaceId, sessionFile: run.sessionFile, sessionId: run.sessionId })
+      await openTeamSession({
+        workspaceId: run.worktreePath || workspaceId,
+        sessionFile: run.sessionFile,
+        sessionId: run.sessionId,
+      })
     } catch (caught) {
       toast.error(t('team:roleSessionFailed'), { description: String((caught as Error)?.message || caught) })
     }
@@ -375,6 +420,44 @@ export function TeamBoardPanel() {
     }
   }
 
+  const appendMemory = async (task: TeamTask, kind: 'lesson' | 'taste', text: string): Promise<boolean> => {
+    try {
+      const response = await ipcClient.invoke('teamBoard.appendMemory', {
+        workspaceId,
+        kind,
+        text,
+        taskId: task.id,
+      })
+      if (response?.snapshot) setSnapshot(response.snapshot as TeamSnapshot)
+      toast.success(t('team:memorySaved'))
+      return true
+    } catch (caught) {
+      toast.error(t('team:memoryFailed'), { description: String((caught as Error)?.message || caught) })
+      return false
+    }
+  }
+
+  const archiveBatch = async () => {
+    setArchiving(true)
+    try {
+      const response = await ipcClient.invoke('teamBoard.archiveBatch', {
+        workspaceId,
+        ...(nextBatchName.trim() ? { nextBatch: nextBatchName.trim() } : {}),
+        ...(nextBatchGoal.trim() ? { nextGoal: nextBatchGoal.trim() } : {}),
+      })
+      if (response?.snapshot) setSnapshot(response.snapshot as TeamSnapshot)
+      notifyTeamBoardChanged()
+      setArchiveOpen(false)
+      setNextBatchName('')
+      setNextBatchGoal('')
+      toast.success(t('team:archived'))
+    } catch (caught) {
+      toast.error(t('team:archiveFailed'), { description: String((caught as Error)?.message || caught) })
+    } finally {
+      setArchiving(false)
+    }
+  }
+
   if (!workspaceId) {
     return (
       <div className="team-board flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
@@ -392,6 +475,17 @@ export function TeamBoardPanel() {
           <span className="shrink-0 text-[12.5px] font-semibold leading-4">{t('team:title')}</span>
           <span className="team-project min-w-0 truncate" title={workspaceId}>{projectName}</span>
           <div className="team-head-actions ml-auto flex shrink-0 items-center gap-0.5">
+            {snapshot?.exists ? (
+              <button
+                type="button"
+                onClick={() => setArchiveOpen(true)}
+                aria-label={t('team:archiveBatch')}
+                title={t('team:archiveBatch')}
+                className="team-icon-btn"
+              >
+                <CheckCheck className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => void refresh({ silent: false })}
@@ -674,6 +768,8 @@ export function TeamBoardPanel() {
           runs={runs}
           runtimeRunning={sessionRuntimeRunning}
           busy={busyTaskId === selectedTask.id}
+          merging={mergingTaskId === selectedTask.id}
+          reviewing={reviewingTaskId === selectedTask.id}
           initialPending={pendingStatus}
           onClose={() => {
             setSelectedTaskId(null)
@@ -681,6 +777,8 @@ export function TeamBoardPanel() {
           }}
           onStatus={(to, options) => applyStatus(selectedTask, to, options)}
           onDispatch={() => void dispatchTask(selectedTask)}
+          onDispatchReview={() => void dispatchReviewTask(selectedTask)}
+          onMerge={() => void mergeTask(selectedTask)}
           onCopyPrompt={() => void copyPrompt(selectedTask)}
           onOpenRole={() => {
             if (selectedBinding) void openRole(selectedBinding)
@@ -690,7 +788,57 @@ export function TeamBoardPanel() {
           onApproval={(decision, note) => resolveApproval(selectedTask, decision, note)}
           onIntervene={(text) => interveneRun(selectedTask, text)}
           onAbort={(run) => void abortRun(run)}
+          onAppendMemory={(kind, text) => appendMemory(selectedTask, kind, text)}
         />
+      ) : null}
+
+      {archiveOpen ? (
+        <div className="team-overlay" role="dialog" aria-modal="true" aria-label={t('team:archiveTitle')}>
+          <div className="flex shrink-0 items-center gap-2 border-b border-border/40 px-2.5 py-2">
+            <span className="text-xs font-medium">{t('team:archiveTitle')}</span>
+          </div>
+          <div className="team-sheet-scroll team-scroll">
+            <p className="text-2xs leading-relaxed text-foreground-secondary">{t('team:archiveDesc')}</p>
+            <label className="mt-2 block text-2xs text-foreground-secondary">
+              {t('team:nextBatchLabel')}
+              <input
+                value={nextBatchName}
+                onChange={(event) => setNextBatchName(event.target.value)}
+                maxLength={80}
+                placeholder="下一批次"
+                className="team-sheet-input mt-1"
+              />
+            </label>
+            <label className="mt-2 block text-2xs text-foreground-secondary">
+              {t('team:nextGoalLabel')}
+              <textarea
+                value={nextBatchGoal}
+                onChange={(event) => setNextBatchGoal(event.target.value)}
+                rows={2}
+                maxLength={300}
+                className="team-sheet-input mt-1 resize-y"
+              />
+            </label>
+          </div>
+          <div className="flex shrink-0 items-center justify-end gap-1.5 border-t border-border/40 px-2.5 py-2">
+            <button
+              type="button"
+              onClick={() => setArchiveOpen(false)}
+              className="rounded px-2 py-1 text-2xs text-foreground-secondary hover:bg-[var(--bg-hover)]"
+            >
+              {t('team:cancel')}
+            </button>
+            <button
+              type="button"
+              disabled={archiving}
+              onClick={() => void archiveBatch()}
+              className="inline-flex items-center gap-1 rounded bg-primary px-2 py-1 text-2xs font-medium text-primary-foreground disabled:opacity-40"
+            >
+              {archiving ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCheck className="h-3 w-3" />}
+              {t('team:archiveConfirm')}
+            </button>
+          </div>
+        </div>
       ) : null}
 
       {settingsOpen ? (
@@ -699,6 +847,8 @@ export function TeamBoardPanel() {
           roles={snapshot?.roles ?? []}
           defaultModel={snapshot?.globalDefaultModel || ''}
           defaultModelOverride={snapshot?.defaultModelOverride || ''}
+          maxConcurrency={snapshot?.maxConcurrency ?? 3}
+          autoReview={snapshot?.autoReview === true}
           onClose={() => setSettingsOpen(false)}
           onSaved={(next) => setSnapshot(next)}
         />
@@ -721,7 +871,7 @@ export function TeamBoardPanel() {
       {createOpen ? (
         <TeamTaskCreateSheet
           workspaceId={workspaceId}
-          defaultRole={roles[2]?.role || '前端'}
+          defaultRole={roles[1]?.role || 'Builder'}
           onClose={() => setCreateOpen(false)}
           onDone={(next) => {
             setSnapshot(next)
@@ -871,6 +1021,17 @@ function TaskCard({
       <div className="team-card-title mt-0.5">{task.title}</div>
       <div className="team-card-meta">
         <span className="truncate" style={{ color: roleColor(task.role) }}>{roleLabel(task.role, t)}</span>
+        {task.branch ? (
+          <span className="inline-flex items-center gap-0.5 truncate font-mono text-[9.5px] text-foreground-tertiary" title={task.branch}>
+            <GitBranch className="h-2.5 w-2.5 shrink-0" />
+            <span className="truncate">{task.branch}</span>
+          </span>
+        ) : null}
+        {task.reworkCount > 0 ? (
+          <span className="team-chip" data-tone="warning">
+            {t('team:reworkBadge', { count: task.reworkCount })}
+          </span>
+        ) : null}
         {task.blockType ? (
           <span className="team-chip" data-tone="danger">{task.blockType}</span>
         ) : null}

@@ -73,7 +73,7 @@ describe('parseTeamBoard', () => {
     const login = board.tasks[0]
     expect(login).toMatchObject({
       title: '登录页',
-      role: '前端',
+      role: 'Builder',
       status: '进行中',
       wave: 'W1',
       output: 'src/pages/login.vue',
@@ -101,7 +101,7 @@ describe('parseTeamBoard', () => {
       expect.objectContaining({
         id: 'T-009',
         title: '盘点代码',
-        role: '质量测试',
+        role: 'Verifier',
         status: '待办',
         note: '没有详情段',
         raw: '',
@@ -180,7 +180,7 @@ describe('updateTeamTaskStatus', () => {
 })
 
 describe('role bindings', () => {
-  it('normalizes old seven-role config to the five-role team', () => {
+  it('normalizes legacy seven-role config to the four-role team', () => {
     const roles = normalizeTeamRoleBindings([
       { role: '产品经理', model: 'a/b', effort: 'HIGH' },
       { role: 'UI审查', model: 'a/c' },
@@ -190,18 +190,19 @@ describe('role bindings', () => {
       { role: '设计师', model: 'a/g' },
       { role: '质量测试', model: 'a/h' },
     ])
-    expect(roles.map((role) => role.role)).toEqual(['Leader', '设计师', '前端', '后端', '质量测试'])
+    expect(roles.map((role) => role.role)).toEqual(['Leader', 'Builder', 'Verifier', 'Designer'])
     expect(roles[0]).toMatchObject({ model: 'a/b', effort: 'high' })
-    expect(roles[2]).toMatchObject({ model: 'a/e', directEnabled: false })
-    // 同一角色重复时保留第一条（质量测试来自 UI审查）
-    expect(roles[4]).toMatchObject({ model: 'a/c' })
+    expect(roles[1]).toMatchObject({ model: 'a/e', directEnabled: false })
+    // 同一角色重复时保留第一条（Verifier 来自 UI审查，Designer 来自 设计师）
+    expect(roles[2]).toMatchObject({ model: 'a/c' })
+    expect(roles[3]).toMatchObject({ model: 'a/g' })
     expect(splitTeamModel(roles[0].model)).toEqual({ provider: 'a', modelId: 'b' })
   })
 
   it('fills missing roles with defaults and rejects broken effort values', () => {
     const roles = normalizeTeamRoleBindings([{ role: '前端', model: 'x/y', effort: '很深' }])
-    expect(roles).toHaveLength(5)
-    expect(roles[2]).toMatchObject({ role: '前端', model: 'x/y', effort: '', enabled: true })
+    expect(roles).toHaveLength(4)
+    expect(roles[1]).toMatchObject({ role: 'Builder', model: 'x/y', effort: '', enabled: true })
     expect(splitTeamModel('no-slash')).toBeNull()
   })
 })
@@ -215,7 +216,7 @@ describe('buildTeamPrompt', () => {
       goal: board.goal,
       task: board.tasks[0],
     })
-    expect(prompt).toContain('# 角色：前端')
+    expect(prompt).toContain('# 角色：Builder')
     expect(prompt).toContain('覆盖空态、加载、失败')
     expect(prompt).toContain('当前批次：订单模块')
     expect(prompt).toContain('T-001 登录页')
@@ -266,7 +267,7 @@ describe('appendTeamTask', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.id).toBe('T-002')
-    expect(result.markdown).toContain('| T-002 | 支付回调 | 后端 | 待办 | 等商户号 |')
+    expect(result.markdown).toContain('| T-002 | 支付回调 | Builder | 待办 | 等商户号 |')
     expect(result.markdown).toContain('### T-002 支付回调')
     expect(result.markdown).toContain('- [ ] 回调幂等')
     // 新卡在详情区（第一个 --- 之前），不是归档规则后面

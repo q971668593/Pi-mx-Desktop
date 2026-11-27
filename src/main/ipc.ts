@@ -1,5 +1,3 @@
-import { registerGrowPrdProjectHandlers } from './ipc/handlers/grow-prd'
-import { registerGrowHandlers } from './ipc/handlers/grow'
 import { registerDialogHandlers } from './ipc/handlers/dialog'
 import { registerWorkspaceFsHandlers } from './ipc/handlers/workspace-fs'
 import { registerWorkspaceHandlers } from './ipc/handlers/workspace'
@@ -42,8 +40,6 @@ import { registerDelegateHandlers } from './ipc/handlers/delegate'
 export { registerHandler, sendEvent } from './ipc/registry'
 
 export function registerAllHandlers(): void {
-  registerGrowHandlers()
-  registerGrowPrdProjectHandlers()
   registerDialogHandlers()
   registerWorkspaceFsHandlers()
   registerWorkspaceHandlers()

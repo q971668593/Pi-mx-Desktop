@@ -15,6 +15,22 @@ export const TERMINAL_REVEAL_CHANNEL = 'ipc:terminal-reveal'
 
 let manager: PtyManager | null = null
 let profiles: ShellProfile[] | null = null
+let idleReapTimer: ReturnType<typeof setInterval> | null = null
+
+const AI_TERMINAL_IDLE_TTL_MS = 10 * 60 * 1000
+const AI_TERMINAL_REAP_INTERVAL_MS = 2 * 60 * 1000
+
+function ensureIdleReapTimer(): void {
+  if (idleReapTimer) return
+  idleReapTimer = setInterval(() => {
+    try {
+      manager?.reapIdleAiTerminals(AI_TERMINAL_IDLE_TTL_MS)
+    } catch {
+      /* ignore */
+    }
+  }, AI_TERMINAL_REAP_INTERVAL_MS)
+  idleReapTimer.unref?.()
+}
 
 /** The shell pi runs its own commands with (settings.json `shellPath`, then Git Bash / bash). */
 function piShell(): string | null {
@@ -49,8 +65,29 @@ export function terminals(): PtyManager {
     // Loaded lazily: the native module is only needed once a terminal opens.
     const pty = createRequire(import.meta.url)('@lydell/node-pty') as { spawn: SpawnPty }
     manager = new PtyManager(pty.spawn, { data: (id, data) => send(TERMINAL_DATA_CHANNEL, { id, data }), exit: (id, code) => send(TERMINAL_EXIT_CHANNEL, { id, code }), closed: (id) => send(TERMINAL_CLOSED_CHANNEL, { id }) }, shellEnv)
+    ensureIdleReapTimer()
   }
   return manager
+}
+
+/** 运行与资源面板用：整个软件全部终端。 */
+export function listAllTerminals(): Array<{ id: string; cwd: string; workspace: string; profileName: string; command?: string; owner: 'user' | 'ai'; state: string }> {
+  if (!manager) return []
+  try {
+    return manager.listAll()
+  } catch {
+    return []
+  }
+}
+
+export function closeTerminal(id: string): boolean {
+  if (!manager) return false
+  try {
+    manager.close(id)
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** Running terminals (the close guard asks before ending them). */
@@ -59,7 +96,16 @@ export function runningTerminalCount(): number {
 }
 
 export function shutdownTerminals(): void {
+  if (idleReapTimer) {
+    clearInterval(idleReapTimer)
+    idleReapTimer = null
+  }
   manager?.killAll()
+}
+
+export function reapIdleAiTerminalsNow(): number {
+  if (!manager) return 0
+  return manager.reapIdleAiTerminals(0).length
 }
 
 /**

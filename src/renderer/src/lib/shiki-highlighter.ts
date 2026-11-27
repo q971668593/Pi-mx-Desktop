@@ -432,22 +432,50 @@ export function wrapPlainCodeHtml(text: string): string {
   return `<pre class="shiki"><code>${escapeHtml(text)}</code></pre>`
 }
 
+const MAX_HIGHLIGHT_CACHE_ENTRIES = 200
+const MAX_CACHED_CODE_CHARS = 24_000
+const highlightCache = new Map<string, string>()
+
+function getCachedHighlight(key: string): string | undefined {
+  const hit = highlightCache.get(key)
+  if (hit === undefined) return undefined
+  highlightCache.delete(key)
+  highlightCache.set(key, hit)
+  return hit
+}
+
+function setCachedHighlight(key: string, html: string): void {
+  if (highlightCache.has(key)) highlightCache.delete(key)
+  highlightCache.set(key, html)
+  if (highlightCache.size > MAX_HIGHLIGHT_CACHE_ENTRIES) {
+    const oldest = highlightCache.keys().next().value
+    if (oldest !== undefined) highlightCache.delete(oldest)
+  }
+}
+
 /** Highlight code to HTML; falls back to escaped plain text on failure. */
 export async function highlightCodeToHtml(code: string, lang?: string): Promise<string> {
   const trimmed = code.replace(/\n$/, '')
   if (!trimmed) return ''
   const requested = resolveLangId(lang)
+  const theme = isDark() ? 'github-dark' : 'github-light'
+  const cacheKey = trimmed.length <= MAX_CACHED_CODE_CHARS ? `${theme}|${requested}|${trimmed}` : null
+  if (cacheKey) {
+    const cached = getCachedHighlight(cacheKey)
+    if (cached !== undefined) return cached
+  }
   try {
     const instance = await getHighlighter()
     const useLanguage = await ensureLanguage(instance, requested)
-    const theme = isDark() ? 'github-dark' : 'github-light'
-    if (useLanguage === 'text') {
-      return wrapPlainCodeHtml(trimmed)
-    }
-    return instance.codeToHtml(trimmed, {
-      lang: useLanguage,
-      theme: theme as 'github-dark' | 'github-light',
-    })
+    const html =
+      useLanguage === 'text'
+        ? wrapPlainCodeHtml(trimmed)
+        : instance.codeToHtml(trimmed, {
+            lang: useLanguage,
+            theme: theme as 'github-dark' | 'github-light',
+          })
+    if (cacheKey) setCachedHighlight(cacheKey, html)
+    return html
   } catch {
     return wrapPlainCodeHtml(trimmed)
   }

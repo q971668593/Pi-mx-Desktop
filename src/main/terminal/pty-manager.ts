@@ -1,6 +1,7 @@
 import { existsSync, statSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { killProcessTree } from '../process-tree-kill'
 import type { ShellProfile } from './shell-profiles'
 
 /** The slice of node-pty this module uses (so tests can pass a fake). */
@@ -55,7 +56,7 @@ export type TerminalSink = {
 const FLUSH_MS = 16
 const MAX_BATCH = 256 * 1024
 
-type Entry = { pty: PtyProcess; profile: ShellProfile; cwd: string; workspace: string; command?: string; output: string; buf: string; timer: ReturnType<typeof setTimeout> | null; ready: boolean; resized: boolean; waitForResize: boolean; pending: string[]; readyTimer: ReturnType<typeof setTimeout> | null; owner: TerminalOwner; state: TerminalState; markers: string[] }
+type Entry = { pty: PtyProcess; profile: ShellProfile; cwd: string; workspace: string; command?: string; output: string; buf: string; timer: ReturnType<typeof setTimeout> | null; ready: boolean; resized: boolean; waitForResize: boolean; pending: string[]; readyTimer: ReturnType<typeof setTimeout> | null; owner: TerminalOwner; state: TerminalState; markers: string[]; lastActivityAt: number; disposables: Array<{ dispose(): void }> }
 
 export class PtyManager {
   private readonly ptys = new Map<string, Entry>()
@@ -77,27 +78,41 @@ export class PtyManager {
     const pty = this.spawn(profile.path, interactiveShellArgs(profile), { name: 'xterm-256color', cols: clampDim(opts.cols, 80), rows: clampDim(opts.rows, 24), cwd, env })
     const id = `t${++this.seq}`
     const markers = [...(opts.markers ?? [])]
-    const entry: Entry = { pty, profile, cwd, workspace: opts.workspace || cwd, command: opts.command, output: '', buf: '', timer: null, ready: false, resized: false, waitForResize: false, pending: [], readyTimer: null, owner: opts.owner === 'ai' ? 'ai' : 'user', state: markers.length ? 'busy' : 'idle', markers }
+    const entry: Entry = { pty, profile, cwd, workspace: opts.workspace || cwd, command: opts.command, output: '', buf: '', timer: null, ready: false, resized: false, waitForResize: false, pending: [], readyTimer: null, owner: opts.owner === 'ai' ? 'ai' : 'user', state: markers.length ? 'busy' : 'idle', markers, lastActivityAt: Date.now(), disposables: [] }
     this.ptys.set(id, entry)
-    pty.onData((d) => {
+    const onDataDisp = pty.onData((d) => {
       this.markReady(id)
       this.push(id, d)
     })
-    pty.onExit(({ exitCode }) => {
+    if (onDataDisp && typeof onDataDisp.dispose === 'function') entry.disposables.push(onDataDisp)
+    const onExitDisp = pty.onExit(({ exitCode }) => {
       this.flush(id)
+      for (const d of entry.disposables) {
+        try { d.dispose() } catch { /* ignore */ }
+      }
+      entry.disposables = []
       this.ptys.delete(id)
       this.sink.exit(id, exitCode)
     })
+    if (onExitDisp && typeof onExitDisp.dispose === 'function') entry.disposables.push(onExitDisp)
     return { id, pid: pty.pid }
   }
 
-  list(workspace: string): Array<{ id: string; cwd: string; workspace: string; profile: ShellProfile; command?: string; output: string; owner: TerminalOwner; state: TerminalState; markers: string[] }> {
-    const normalized = (value: string) => process.platform === 'win32' ? value.replace(/\\/g, '/').replace(/\/$/, '').toLowerCase() : value.replace(/\/$/, '')
-    return [...this.ptys.entries()].filter(([, entry]) => normalized(entry.workspace) === normalized(workspace)).map(([id, entry]) => ({ id, cwd: entry.cwd, workspace: entry.workspace, profile: entry.profile, command: entry.command, output: entry.output, owner: entry.owner, state: entry.state, markers: [...entry.markers] }))
+  list(workspace: string): Array<{ id: string; cwd: string; workspace: string; profile: ShellProfile; command?: string; output: string; owner: TerminalOwner; state: TerminalState; markers: string[]; lastActivityAt: number }> {
+    const target = normalizePath(workspace)
+    return [...this.ptys.entries()].filter(([, entry]) => normalizePath(entry.workspace) === target).map(([id, entry]) => ({ id, cwd: entry.cwd, workspace: entry.workspace, profile: entry.profile, command: entry.command, output: entry.output, owner: entry.owner, state: entry.state, markers: [...entry.markers], lastActivityAt: entry.lastActivityAt }))
+  }
+
+  /** 运行与资源面板用：整个软件全部终端（不按项目过滤、不带 output 大文本）。 */
+  listAll(): Array<{ id: string; cwd: string; workspace: string; profileName: string; command?: string; owner: TerminalOwner; state: TerminalState }> {
+    return [...this.ptys.entries()].map(([id, entry]) => ({ id, cwd: entry.cwd, workspace: entry.workspace, profileName: entry.profile?.name ?? '', command: entry.command, owner: entry.owner, state: entry.state }))
   }
 
   write(id: string, data: string): void {
-    this.ptys.get(id)?.pty.write(data)
+    const e = this.ptys.get(id)
+    if (!e) return
+    e.lastActivityAt = Date.now()
+    e.pty.write(data)
   }
 
   /**
@@ -107,6 +122,7 @@ export class PtyManager {
   send(id: string, line: string, markers: string[] = [], timeoutMs = 5000): void {
     const entry = this.ptys.get(id)
     if (!entry) return
+    entry.lastActivityAt = Date.now()
     for (const marker of markers) if (!entry.markers.includes(marker)) entry.markers.push(marker)
     if (markers.length) entry.state = 'busy'
     this.writeWhenReady(id, line, timeoutMs)
@@ -150,12 +166,30 @@ export class PtyManager {
     if (!e) return
     if (e.timer) clearTimeout(e.timer)
     if (e.readyTimer) clearTimeout(e.readyTimer)
+    for (const d of e.disposables) {
+      try { d.dispose() } catch { /* ignore */ }
+    }
+    e.disposables = []
     this.ptys.delete(id)
+    const pid = e.pty.pid
     try {
       e.pty.kill()
     } catch {
       /* already gone */
     }
+    killProcessTree(pid)
+  }
+
+  /** 自动回收长时间空闲的 AI 终端，避免后台闲置 shell 越堆越多。 */
+  reapIdleAiTerminals(maxIdleMs: number, nowMs = Date.now()): string[] {
+    const closed: string[] = []
+    for (const [id, entry] of [...this.ptys]) {
+      if (entry.owner !== 'ai' || entry.state !== 'idle') continue
+      if (nowMs - entry.lastActivityAt < maxIdleMs) continue
+      this.close(id)
+      closed.push(id)
+    }
+    return closed
   }
 
   killAll(): void {
@@ -183,6 +217,7 @@ export class PtyManager {
   private push(id: string, data: string): void {
     const e = this.ptys.get(id)
     if (!e) return
+    e.lastActivityAt = Date.now()
     // Markers are matched on the unsent batch so one split across two chunks still counts.
     e.buf += data
     let text = data

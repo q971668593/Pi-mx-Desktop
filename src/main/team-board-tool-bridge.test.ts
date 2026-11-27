@@ -6,17 +6,28 @@ const mocks = vi.hoisted(() => ({
   readTeamSnapshot: vi.fn(),
   createTeamTask: vi.fn(),
   setTeamTaskStatus: vi.fn(),
+  appendTeamMemory: vi.fn(),
   dispatchTeamTask: vi.fn(),
+  dispatchTeamReview: vi.fn(),
+  mergeTeamTaskWorktree: vi.fn(),
+  submitTeamReviewVerdict: vi.fn(),
 }))
 
 vi.mock('./trusted-workspace', () => ({ authorizeProjectCwd: mocks.authorize }))
+vi.mock('./git-worktrees', () => ({ listGitWorktrees: vi.fn(async () => ({ ok: false, repositoryPath: null, trees: [] })) }))
 vi.mock('./team-board', () => ({
   readTeamSnapshot: mocks.readTeamSnapshot,
   createTeamTask: mocks.createTeamTask,
   setTeamTaskStatus: mocks.setTeamTaskStatus,
+  appendTeamMemory: mocks.appendTeamMemory,
   teamSpecPath: (root: string) => `${root}/.文档/开发规范`,
 }))
-vi.mock('./team-board-ops', () => ({ dispatchTeamTask: mocks.dispatchTeamTask }))
+vi.mock('./team-board-ops', () => ({
+  dispatchTeamTask: mocks.dispatchTeamTask,
+  dispatchTeamReview: mocks.dispatchTeamReview,
+  mergeTeamTaskWorktree: mocks.mergeTeamTaskWorktree,
+  submitTeamReviewVerdict: mocks.submitTeamReviewVerdict,
+}))
 
 import { handleTeamToolRequest } from './team-board-tool-bridge'
 
@@ -32,7 +43,7 @@ function snapshot(overrides: Partial<TeamSnapshot> = {}): TeamSnapshot {
       {
         id: 'T-001',
         title: '登录页',
-        role: '前端',
+        role: 'Builder',
         status: '待办',
         wave: '',
         input: '',
@@ -44,15 +55,21 @@ function snapshot(overrides: Partial<TeamSnapshot> = {}): TeamSnapshot {
         autoNote: '',
         approval: '',
         approvalNote: '',
+        worktreePath: '',
+        branch: '',
+        ownedPaths: [],
+        reworkCount: 0,
         acceptance: [{ text: '账号可登录', done: false }],
         raw: 'T-001 登录页',
       },
     ],
     roles: [
-      { role: '前端', model: 'mock/scripted', effort: '', note: '', enabled: true, directEnabled: true },
+      { role: 'Builder', model: 'mock/scripted', effort: '', note: '', enabled: true, directEnabled: true },
     ],
     sessions: {},
     runs: [],
+    maxConcurrency: 3,
+    autoReview: false,
     ...overrides,
   } as TeamSnapshot
 }
@@ -77,8 +94,8 @@ describe('team_board tool bridge', () => {
     expect(posted.result.isError).toBeUndefined()
     const payload = JSON.parse(posted.result.content[0].text)
     expect(payload.batch).toBe('订单模块')
-    expect(payload.tasks[0]).toMatchObject({ id: 'T-001', role: '前端', acceptance: '0/1' })
-    expect(payload.roles[0]).toMatchObject({ role: '前端', dispatchable: true })
+    expect(payload.tasks[0]).toMatchObject({ id: 'T-001', role: 'Builder', acceptance: '0/1' })
+    expect(payload.roles[0]).toMatchObject({ role: 'Builder', dispatchable: true })
   })
 
   it('refuses when the project has no board yet', async () => {
@@ -105,7 +122,7 @@ describe('team_board tool bridge', () => {
       ],
     })
     expect(mocks.createTeamTask).toHaveBeenCalledTimes(2)
-    expect(mocks.createTeamTask.mock.calls[0][1]).toMatchObject({ title: '登录页', role: '前端', acceptance: ['账号可登录'] })
+    expect(mocks.createTeamTask.mock.calls[0][1]).toMatchObject({ title: '登录页', role: 'Builder', acceptance: ['账号可登录'] })
     expect(JSON.parse(posted.result.content[0].text).created).toEqual(['T-002'])
   })
 

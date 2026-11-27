@@ -177,9 +177,7 @@
     "browserDesc": "Built-in browser (experimental)",
     "unregistered": "Unregistered panel: {{id}}",
     "team": "Team",
-    "teamDesc": "Five-role board: drag lanes to change status, dispatch roles in background",
-    "grow": "Grow",
-    "growDesc": "Requirement tree: answer in chat, watch the tree, fruit is the plan"
+    "teamDesc": "Five-role board: drag lanes to change status, dispatch roles in background"
   },
   "settings": {
     "title": "Settings",
@@ -393,6 +391,8 @@
     "speedLiveHint": "Estimated output token rate from streamed characters; actual token counts vary by model.",
     "speedAverageHint": "Total model output tokens for this run divided by its total duration, including tool and waiting time.",
     "memory": "App memory",
+    "cpu": "App CPU",
+    "cpuHint": "CPU summed over all app processes; can exceed 100% on multi-core. If it stays high, close the hungry session or terminal below.",
     "memoryHint": "Resident memory summed over all {{count}} app processes; sessions running in WSL are not included.",
     "loadFailed": "Resource information is unavailable. Previous readings may be out of date.",
     "workers": "Session processes",
@@ -401,6 +401,13 @@
     "running": "{{count}} running",
     "needsYou": "{{count}} need you",
     "noWorkers": "No active session processes",
+    "terminals": "Terminals",
+    "noTerminals": "No active terminals",
+    "closeTerminal": "Close terminal",
+    "cleanIdle": "Clean idle",
+    "cleanIdleDone": "Cleaned {{workers}} idle worker(s) and {{terminals}} idle AI terminal(s)",
+    "cleanIdleNone": "No idle resources to clean",
+    "ownerAi": "AI",
     "kill": "Stop run",
     "stopConfirm": "Stop this conversation's current run? Saved conversation history will not be deleted.",
     "failed": "Error",

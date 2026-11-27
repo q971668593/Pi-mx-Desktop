@@ -1,5 +1,5 @@
 import { isAbsolute, posix, resolve } from 'path'
-import { existsSync } from 'fs'
+import { existsSync, readFileSync, statSync } from 'fs'
 import { isWslWindowsPath, wslPathToWindows, wslWindowsPathDistro } from '@shared/wsl-path'
 import { configStore } from './config-store'
 import { isSandboxWorkspacePath } from './sandbox-workspaces'
@@ -45,16 +45,41 @@ function workspacePathsEqual(a: string, b: string): boolean {
   return windowsPath ? left.toLowerCase() === right.toLowerCase() : left === right
 }
 
+function isWorktreeOfTrustedProject(target: string, trustedRoots: readonly string[]): boolean {
+  try {
+    const dotGit = resolve(target, '.git')
+    if (!existsSync(dotGit) || !statSync(dotGit).isFile()) return false
+    const content = readFileSync(dotGit, 'utf8')
+    const match = content.match(/^gitdir:\s*(.+)$/m)
+    if (!match) return false
+    const rawGitDir = match[1].trim()
+    const resolvedGitDir = isAbsolute(rawGitDir) ? rawGitDir : resolve(target, rawGitDir)
+    const normalizedGitDir = comparableWorkspacePath(resolvedGitDir)
+    const marker = '/.git/worktrees/'
+    const idx = normalizedGitDir.toLowerCase().indexOf(marker)
+    if (idx <= 0) return false
+    const repoRoot = normalizedGitDir.slice(0, idx)
+    return trustedRoots.some((root) => workspacePathsEqual(root, repoRoot))
+  } catch {
+    return false
+  }
+}
+
 /** The active workspace, a recent project or a sandbox folder (renderer-chosen project paths). */
 export function authorizeProjectCwd(reqCwd: string | undefined): { ok: true; cwd: string } | { ok: false; error: string } {
   const target = normalizeWorkspaceCwd(String(reqCwd || ''))
   if (!target) return authorizeTrustedCwd(reqCwd)
-  const trusted = [
+  const trustedList = [
     getTrustedWorkspaceRoot(),
     ...(configStore.get('recentProjects') || []),
-  ].map((workspace) => workspace ? normalizeWorkspaceCwd(workspace) : null)
-    .find((workspace) => workspace && workspacePathsEqual(workspace, target))
+  ]
+    .map((workspace) => (workspace ? normalizeWorkspaceCwd(workspace) : null))
+    .filter((workspace): workspace is string => !!workspace)
+  const trusted = trustedList.find((workspace) => workspacePathsEqual(workspace, target))
   if (trusted) return { ok: true, cwd: trusted }
+  if (isPortableAbsolutePath(target) && existsSync(target) && isWorktreeOfTrustedProject(target, trustedList)) {
+    return { ok: true, cwd: target }
+  }
   if (isPortableAbsolutePath(target) && isSandboxWorkspacePath(target) && existsSync(target)) {
     return { ok: true, cwd: target }
   }

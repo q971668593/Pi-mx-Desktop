@@ -71,7 +71,7 @@ export function NotificationInbox() {
     }
   }, [])
 
-  useVisibleInterval(() => void load(), 4000)
+  useVisibleInterval(() => void load(), open ? 5000 : 30_000)
   // A finished turn is what creates inbox rows — show it now instead of on the next poll.
   useEffect(
     () =>

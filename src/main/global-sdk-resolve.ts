@@ -49,7 +49,7 @@ function readVersionAt(pkgRoot: string): string | null {
 
 function spawnLines(cmd: string, args: string[]): string[] {
   try {
-    const r = spawnSync(cmd, args, { encoding: 'utf-8', shell: true, timeout: 15_000 })
+    const r = spawnSync(cmd, args, { encoding: 'utf-8', shell: true, timeout: 15_000, windowsHide: true })
     if (r.error || r.status !== 0) return []
     return (r.stdout || '')
       .split(/\r?\n/)

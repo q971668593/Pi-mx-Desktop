@@ -5,6 +5,7 @@ import { useUIStore } from '@renderer/stores/ui-store'
 import { useRightPanelHidden } from '@renderer/lib/use-right-panel-hidden'
 import { isMac, MAC_TRAFFIC_LIGHTS_SPACER_CLASS } from '@renderer/lib/platform'
 import { WindowControls } from '@renderer/components/app/window-controls'
+import { AppUpdateBadge } from '@renderer/features/shell/app-update-badge'
 
 interface TopBarProps {
   onBack?: () => void
@@ -61,6 +62,7 @@ export function TopBar({ onBack, title, projectName }: TopBarProps) {
         )}
       </div>
       <div className="electron-no-drag flex h-9 shrink-0 items-center gap-2">
+        <AppUpdateBadge />
         {showRightToggle && (
           <button
             type="button"

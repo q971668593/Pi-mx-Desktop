@@ -22,6 +22,13 @@ import { builtinExtensionPathsForWorker } from './builtin-extensions'
 
 export const extensionUiDialogSource = new Map<string, WorkerSlot>()
 
+function hasPendingExtensionUi(slot: WorkerSlot): boolean {
+  for (const source of extensionUiDialogSource.values()) {
+    if (source === slot) return true
+  }
+  return false
+}
+
 const WORKER_REQUEST_TIMEOUT_MS = 120_000
 /** Stop-time abort deadline: a responsive worker answers in ms; a hung one must not hold quit/eviction for 2 minutes. */
 export const WORKER_STOP_ABORT_TIMEOUT_MS = 2_000
@@ -498,7 +505,7 @@ export async function evictIdleWorkers(
     let victimKey: string | null = null
     let oldestFg = Number.POSITIVE_INFINITY
     for (const [key, slot] of pool) {
-      if (key === opts.foregroundKey || slot.agentTurnActive) continue
+      if (key === opts.foregroundKey || slot.agentTurnActive || hasPendingExtensionUi(slot)) continue
       if (slot.lastForegroundAt < oldestFg) {
         oldestFg = slot.lastForegroundAt
         victimKey = key
@@ -523,8 +530,25 @@ export function pruneIdleWorkersByTimeout(
   let removed = 0
   for (const [key, slot] of [...pool.entries()]) {
     if (key === foregroundKey) continue
-    if (slot.agentTurnActive) continue
+    if (slot.agentTurnActive || hasPendingExtensionUi(slot)) continue
     if (nowMs - slot.lastIdleAt < delay) continue
+    void disposeWorkerSlot(slot, mainWindow)
+    pool.delete(key)
+    removed++
+  }
+  return removed
+}
+
+/** Dispose all non-foreground idle slots immediately (manual one-click cleanup). */
+export function pruneIdleWorkersNow(
+  pool: Map<string, WorkerSlot>,
+  foregroundKey: string | null,
+  mainWindow?: BrowserWindow | null,
+): number {
+  let removed = 0
+  for (const [key, slot] of [...pool.entries()]) {
+    if (key === foregroundKey) continue
+    if (slot.agentTurnActive || hasPendingExtensionUi(slot)) continue
     void disposeWorkerSlot(slot, mainWindow)
     pool.delete(key)
     removed++

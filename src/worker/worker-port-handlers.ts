@@ -11,7 +11,6 @@ import { handleReloadModelRouters } from './worker-model-routers.js'
 import { handleBrowserToolResponse } from './worker-browser-tools.js'
 import { handleTerminalToolResponse } from './worker-terminal-tools.js'
 import { handleTeamToolResponse } from './worker-team-tools.js'
-import { handleGrowToolResponse } from './worker-grow-tools.js'
 import { handleImageToolResponse } from './worker-image-tools.js'
 
 const dispatch: Record<string, (msg: WorkerIncomingMessage, reply: WorkerReply) => Promise<void>> = {
@@ -35,7 +34,6 @@ const dispatch: Record<string, (msg: WorkerIncomingMessage, reply: WorkerReply) 
   'browser-tool-response': handleBrowserToolResponse,
   'terminal-tool-response': handleTerminalToolResponse,
   'team-tool-response': handleTeamToolResponse,
-  'grow-tool-response': handleGrowToolResponse,
   'image-tool-response': handleImageToolResponse,
   'newSession': Session.handleNewsession,
   'listSessions': Session.handleListsessions,

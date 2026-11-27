@@ -34,6 +34,7 @@ function gitExecSync(
       timeout: opts.timeout ?? 8000,
       maxBuffer: opts.maxBuffer ?? 4 * 1024 * 1024,
       input: opts.input,
+      windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
     })
     return { status: 0, stdout: stdout ?? '', stderr: '' }
