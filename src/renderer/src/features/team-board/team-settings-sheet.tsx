@@ -23,7 +23,7 @@ import {
   type TeamRoleBinding,
   type TeamSnapshot,
 } from '@shared/team-board'
-import { effortLabel, roleAvatar, roleColor, roleLabel } from './team-board-lib'
+import { effortLabel, notifyTeamBoardChanged, roleAvatar, roleColor, roleLabel } from './team-board-lib'
 
 const ALL_EFFORTS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
 const CONCURRENCY_OPTIONS = Array.from(
@@ -33,7 +33,10 @@ const CONCURRENCY_OPTIONS = Array.from(
 
 export function TeamSettingsSheet({
   workspaceId,
+  sessionFile,
   roles,
+  projectRoles,
+  roleScope,
   defaultModel,
   defaultModelOverride,
   maxConcurrency,
@@ -42,7 +45,10 @@ export function TeamSettingsSheet({
   onSaved,
 }: {
   workspaceId: string
+  sessionFile?: string
   roles: TeamRoleBinding[]
+  projectRoles?: TeamRoleBinding[]
+  roleScope?: 'session' | 'project'
   defaultModel: string
   defaultModelOverride: string
   maxConcurrency: number
@@ -51,16 +57,31 @@ export function TeamSettingsSheet({
   onSaved: (snapshot: TeamSnapshot) => void
 }) {
   const { t } = useTranslation()
-  const [draft, setDraft] = useState<TeamRoleBinding[]>(() => roles.map((role) => ({ ...role })))
+  const hasSessionScope = Boolean(sessionFile)
+  const [scope, setScope] = useState<'session' | 'project'>(hasSessionScope ? 'session' : 'project')
+  const [sessionDraft, setSessionDraft] = useState<TeamRoleBinding[]>(() => roles.map((role) => ({ ...role })))
+  const [projectDraft, setProjectDraft] = useState<TeamRoleBinding[]>(() =>
+    (projectRoles ?? roles).map((role) => ({ ...role })),
+  )
+  const draft = scope === 'session' ? sessionDraft : projectDraft
   const [models, setModels] = useState<ModelInfo[]>(() => peekAvailableModels())
   const [enabledScope, setEnabledScope] = useState<string[] | undefined>(() => peekEnabledModels())
   const [loading, setLoading] = useState(() => isAvailableModelsPending())
   const [loadError, setLoadError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [resetting, setResetting] = useState(false)
   const [preset, setPreset] = useState(defaultModelOverride)
   const [concurrency, setConcurrency] = useState(maxConcurrency)
   const [autoReviewDraft, setAutoReviewDraft] = useState(autoReview)
   const effectivePreset = preset || defaultModel
+
+  useEffect(() => {
+    setSessionDraft(roles.map((role) => ({ ...role })))
+  }, [roles])
+
+  useEffect(() => {
+    setProjectDraft((projectRoles ?? roles).map((role) => ({ ...role })))
+  }, [projectRoles, roles])
 
   useEffect(() => {
     const unsubModels = subscribeAvailableModels(setModels)
@@ -112,7 +133,10 @@ export function TeamSettingsSheet({
   )
 
   const update = (role: TeamRoleBinding['role'], patch: Partial<TeamRoleBinding>) => {
-    setDraft((current) => current.map((item) => (item.role === role ? { ...item, ...patch } : item)))
+    const updater = (current: TeamRoleBinding[]) =>
+      current.map((item) => (item.role === role ? { ...item, ...patch } : item))
+    if (scope === 'session') setSessionDraft(updater)
+    else setProjectDraft(updater)
   }
 
   const effortsFor = (model: string): string[] => {
@@ -126,18 +150,42 @@ export function TeamSettingsSheet({
     try {
       const response = await ipcClient.invoke('teamBoard.roles.save', {
         workspaceId,
+        ...(sessionFile ? { sessionFile } : {}),
+        scope: hasSessionScope ? scope : 'project',
         roles: draft,
         ...(preset !== defaultModelOverride ? { defaultModelOverride: preset } : {}),
         ...(concurrency !== maxConcurrency ? { maxConcurrency: concurrency } : {}),
         ...(autoReviewDraft !== autoReview ? { autoReview: autoReviewDraft } : {}),
       })
       if (response?.snapshot) onSaved(response.snapshot)
+      notifyTeamBoardChanged()
       toast.success(t('team:saved'))
       onClose()
     } catch (error) {
       toast.error(t('team:statusFailed'), { description: String((error as Error)?.message || error) })
     } finally {
       setSaving(false)
+    }
+  }
+
+  const resetToProjectDefault = async () => {
+    if (!sessionFile) return
+    setResetting(true)
+    try {
+      const response = await ipcClient.invoke('teamBoard.roles.save', {
+        workspaceId,
+        sessionFile,
+        scope: 'session',
+        clearSessionRoles: true,
+        roles: projectDraft,
+      })
+      if (response?.snapshot) onSaved(response.snapshot)
+      notifyTeamBoardChanged()
+      toast.success(t('team:subagentSection.resetDone'))
+    } catch (error) {
+      toast.error(t('team:statusFailed'), { description: String((error as Error)?.message || error) })
+    } finally {
+      setResetting(false)
     }
   }
 
@@ -156,7 +204,7 @@ export function TeamSettingsSheet({
         <button
           type="button"
           onClick={() => void save()}
-          disabled={saving}
+          disabled={saving || resetting}
           className="ml-auto inline-flex items-center gap-1 rounded bg-primary px-2 py-1 text-2xs font-medium text-primary-foreground disabled:opacity-50"
         >
           {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCheck className="h-3 w-3" />}
@@ -165,6 +213,45 @@ export function TeamSettingsSheet({
       </div>
 
       <div className="team-sheet-scroll team-scroll">
+        {hasSessionScope ? (
+          <div className="mb-2.5 rounded-lg border border-border/50 bg-[color-mix(in_srgb,var(--bg-2,transparent)_45%,transparent)] p-2">
+            <div className="flex items-center gap-1.5">
+              <div className="team-seg">
+                <button
+                  type="button"
+                  onClick={() => setScope('session')}
+                  data-active={scope === 'session'}
+                  className="team-seg-btn"
+                >
+                  {t('team:subagentSection.scopeSession')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScope('project')}
+                  data-active={scope === 'project'}
+                  className="team-seg-btn"
+                >
+                  {t('team:subagentSection.scopeProject')}
+                </button>
+              </div>
+              {scope === 'session' && roleScope === 'session' ? (
+                <button
+                  type="button"
+                  disabled={resetting || saving}
+                  onClick={() => void resetToProjectDefault()}
+                  className="ml-auto rounded px-1.5 py-0.5 text-[10px] text-primary hover:bg-primary/10 disabled:opacity-50"
+                >
+                  {resetting ? t('team:loadingModels') : t('team:subagentSection.resetToProjectDefault')}
+                </button>
+              ) : null}
+            </div>
+            <p className="mt-1 text-[10.5px] leading-relaxed text-foreground-tertiary">
+              {scope === 'session'
+                ? t('team:subagentSection.scopeSessionHint')
+                : t('team:subagentSection.scopeProjectHint')}
+            </p>
+          </div>
+        ) : null}
         <p className="text-2xs leading-relaxed text-foreground-secondary">{t('team:settingsDesc')}</p>
         <label className="mt-2 block text-2xs text-foreground-secondary">
           {t('team:defaultModel')}

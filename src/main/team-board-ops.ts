@@ -55,8 +55,9 @@ function readSpecFile(spec: string, relativePath: string): string | null {
 export function roleBinding(
   workspaceRoot: string,
   roleValue: string,
+  sessionFile?: string | null,
 ): { snapshot: TeamSnapshot; role: string; binding: TeamRoleBinding } {
-  const snapshot = readTeamSnapshot(workspaceRoot)
+  const snapshot = readTeamSnapshot(workspaceRoot, { sessionFile })
   if (!snapshot.exists) throw new Error('当前项目还没有看板，请先初始化或接管老项目')
   const role = canonicalTeamRole(roleValue)
   const binding = snapshot.roles.find((item) => item.role === role)
@@ -108,15 +109,15 @@ export type DispatchResult = {
 export async function dispatchTeamTask(
   workspaceRoot: string,
   taskId: string,
-  options: { trigger?: 'panel' | 'agent'; bypassGates?: boolean } = {},
+  options: { trigger?: 'panel' | 'agent'; bypassGates?: boolean; sessionFile?: string | null } = {},
 ): Promise<DispatchResult> {
-  const snapshot = readTeamSnapshot(workspaceRoot)
+  const snapshot = readTeamSnapshot(workspaceRoot, { sessionFile: options.sessionFile })
   if (!snapshot.exists) throw new Error('当前项目还没有看板，请先初始化或接管老项目')
   const task = snapshot.tasks.find((item) => item.id === taskId)
   if (!task) throw new Error(`找不到任务卡 ${taskId}，请刷新看板`)
   if (task.status === '已验收') throw new Error('这张卡已验收；要返工请先把它移回「进行中」')
   const role = canonicalTeamRole(task.role)
-  const { binding } = roleBinding(workspaceRoot, role)
+  const { binding } = roleBinding(workspaceRoot, role, options.sessionFile)
 
   const spec = teamSpecPath(workspaceRoot)
   if (!options.bypassGates) {
@@ -199,6 +200,8 @@ export async function dispatchTeamTask(
     role,
     sessionFile,
     sessionId: session.sessionId,
+    model: binding.model,
+    ...(options.sessionFile ? { originSessionFile: options.sessionFile } : {}),
     ...(worktreePath ? { worktreePath } : {}),
     ...(branch ? { branch } : {}),
   })
@@ -234,7 +237,7 @@ export async function dispatchTeamTask(
     model: binding.model,
     ...(worktreePath ? { worktreePath } : {}),
     ...(branch ? { branch } : {}),
-    snapshot: readTeamSnapshot(workspaceRoot),
+    snapshot: readTeamSnapshot(workspaceRoot, { sessionFile: options.sessionFile }),
   }
 }
 
@@ -369,8 +372,12 @@ export type DispatchReviewResult = {
  * 派发独立 Verifier 审查一张「待审查」的任务卡：
  * 在独立后台会话中启动，不共享 Builder 聊天上下文；优先指向该卡 Worktree 目录。
  */
-export async function dispatchTeamReview(workspaceRoot: string, taskId: string): Promise<DispatchReviewResult> {
-  const snapshot = readTeamSnapshot(workspaceRoot)
+export async function dispatchTeamReview(
+  workspaceRoot: string,
+  taskId: string,
+  options: { sessionFile?: string | null } = {},
+): Promise<DispatchReviewResult> {
+  const snapshot = readTeamSnapshot(workspaceRoot, { sessionFile: options.sessionFile })
   if (!snapshot.exists) throw new Error('当前项目还没有看板')
   const task = snapshot.tasks.find((item) => item.id === taskId)
   if (!task) throw new Error(`找不到任务卡 ${taskId}，请刷新看板`)
@@ -388,7 +395,7 @@ export async function dispatchTeamReview(workspaceRoot: string, taskId: string):
       silent: true,
     })
   }
-  const { role, binding } = roleBinding(workspaceRoot, 'Verifier')
+  const { role, binding } = roleBinding(workspaceRoot, 'Verifier', options.sessionFile)
 
   const spec = teamSpecPath(workspaceRoot)
   const lessonsSnippet = extractRecentMemorySnippet(readSpecFile(spec, '错题本.md'))
@@ -411,6 +418,8 @@ export async function dispatchTeamReview(workspaceRoot: string, taskId: string):
     role,
     sessionFile,
     sessionId: session.sessionId,
+    model: binding.model,
+    ...(options.sessionFile ? { originSessionFile: options.sessionFile } : {}),
     ...(task.worktreePath ? { worktreePath: task.worktreePath } : {}),
     ...(task.branch ? { branch: task.branch } : {}),
   })
@@ -437,7 +446,7 @@ export async function dispatchTeamReview(workspaceRoot: string, taskId: string):
     sessionId: session.sessionId,
     sessionFile,
     model: binding.model,
-    snapshot: readTeamSnapshot(workspaceRoot),
+    snapshot: readTeamSnapshot(workspaceRoot, { sessionFile: options.sessionFile }),
   }
 }
 
@@ -577,5 +586,95 @@ export async function submitTeamReviewVerdict(
     circuitBroken: false,
     resumed,
     snapshot: readTeamSnapshot(workspaceRoot),
+  }
+}
+
+export type ResumeRunResult = {
+  ok: true
+  taskId: string
+  role: string
+  sessionId?: string
+  sessionFile: string
+  model: string
+  snapshot: TeamSnapshot
+}
+
+/**
+ * 断点续跑同一个子代理会话：保留原 sessionFile 与 Worktree，
+ * 先收回旧的活跃/超时记录再重开运行中记录，避免从头重做。
+ */
+export async function resumeTeamRun(
+  workspaceRoot: string,
+  input: { sessionFile: string; taskId?: string; note?: string; contextSessionFile?: string | null },
+): Promise<ResumeRunResult> {
+  const snapshot = readTeamSnapshot(workspaceRoot, { sessionFile: input.contextSessionFile })
+  if (!snapshot.exists) throw new Error('当前项目还没有看板')
+  const spec = teamSpecPath(workspaceRoot)
+  const target = [...snapshot.runs]
+    .reverse()
+    .find((run) => run.sessionFile === input.sessionFile || (!input.sessionFile && input.taskId && run.taskId === input.taskId))
+  if (!target) throw new Error('找不到对应的子代理派发记录，请刷新看板后重试')
+  if (!existsSync(target.sessionFile)) throw new Error('该子代理的会话文件已不存在，请改用「派发开工」新建会话')
+
+  const originSessionFile = target.originSessionFile || input.contextSessionFile || undefined
+  const { role, binding } = roleBinding(workspaceRoot, target.role, originSessionFile)
+
+  if (isTeamRunActive(target)) {
+    settleTeamRun(spec, workspaceRoot, target.sessionFile, 'cancelled', {
+      note: '手动触发断点续跑，替代前一轮记录',
+      closedBy: 'human',
+      silent: true,
+    })
+  }
+
+  recordTeamDispatch(spec, {
+    taskId: target.taskId,
+    role,
+    sessionFile: target.sessionFile,
+    sessionId: target.sessionId,
+    model: binding.model,
+    ...(originSessionFile ? { originSessionFile } : {}),
+    ...(target.worktreePath ? { worktreePath: target.worktreePath } : {}),
+    ...(target.branch ? { branch: target.branch } : {}),
+  })
+
+  try {
+    await applyRoleRoute(binding, target.sessionFile)
+  } catch (error) {
+    console.warn('[team-board] 续跑切换模型失败，保留原会话模型继续：', error)
+  }
+
+  const customNote = sanitizeTeamText(input.note, 1000)
+  const resumePrompt =
+    `上一轮执行中断，请直接从当前工作区和已有改动处继续完成任务卡 ${target.taskId}（不要推倒重来）。` +
+    (customNote ? `\n\n补充指引：${customNote}` : '') +
+    `\n\n完成后自检并给出「交付摘要」与「验证」证据。`
+
+  try {
+    await workerManager.sendPrompt(resumePrompt, target.sessionFile)
+    markTeamRunRunning(spec, target.sessionFile)
+  } catch (error) {
+    settleTeamRun(spec, workspaceRoot, target.sessionFile, 'failed')
+    throw error
+  }
+
+  const task = snapshot.tasks.find((item) => item.id === target.taskId)
+  if (task && (task.status === '待办' || task.status === '阻塞')) {
+    setTeamTaskStatus(workspaceRoot, {
+      taskId: task.id,
+      to: '进行中',
+      from: task.status,
+      autoNote: `已断点续跑 ${role} 会话`,
+    })
+  }
+
+  return {
+    ok: true,
+    taskId: target.taskId,
+    role,
+    sessionId: target.sessionId,
+    sessionFile: target.sessionFile,
+    model: binding.model,
+    snapshot: readTeamSnapshot(workspaceRoot, { sessionFile: originSessionFile }),
   }
 }

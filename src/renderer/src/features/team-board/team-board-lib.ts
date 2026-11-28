@@ -8,9 +8,12 @@ import backendFace from '@renderer/assets/roles/backend-face.webp'
 import backendFull from '@renderer/assets/roles/backend.webp'
 import testerFace from '@renderer/assets/roles/tester-face.webp'
 import testerFull from '@renderer/assets/roles/tester.webp'
+import { useSyncExternalStore } from 'react'
 import { ipcClient } from '@renderer/lib/ipc-client'
 import { activateWorkspace } from '@renderer/lib/activate-workspace'
-import { normalizeSessionFileKey, sessionFilesEqual } from '@renderer/lib/session-file-key'
+import { splitActions } from '@renderer/features/split/split-store'
+import { sessionFilesEqual } from '@renderer/lib/session-file-key'
+import { useUIStore } from '@renderer/stores/ui-store'
 import type { TeamRole, TeamRun, TeamStage, TeamStatus, TeamTask } from '@shared/team-board'
 
 /** 阶段色只表达「需要谁动手」，不替代泳道状态色。 */
@@ -169,24 +172,157 @@ export function latestRun(task: TeamTask, runs: TeamRun[]): TeamRun | undefined 
   return undefined
 }
 
+export type TeamSubagentReturnTarget = {
+  workspaceId: string
+  sessionId: string
+  sessionFile: string
+  subagentSessionFile: string
+  label?: string
+}
+
+let returnTarget: TeamSubagentReturnTarget | null = null
+const returnListeners = new Set<() => void>()
+
+function emitReturnChange(): void {
+  for (const listener of returnListeners) listener()
+}
+
+export function rememberTeamSubagentReturn(target: TeamSubagentReturnTarget | null): void {
+  returnTarget = target
+  emitReturnChange()
+}
+
+export function clearTeamSubagentReturn(): void {
+  if (!returnTarget) return
+  returnTarget = null
+  emitReturnChange()
+}
+
+export function getTeamSubagentReturn(): TeamSubagentReturnTarget | null {
+  return returnTarget
+}
+
+function subscribeTeamSubagentReturn(listener: () => void): () => void {
+  returnListeners.add(listener)
+  return () => {
+    returnListeners.delete(listener)
+  }
+}
+
+export function useTeamSubagentReturn(): TeamSubagentReturnTarget | null {
+  return useSyncExternalStore(subscribeTeamSubagentReturn, getTeamSubagentReturn, getTeamSubagentReturn)
+}
+
+export async function returnFromTeamSubagent(): Promise<boolean> {
+  const target = returnTarget
+  clearTeamSubagentReturn()
+  if (!target) return false
+  await activateWorkspace(target.workspaceId, {
+    sessionId: target.sessionId,
+    sessionFile: target.sessionFile,
+  })
+  return true
+}
+
+export function formatRunElapsed(startedAt: number, endedAt?: number, now = Date.now()): string {
+  if (!Number.isFinite(startedAt) || startedAt <= 0) return ''
+  const end = typeof endedAt === 'number' && Number.isFinite(endedAt) && endedAt >= startedAt ? endedAt : now
+  const totalSeconds = Math.max(0, Math.floor((end - startedAt) / 1000))
+  if (totalSeconds < 60) return `${totalSeconds}s`
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  if (minutes < 60) return `${minutes}m ${String(seconds).padStart(2, '0')}s`
+  const hours = Math.floor(minutes / 60)
+  const remainMinutes = minutes % 60
+  return `${hours}h ${String(remainMinutes).padStart(2, '0')}m`
+}
+
 /**
- * 打开角色会话：优先用派发记录里的 sessionFile；旧记录没有 sessionId 时用会话列表补齐。
- * 工作区已在当前视图时走 `activateWorkspace` 的就地切换，不会重建布局。
+ * 打开角色/子代理会话：优先用派发记录里的 sessionId；缺失时先 `session.prepare`，
+ * 再回退到 worktree/主工作区会话列表补齐。
+ * 始终以主工作区 `workspaceId` 激活视图，避免把临时 worktree 路径当成当前项目并卸载工作团队面板。
  */
 export async function openTeamSession(input: {
   workspaceId: string
   sessionFile: string
   sessionId?: string | null
+  worktreePath?: string | null
+  rememberReturn?: boolean
+  subagentLabel?: string
 }): Promise<void> {
   const { workspaceId, sessionFile } = input
   let sessionId = input.sessionId || ''
   if (!sessionId) {
-    const list = await ipcClient.invoke('session.list', { workspaceId, refresh: true }).catch(() => null)
+    const prepared = await ipcClient.invoke('session.prepare', { sessionFile, bind: false }).catch(() => null)
+    if (prepared?.sessionId) sessionId = String(prepared.sessionId)
+  }
+  if (!sessionId) {
+    const lookupWorkspace = input.worktreePath || workspaceId
+    const list = await ipcClient.invoke('session.list', { workspaceId: lookupWorkspace, refresh: true }).catch(() => null)
     const rows = (list?.sessions || []) as Array<{ sessionId?: string; sessionFile?: string }>
     sessionId = rows.find((row) => row.sessionFile && sessionFilesEqual(row.sessionFile, sessionFile))?.sessionId || ''
   }
   if (!sessionId) throw new Error('session id not found for ' + sessionFile)
+
+  if (input.rememberReturn) {
+    const ui = useUIStore.getState()
+    const currentFile = ui.historySessionFile
+    const currentId = ui.currentSessionId
+    if (currentFile && currentId && !sessionFilesEqual(currentFile, sessionFile)) {
+      const existing = returnTarget
+      if (existing && sessionFilesEqual(existing.subagentSessionFile, currentFile)) {
+        rememberTeamSubagentReturn({
+          ...existing,
+          subagentSessionFile: sessionFile,
+          label: input.subagentLabel ?? existing.label,
+        })
+      } else {
+        rememberTeamSubagentReturn({
+          workspaceId: ui.currentWorkspace || workspaceId,
+          sessionId: currentId,
+          sessionFile: currentFile,
+          subagentSessionFile: sessionFile,
+          label: input.subagentLabel,
+        })
+      }
+    }
+  } else {
+    clearTeamSubagentReturn()
+  }
+
   await activateWorkspace(workspaceId, { sessionId, sessionFile })
+}
+
+/** 在右侧分屏中直接打开子代理会话，左侧继续保持当前对话（如 Leader）。 */
+export async function openTeamSessionInSplit(input: {
+  workspaceId: string
+  sessionFile: string
+  sessionId?: string | null
+  worktreePath?: string | null
+  title?: string
+}): Promise<boolean> {
+  const { workspaceId, sessionFile } = input
+  let sessionId = input.sessionId || ''
+  if (!sessionId) {
+    const prepared = await ipcClient.invoke('session.prepare', { sessionFile, bind: false }).catch(() => null)
+    if (prepared?.sessionId) sessionId = String(prepared.sessionId)
+  }
+  if (!sessionId) {
+    const lookupWorkspace = input.worktreePath || workspaceId
+    const list = await ipcClient.invoke('session.list', { workspaceId: lookupWorkspace, refresh: true }).catch(() => null)
+    const rows = (list?.sessions || []) as Array<{ sessionId?: string; sessionFile?: string }>
+    sessionId = rows.find((row) => row.sessionFile && sessionFilesEqual(row.sessionFile, sessionFile))?.sessionId || ''
+  }
+  if (!sessionId) throw new Error('session id not found for ' + sessionFile)
+  return splitActions.open(
+    {
+      sessionId,
+      sessionFile,
+      workspace: workspaceId,
+      title: input.title || '',
+    },
+    { side: 'right' },
+  )
 }
 
 /** 会话结束后让面板刷新（side panel 与后台 watcher 的轻量信号）。 */

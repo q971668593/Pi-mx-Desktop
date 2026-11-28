@@ -330,6 +330,7 @@ export const IPC_INVOKE_CHANNELS = [
   'ipc:teamBoard.intervene',
   'ipc:teamBoard.merge',
   'ipc:teamBoard.prompt',
+  'ipc:teamBoard.resumeRun',
   'ipc:teamBoard.reviewVerdict',
   'ipc:teamBoard.roleSession',
   'ipc:teamBoard.roles.save',

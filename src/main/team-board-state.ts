@@ -4,7 +4,9 @@ import {
   canonicalTeamRole,
   emptyTeamState,
   isTeamRole,
+  normalizeTeamRoleBindings,
   sanitizeTeamText,
+  type TeamRoleBinding,
   type TeamRun,
   type TeamRunReport,
   type TeamRunReportKind,
@@ -45,6 +47,8 @@ function normalizeRun(value: unknown): TeamRun | null {
     role,
     sessionFile: run.sessionFile,
     ...(typeof run.sessionId === 'string' && run.sessionId ? { sessionId: run.sessionId } : {}),
+    ...(typeof run.model === 'string' && run.model ? { model: sanitizeTeamText(run.model, 200) } : {}),
+    ...(typeof run.originSessionFile === 'string' && run.originSessionFile ? { originSessionFile: run.originSessionFile } : {}),
     status: RUN_STATUSES.includes(status) ? status : 'done',
     startedAt: typeof run.startedAt === 'number' ? run.startedAt : 0,
     ...(typeof run.endedAt === 'number' ? { endedAt: run.endedAt } : {}),
@@ -66,10 +70,10 @@ export function parseTeamState(text: string): TeamState {
   }
 }
 
-function normalizeTeamState(parsed: Partial<TeamState>): TeamState {
+function normalizeSessionMap(raw: unknown): TeamState['sessions'] {
   const sessions: TeamState['sessions'] = {}
-  if (parsed.sessions && typeof parsed.sessions === 'object') {
-    for (const [role, value] of Object.entries(parsed.sessions)) {
+  if (raw && typeof raw === 'object') {
+    for (const [role, value] of Object.entries(raw)) {
       const canonical = canonicalTeamRole(role)
       if (!isTeamRole(canonical) || !value || typeof value !== 'object') continue
       const entry = value as { sessionFile?: unknown; sessionId?: unknown; updatedAt?: unknown }
@@ -81,8 +85,43 @@ function normalizeTeamState(parsed: Partial<TeamState>): TeamState {
       }
     }
   }
+  return sessions
+}
+
+function normalizeTeamState(parsed: Partial<TeamState>): TeamState {
+  const sessions = normalizeSessionMap(parsed.sessions)
   const runs: TeamRun[] = Array.isArray(parsed.runs)
     ? parsed.runs.map(normalizeRun).filter((run): run is TeamRun => !!run).slice(-200)
     : []
-  return { version: 1, sessions, runs }
+
+  let sessionRoles: Record<string, TeamRoleBinding[]> | undefined
+  if (parsed.sessionRoles && typeof parsed.sessionRoles === 'object') {
+    const entries = Object.entries(parsed.sessionRoles).slice(-80)
+    const next: Record<string, TeamRoleBinding[]> = {}
+    for (const [key, value] of entries) {
+      if (!key || !Array.isArray(value)) continue
+      next[key] = normalizeTeamRoleBindings(value)
+    }
+    if (Object.keys(next).length > 0) sessionRoles = next
+  }
+
+  let sessionRoleSessions: Record<string, TeamState['sessions']> | undefined
+  if (parsed.sessionRoleSessions && typeof parsed.sessionRoleSessions === 'object') {
+    const entries = Object.entries(parsed.sessionRoleSessions).slice(-80)
+    const next: Record<string, TeamState['sessions']> = {}
+    for (const [key, value] of entries) {
+      if (!key) continue
+      const normalized = normalizeSessionMap(value)
+      if (Object.keys(normalized).length > 0) next[key] = normalized
+    }
+    if (Object.keys(next).length > 0) sessionRoleSessions = next
+  }
+
+  return {
+    version: 1,
+    sessions,
+    runs,
+    ...(sessionRoles ? { sessionRoles } : {}),
+    ...(sessionRoleSessions ? { sessionRoleSessions } : {}),
+  }
 }

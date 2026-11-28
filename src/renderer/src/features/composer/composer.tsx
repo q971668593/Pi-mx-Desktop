@@ -55,6 +55,8 @@ import { useComposerFileSearch } from './use-composer-file-search'
 import { ComposerFilePopover } from './composer-file-popover'
 import { ComposerAgentActivity } from './composer-agent-activity'
 import { isSubagentSessionPreview } from '@renderer/lib/subagent-session-preview'
+import { switchSessionInPlace } from '@renderer/lib/activate-workspace'
+import { hydrateSessionView } from '@renderer/lib/session-shell'
 import {
   composerDraftContextKey,
   readTransientComposerDraft,
@@ -169,6 +171,27 @@ export function Composer() {
     setModelPickerOpen(false)
     setThinkingPickerOpen(false)
   }, [isActive, sessionPreview, setModelPickerOpen, setThinkingPickerOpen])
+
+  const previewChildRunning = Boolean(
+    isActive
+    && readOnlySubagentPreview
+    && historySessionFile
+    && subagentSessionGroup?.children.some(
+      (child) =>
+        child.sessionFile
+        && sessionFilesEqual(child.sessionFile, historySessionFile)
+        && (child.state === 'running' || child.state === 'pending'),
+    ),
+  )
+
+  useEffect(() => {
+    if (!previewChildRunning || !historySessionFile) return
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return
+      void hydrateSessionView(historySessionFile, currentSessionId, undefined, { bindWorker: false })
+    }, 3500)
+    return () => window.clearInterval(timer)
+  }, [currentSessionId, historySessionFile, previewChildRunning])
 
   const updateFromEditor = useCallback(() => {
     const el = editorRef.current
@@ -516,6 +539,20 @@ export function Composer() {
               {t('composer:previewBackgroundRunning')}
             </span>
           )}
+          {subagentSessionGroup?.parentSessionId && subagentSessionGroup?.parentSessionFile ? (
+            <button
+              type="button"
+              onClick={() =>
+                void switchSessionInPlace(
+                  subagentSessionGroup.parentSessionId,
+                  subagentSessionGroup.parentSessionFile,
+                )
+              }
+              className="shrink-0 rounded-md border border-amber-500/35 bg-background/75 px-2 py-0.5 font-medium hover:bg-amber-500/15"
+            >
+              {t('composer:returnToParent')}
+            </button>
+          ) : null}
         </div>
       )}
       <div className="composer-accessory-row flex min-w-0 gap-2">

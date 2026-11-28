@@ -201,6 +201,10 @@ export type TeamRun = {
   role: string
   sessionFile: string
   sessionId?: string
+  /** 本轮实际派发使用的 `provider/modelId` */
+  model?: string
+  /** 发起派发的父/Leader 会话文件，用于在子代理上下文中回查同对话配置 */
+  originSessionFile?: string
   status: TeamRunStatus
   startedAt: number
   endedAt?: number
@@ -262,6 +266,10 @@ export type TeamState = {
   version: 1
   sessions: TeamSessionMap
   runs: TeamRun[]
+  /** 对话级角色配置覆盖（按标准化 sessionFile 为键，不同对话互不影响） */
+  sessionRoles?: Record<string, TeamRoleBinding[]>
+  /** 对话级直聊角色会话映射 */
+  sessionRoleSessions?: Record<string, TeamSessionMap>
 }
 
 export type TeamSnapshot = {
@@ -273,7 +281,14 @@ export type TeamSnapshot = {
   batch: string
   goal: string
   tasks: TeamTask[]
+  /** 当前生效的角色配置（优先取当前对话覆盖，否则继承项目默认） */
   roles: TeamRoleBinding[]
+  /** 项目级默认角色配置 */
+  projectRoles?: TeamRoleBinding[]
+  /** 当前 `roles` 所属作用域 */
+  roleScope?: 'session' | 'project'
+  /** 解析该快照时使用的会话文件 */
+  sessionFile?: string
   sessions: TeamSessionMap
   runs: TeamRun[]
   defaultModel?: string

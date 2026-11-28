@@ -10,6 +10,7 @@ import {
   TEAM_BOARD_CHANGED_EVENT,
   TEAM_BOARD_RUNS_CHANGED_EVENT,
   notifyTeamBoardChanged,
+  notifyTeamRunsChanged,
 } from './team-board-lib'
 
 /**
@@ -106,7 +107,22 @@ export function TeamBoardAutoSettle() {
         .catch(() => {})
     }
 
-    return onAppEvent((event) => {
+    let bashRefreshTimer: ReturnType<typeof setTimeout> | null = null
+    const unsub = onAppEvent((event) => {
+      if (event.type === 'tool' && event.phase === 'end') {
+        if (event.toolName === 'team_board') {
+          notifyTeamRunsChanged()
+          notifyTeamBoardChanged()
+        } else if (event.toolName === 'bash') {
+          if (bashRefreshTimer) clearTimeout(bashRefreshTimer)
+          bashRefreshTimer = setTimeout(() => {
+            bashRefreshTimer = null
+            notifyTeamRunsChanged()
+            notifyTeamBoardChanged()
+          }, 800)
+        }
+      }
+
       const outcome = outcomeOf(event)
       if (!outcome || !('sessionFile' in event) || typeof event.sessionFile !== 'string' || !event.sessionFile) return
       const file = event.sessionFile
@@ -130,6 +146,10 @@ export function TeamBoardAutoSettle() {
         })
         .catch(() => {})
     })
+    return () => {
+      if (bashRefreshTimer) clearTimeout(bashRefreshTimer)
+      unsub()
+    }
   }, [workspaceId])
 
   return null

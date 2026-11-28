@@ -65,8 +65,8 @@ function lines(value: unknown, max = 20): string[] {
 }
 
 /** 给模型看的看板摘要：短、能直接定位下一张卡。 */
-function summarizeBoard(cwd: string): Record<string, unknown> {
-  const snapshot = readTeamSnapshot(cwd)
+function summarizeBoard(cwd: string, sessionFile?: string | null): Record<string, unknown> {
+  const snapshot = readTeamSnapshot(cwd, { sessionFile })
   return {
     exists: snapshot.exists,
     batch: snapshot.batch,
@@ -136,7 +136,7 @@ async function resolveBoardCwd(slotCwd: string): Promise<string | null> {
 
 export async function handleTeamToolRequest(
   data: Record<string, unknown>,
-  slot: { cwd: string },
+  slot: { cwd: string; sessionFile?: string | null },
   post: (message: Record<string, unknown>) => void,
 ): Promise<void> {
   const callId = String(data.callId || '')
@@ -156,9 +156,10 @@ export async function handleTeamToolRequest(
     if (!cwd) return reply('工作区不可用或未受信任，先让主人在侧栏打开这个项目', true)
     const args = (data.args || {}) as Args
     const action = str(args.action, 40)
+    const originSessionFile = slot.sessionFile || null
 
     if (action === 'snapshot') {
-      const board = summarizeBoard(cwd)
+      const board = summarizeBoard(cwd, originSessionFile)
       if (!board.exists) return reply('这个项目还没有工作团队看板；先让主人在右侧「工作团队」里初始化或接管老项目', true)
       return reply(board)
     }
@@ -173,7 +174,7 @@ export async function handleTeamToolRequest(
         if (typeof draft === 'string') return reply(draft, true)
         drafts.push(draft)
       }
-      const before = new Set(readTeamSnapshot(cwd).tasks.map((task) => task.id))
+      const before = new Set(readTeamSnapshot(cwd, { sessionFile: originSessionFile }).tasks.map((task) => task.id))
       const created: string[] = []
       for (const draft of drafts) {
         const snapshot = createTeamTask(cwd, draft)
@@ -181,7 +182,7 @@ export async function handleTeamToolRequest(
           if (!before.has(task.id) && !created.includes(task.id)) created.push(task.id)
         }
       }
-      return reply({ ok: true, created, board: summarizeBoard(cwd) })
+      return reply({ ok: true, created, board: summarizeBoard(cwd, originSessionFile) })
     }
 
     if (action === 'move_task') {
@@ -198,7 +199,7 @@ export async function handleTeamToolRequest(
         }
         const outcome = setTeamTaskStatus(cwd, { taskId, to, blockType, reason: str(args.reason, 1500) })
         if (!outcome.ok) return reply(`改状态失败：${outcome.reason}`, true)
-        return reply({ ok: true, board: summarizeBoard(cwd) })
+        return reply({ ok: true, board: summarizeBoard(cwd, originSessionFile) })
       }
       const outcome = setTeamTaskStatus(cwd, {
         taskId,
@@ -206,13 +207,13 @@ export async function handleTeamToolRequest(
         ...(str(args.note, 1500) ? { autoNote: str(args.note, 1500) } : {}),
       })
       if (!outcome.ok) return reply(`改状态失败：${outcome.reason}`, true)
-      return reply({ ok: true, board: summarizeBoard(cwd) })
+      return reply({ ok: true, board: summarizeBoard(cwd, originSessionFile) })
     }
 
     if (action === 'dispatch') {
       const taskId = str(args.taskId, 20)
       if (!taskId) return reply('action=dispatch 需要 taskId', true)
-      const result = await dispatchTeamTask(cwd, taskId, { trigger: 'agent' })
+      const result = await dispatchTeamTask(cwd, taskId, { trigger: 'agent', sessionFile: originSessionFile })
       return reply({
         ok: true,
         taskId: result.taskId,
@@ -222,7 +223,7 @@ export async function handleTeamToolRequest(
         ...(result.worktreePath ? { worktreePath: result.worktreePath } : {}),
         ...(result.branch ? { branch: result.branch } : {}),
         note: '已在后台开会话开工；它结束后看板会自动落到「待审查」，不用手动改状态',
-        board: summarizeBoard(cwd),
+        board: summarizeBoard(cwd, originSessionFile),
       })
     }
 
@@ -235,21 +236,21 @@ export async function handleTeamToolRequest(
         taskId: result.taskId,
         branch: result.branch,
         note: `已合并分支 ${result.branch} 并清理独立工作区`,
-        board: summarizeBoard(cwd),
+        board: summarizeBoard(cwd, originSessionFile),
       })
     }
 
     if (action === 'dispatch_review') {
       const taskId = str(args.taskId, 20)
       if (!taskId) return reply('action=dispatch_review 需要 taskId', true)
-      const result = await dispatchTeamReview(cwd, taskId)
+      const result = await dispatchTeamReview(cwd, taskId, { sessionFile: originSessionFile })
       return reply({
         ok: true,
         taskId: result.taskId,
         sessionFile: result.sessionFile,
         model: result.model,
         note: '已派发 Verifier 在隔离上下文中独立审查，完成后将通过 review_verdict 提交裁决',
-        board: summarizeBoard(cwd),
+        board: summarizeBoard(cwd, originSessionFile),
       })
     }
 
@@ -276,7 +277,7 @@ export async function handleTeamToolRequest(
         reworkCount: result.reworkCount,
         ...(result.circuitBroken ? { circuitBroken: true } : {}),
         ...(result.resumed !== undefined ? { resumed: result.resumed } : {}),
-        board: summarizeBoard(cwd),
+        board: summarizeBoard(cwd, originSessionFile),
       })
     }
 
@@ -285,12 +286,12 @@ export async function handleTeamToolRequest(
       const taskId = str(args.taskId, 20)
       const note = str(args.note, 1500)
       if (!taskId || !note) return reply('action=comment 需要 taskId 与 note', true)
-      const snapshot = readTeamSnapshot(cwd)
+      const snapshot = readTeamSnapshot(cwd, { sessionFile: originSessionFile })
       const task = snapshot.tasks.find((item) => item.id === taskId)
       if (!task) return reply(`找不到任务卡 ${taskId}`, true)
       const outcome = setTeamTaskStatus(cwd, { taskId, to: task.status, autoNote: note })
       if (!outcome.ok) return reply(`写备注失败：${outcome.reason}`, true)
-      return reply({ ok: true, board: summarizeBoard(cwd) })
+      return reply({ ok: true, board: summarizeBoard(cwd, originSessionFile) })
     }
 
     if (action === 'append_memory') {

@@ -41,28 +41,35 @@ function nonEmptyString(value: unknown): string | undefined {
 export function delegateRunFromItem(item: TimelineItem): DelegateRun | null {
   if (item.type !== 'tool-call') return null
   const details = asRecord(item.toolDetails)
-  if (!details || details.kind !== 'delegate') return null
-  const runId = nonEmptyString(details.runId)
+  const args = asRecord(item.toolArgs)
+  const isDelegateDetails = details?.kind === 'delegate'
+  const isLiveAcpDelegate =
+    !isDelegateDetails
+    && item.toolName === 'acp_delegate'
+    && (item.toolPhase === 'start' || item.toolPhase === 'update')
+  if (!isDelegateDetails && !isLiveAcpDelegate) return null
+
+  const runId = nonEmptyString(details?.runId) ?? (isLiveAcpDelegate ? nonEmptyString(item.toolCallId) ?? nonEmptyString(item.id) : undefined)
   if (!runId) return null
 
-  const rawStatus = nonEmptyString(details.status)
+  const rawStatus = nonEmptyString(details?.status)
   const failed = item.isError === true || rawStatus === 'failed' || rawStatus === 'cancelled'
   const completed = rawStatus === 'completed' || rawStatus === 'done'
   const state: DelegateRunState = failed ? 'failed' : completed ? 'completed' : 'running'
-  const durationMs = typeof details.durationMs === 'number' && Number.isFinite(details.durationMs)
+  const durationMs = typeof details?.durationMs === 'number' && Number.isFinite(details.durationMs)
     ? details.durationMs
     : undefined
 
   return {
     key: runId,
     runId,
-    agent: nonEmptyString(details.agent) ?? 'subagent',
-    task: nonEmptyString(details.task) ?? '',
+    agent: nonEmptyString(details?.agent) ?? nonEmptyString(args?.agent) ?? nonEmptyString(args?.role) ?? 'subagent',
+    task: nonEmptyString(details?.task) ?? nonEmptyString(args?.task) ?? nonEmptyString(args?.prompt) ?? '',
     state,
     startedAt: typeof item.timestamp === 'number' ? item.timestamp : 0,
     durationMs,
-    file: nonEmptyString(details.file),
-    preview: nonEmptyString(details.preview),
+    file: nonEmptyString(details?.file),
+    preview: nonEmptyString(details?.preview),
   }
 }
 

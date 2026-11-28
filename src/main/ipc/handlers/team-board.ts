@@ -27,18 +27,21 @@ import { workerManager } from '../../worker-manager'
 import {
   appendTeamMemory,
   archiveTeamBatch,
+  bindSessionRoleSession,
   bindTeamSession,
+  clearSessionTeamRoles,
   createTeamTask,
   initTeamProject,
   readTeamSnapshot,
   resolveTeamTaskApproval,
+  saveSessionTeamRoles,
   saveTeamRoles,
   setTeamTaskStatus,
   settleTeamRun,
   sweepTeamRuns,
   teamSpecPath,
 } from '../../team-board'
-import { applyRoleRoute, dispatchTeamReview, dispatchTeamTask, mergeTeamTaskWorktree, roleBinding, submitTeamReviewVerdict, titleRoleSession } from '../../team-board-ops'
+import { applyRoleRoute, dispatchTeamReview, dispatchTeamTask, mergeTeamTaskWorktree, resumeTeamRun, roleBinding, submitTeamReviewVerdict, titleRoleSession } from '../../team-board-ops'
 import { registerHandlerWithSchema } from '../registry'
 
 const workspace = z.string().min(1).max(4096)
@@ -52,10 +55,14 @@ function authorizedCwd(workspaceId: string): string {
 }
 
 export function registerTeamBoardHandlers(): void {
-  registerHandlerWithSchema('ipc:teamBoard.snapshot', z.object({ workspaceId: workspace }).strict(), async ({ workspaceId }) => {
-    const cwd = authorizedCwd(workspaceId)
-    return { ok: true, snapshot: readTeamSnapshot(cwd) }
-  })
+  registerHandlerWithSchema(
+    'ipc:teamBoard.snapshot',
+    z.object({ workspaceId: workspace, sessionFile: z.string().max(4096).optional() }).strict(),
+    async ({ workspaceId, sessionFile }) => {
+      const cwd = authorizedCwd(workspaceId)
+      return { ok: true, snapshot: readTeamSnapshot(cwd, { sessionFile }) }
+    },
+  )
 
   registerHandlerWithSchema(
     'ipc:teamBoard.init',
@@ -78,6 +85,9 @@ export function registerTeamBoardHandlers(): void {
     z
       .object({
         workspaceId: workspace,
+        sessionFile: z.string().max(4096).optional(),
+        scope: z.enum(['session', 'project']).optional(),
+        clearSessionRoles: z.boolean().optional(),
         defaultModelOverride: z.string().trim().max(200).refine((value) => !value || !!splitTeamModel(value)).optional(),
         maxConcurrency: z.number().int().min(TEAM_MAX_CONCURRENCY_MIN).max(TEAM_MAX_CONCURRENCY_MAX).optional(),
         autoReview: z.boolean().optional(),
@@ -97,14 +107,47 @@ export function registerTeamBoardHandlers(): void {
           .max(10),
       })
       .strict(),
-    async ({ workspaceId, roles, defaultModelOverride, maxConcurrency, autoReview }) => {
+    async ({ workspaceId, sessionFile, scope, clearSessionRoles, roles, defaultModelOverride, maxConcurrency, autoReview }) => {
       const cwd = authorizedCwd(workspaceId)
       const spec = teamSpecPath(cwd)
-      const saved = saveTeamRoles(spec, roles)
+      const effectiveScope = sessionFile && (scope === 'session' || clearSessionRoles) ? 'session' : 'project'
+      const beforeSnapshot = readTeamSnapshot(cwd, { sessionFile })
+      let saved: ReturnType<typeof saveTeamRoles>
+      if (clearSessionRoles && sessionFile) {
+        clearSessionTeamRoles(spec, beforeSnapshot.sessionFile || sessionFile)
+        saved = readTeamSnapshot(cwd, { sessionFile }).roles
+      } else if (effectiveScope === 'session' && sessionFile) {
+        saved = saveSessionTeamRoles(spec, beforeSnapshot.sessionFile || sessionFile, roles)
+      } else {
+        saved = saveTeamRoles(spec, roles)
+      }
       if (defaultModelOverride !== undefined) configStore.set('teamDefaultModel', defaultModelOverride)
       if (maxConcurrency !== undefined) configStore.set('teamMaxConcurrency', clampTeamConcurrency(maxConcurrency))
       if (autoReview !== undefined) configStore.set('teamAutoReview', autoReview)
-      return { ok: true, roles: saved, snapshot: readTeamSnapshot(cwd) }
+
+      const nextSnapshot = readTeamSnapshot(cwd, { sessionFile })
+      if (sessionFile && !clearSessionRoles && !beforeSnapshot.runs.some((run) => run.sessionFile === sessionFile)) {
+        const targetSession = beforeSnapshot.sessionFile || sessionFile
+        if (targetSession === sessionFile) {
+          const prevLeader = beforeSnapshot.roles.find((r) => r.role === 'Leader')
+          const nextLeader = nextSnapshot.roles.find((r) => r.role === 'Leader')
+          const prevEffective = prevLeader?.model || beforeSnapshot.defaultModel || ''
+          const nextEffective = nextLeader?.model || nextSnapshot.defaultModel || ''
+          if (
+            nextLeader
+            && (prevEffective !== nextEffective || (prevLeader?.effort || '') !== (nextLeader.effort || ''))
+            && splitTeamModel(nextEffective)
+            && existsSync(sessionFile)
+          ) {
+            try {
+              await applyRoleRoute({ ...nextLeader, model: nextEffective }, sessionFile)
+            } catch (error) {
+              console.warn('[team-board] 同步当前对话 Leader 模型失败（已保留看板配置）：', error)
+            }
+          }
+        }
+      }
+      return { ok: true, roles: saved, snapshot: nextSnapshot }
     },
   )
 
@@ -197,11 +240,12 @@ export function registerTeamBoardHandlers(): void {
       .object({
         workspaceId: workspace,
         taskId: z.string().min(1).max(20),
+        sessionFile: z.string().max(4096).optional(),
       })
       .strict(),
-    async ({ workspaceId, taskId }) => {
+    async ({ workspaceId, taskId, sessionFile }) => {
       const cwd = authorizedCwd(workspaceId)
-      return dispatchTeamTask(cwd, taskId, { trigger: 'panel' })
+      return dispatchTeamTask(cwd, taskId, { trigger: 'panel', sessionFile })
     },
   )
 
@@ -225,11 +269,12 @@ export function registerTeamBoardHandlers(): void {
       .object({
         workspaceId: workspace,
         taskId: z.string().min(1).max(20),
+        sessionFile: z.string().max(4096).optional(),
       })
       .strict(),
-    async ({ workspaceId, taskId }) => {
+    async ({ workspaceId, taskId, sessionFile }) => {
       const cwd = authorizedCwd(workspaceId)
-      return dispatchTeamReview(cwd, taskId)
+      return dispatchTeamReview(cwd, taskId, { sessionFile })
     },
   )
 
@@ -283,10 +328,10 @@ export function registerTeamBoardHandlers(): void {
 
   registerHandlerWithSchema(
     'ipc:teamBoard.roleSession',
-    z.object({ workspaceId: workspace, role: z.string().min(1).max(40) }).strict(),
-    async ({ workspaceId, role: roleValue }) => {
+    z.object({ workspaceId: workspace, role: z.string().min(1).max(40), sessionFile: z.string().max(4096).optional() }).strict(),
+    async ({ workspaceId, role: roleValue, sessionFile: sourceSessionFile }) => {
       const cwd = authorizedCwd(workspaceId)
-      const { snapshot, role, binding } = roleBinding(cwd, roleValue)
+      const { snapshot, role, binding } = roleBinding(cwd, roleValue, sourceSessionFile)
       if (!binding.directEnabled) throw new Error(`角色「${role}」不允许直接对话，请先在团队设置里开启`)
       const existing = snapshot.sessions[role as TeamRole]
       if (existing && existsSync(existing.sessionFile)) {
@@ -305,7 +350,11 @@ export function registerTeamBoardHandlers(): void {
         void workerManager.abort(sessionFile).catch(() => {})
         throw error
       }
-      bindTeamSession(teamSpecPath(cwd), role, { sessionFile, sessionId: session.sessionId })
+      if (snapshot.roleScope === 'session' && snapshot.sessionFile) {
+        bindSessionRoleSession(teamSpecPath(cwd), snapshot.sessionFile, role, { sessionFile, sessionId: session.sessionId })
+      } else {
+        bindTeamSession(teamSpecPath(cwd), role, { sessionFile, sessionId: session.sessionId })
+      }
       return {
         ok: true,
         opened: true,
@@ -313,8 +362,25 @@ export function registerTeamBoardHandlers(): void {
         sessionId: session.sessionId,
         sessionFile,
         model: binding.model,
-        snapshot: readTeamSnapshot(cwd),
+        snapshot: readTeamSnapshot(cwd, { sessionFile: sourceSessionFile }),
       }
+    },
+  )
+
+  registerHandlerWithSchema(
+    'ipc:teamBoard.resumeRun',
+    z
+      .object({
+        workspaceId: workspace,
+        sessionFile: z.string().min(1).max(4096),
+        taskId: z.string().max(20).optional(),
+        note: z.string().max(1500).optional(),
+        contextSessionFile: z.string().max(4096).optional(),
+      })
+      .strict(),
+    async ({ workspaceId, sessionFile, taskId, note, contextSessionFile }) => {
+      const cwd = authorizedCwd(workspaceId)
+      return resumeTeamRun(cwd, { sessionFile, taskId, note, contextSessionFile })
     },
   )
 

@@ -250,9 +250,118 @@ function withTeamState<T>(spec: string, mutate: (state: TeamState) => T): T {
   })
 }
 
+export function teamSessionKey(sessionFile: string | null | undefined): string {
+  const raw = String(sessionFile ?? '').trim().replace(/\\/g, '/').replace(/\/+$/, '')
+  if (!raw) return ''
+  return /^[a-zA-Z]:\//.test(raw) || raw.startsWith('//') ? raw.toLowerCase() : raw
+}
+
+export function resolveEffectiveSessionFile(state: TeamState, sessionFile?: string | null): string {
+  const clean = String(sessionFile ?? '').trim()
+  if (!clean) return ''
+  const targetKey = teamSessionKey(clean)
+  for (let i = state.runs.length - 1; i >= 0; i--) {
+    const run = state.runs[i]
+    if (teamSessionKey(run.sessionFile) === targetKey && run.originSessionFile) {
+      return run.originSessionFile
+    }
+  }
+  return clean
+}
+
+export function readEffectiveTeamRoles(
+  spec: string,
+  state: TeamState,
+  sessionFile?: string | null,
+): {
+  roles: TeamRoleBinding[]
+  projectRoles: TeamRoleBinding[]
+  roleScope: 'session' | 'project'
+  effectiveSessionFile: string
+} {
+  const projectRoles = readTeamRoles(spec)
+  const effectiveSessionFile = resolveEffectiveSessionFile(state, sessionFile)
+  const key = teamSessionKey(effectiveSessionFile)
+  const override = key ? state.sessionRoles?.[key] : undefined
+  if (override && override.length > 0) {
+    return {
+      roles: normalizeTeamRoleBindings(override),
+      projectRoles,
+      roleScope: 'session',
+      effectiveSessionFile,
+    }
+  }
+  return {
+    roles: projectRoles,
+    projectRoles,
+    roleScope: 'project',
+    effectiveSessionFile,
+  }
+}
+
+export function saveSessionTeamRoles(spec: string, sessionFile: string, input: unknown): TeamRoleBinding[] {
+  const roles = normalizeTeamRoleBindings(input)
+  const key = teamSessionKey(sessionFile)
+  if (!key) return roles
+  withTeamState(spec, (state) => {
+    const map = { ...(state.sessionRoles ?? {}) }
+    delete map[key]
+    map[key] = roles
+    const keys = Object.keys(map)
+    if (keys.length > 80) {
+      for (const staleKey of keys.slice(0, keys.length - 80)) {
+        delete map[staleKey]
+      }
+    }
+    state.sessionRoles = map
+  })
+  return roles
+}
+
+export function clearSessionTeamRoles(spec: string, sessionFile: string): void {
+  const key = teamSessionKey(sessionFile)
+  if (!key) return
+  withTeamState(spec, (state) => {
+    if (state.sessionRoles) delete state.sessionRoles[key]
+    if (state.sessionRoleSessions) delete state.sessionRoleSessions[key]
+  })
+}
+
+export function bindSessionRoleSession(
+  spec: string,
+  sourceSessionFile: string,
+  roleValue: string,
+  session: { sessionFile: string; sessionId?: string },
+): TeamRole | null {
+  const role = canonicalTeamRole(roleValue)
+  const sourceKey = teamSessionKey(sourceSessionFile)
+  if (!isTeamRole(role) || !sourceKey) return null
+  withTeamState(spec, (state) => {
+    const nextMap = { ...(state.sessionRoleSessions ?? {}) }
+    const current = { ...(nextMap[sourceKey] ?? {}) }
+    current[role] = {
+      sessionFile: session.sessionFile,
+      ...(session.sessionId ? { sessionId: session.sessionId } : {}),
+      updatedAt: Date.now(),
+    }
+    nextMap[sourceKey] = current
+    state.sessionRoleSessions = nextMap
+  })
+  return role
+}
+
 export function recordTeamDispatch(
   spec: string,
-  input: { taskId: string; role: string; sessionFile: string; sessionId?: string; worktreePath?: string; branch?: string },
+  input: {
+    taskId: string
+    role: string
+    sessionFile: string
+    sessionId?: string
+    worktreePath?: string
+    branch?: string
+    model?: string
+    originSessionFile?: string
+  },
 ): TeamRun {
   const role = canonicalTeamRole(input.role)
   const run: TeamRun = {
@@ -261,6 +370,8 @@ export function recordTeamDispatch(
     role,
     sessionFile: input.sessionFile,
     ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+    ...(input.model ? { model: sanitizeTeamText(input.model, 200) } : {}),
+    ...(input.originSessionFile ? { originSessionFile: input.originSessionFile } : {}),
     ...(input.worktreePath ? { worktreePath: sanitizeTeamText(input.worktreePath, 500) } : {}),
     ...(input.branch ? { branch: sanitizeTeamText(input.branch, 120) } : {}),
     status: 'starting',
@@ -306,7 +417,7 @@ export function bindTeamSession(
 
 /* ---------------- 看板读写 ---------------- */
 
-export function snapshotFor(spec: string, workspaceId: string): TeamSnapshot {
+export function snapshotFor(spec: string, workspaceId: string, options?: { sessionFile?: string | null }): TeamSnapshot {
   const boardFile = join(spec, TEAM_BOARD_RELATIVE_PATH)
   const exists = existsSync(boardFile)
   let board: TeamBoard = { batch: '当前批次', goal: '', tasks: [] }
@@ -315,6 +426,12 @@ export function snapshotFor(spec: string, workspaceId: string): TeamSnapshot {
     board = parseTeamBoard(markdown)
   }
   const state = readTeamState(spec)
+  const effective = readEffectiveTeamRoles(spec, state, options?.sessionFile)
+  const sessionKey = teamSessionKey(effective.effectiveSessionFile)
+  const scopedSessions =
+    effective.roleScope === 'session' && sessionKey && state.sessionRoleSessions?.[sessionKey]
+      ? { ...state.sessions, ...state.sessionRoleSessions[sessionKey] }
+      : state.sessions
   const defaultModelOverride = configStore.get('teamDefaultModel') || ''
   const settings = exists ? readPiAgentGlobalSettingsFromDisk() : null
   const provider = typeof settings?.defaultProvider === 'string' ? settings.defaultProvider.trim() : ''
@@ -328,8 +445,11 @@ export function snapshotFor(spec: string, workspaceId: string): TeamSnapshot {
     batch: board.batch,
     goal: board.goal,
     tasks: board.tasks,
-    roles: readTeamRoles(spec),
-    sessions: state.sessions,
+    roles: effective.roles,
+    projectRoles: effective.projectRoles,
+    roleScope: effective.roleScope,
+    ...(effective.effectiveSessionFile ? { sessionFile: effective.effectiveSessionFile } : {}),
+    sessions: scopedSessions,
     runs: state.runs,
     defaultModelOverride,
     globalDefaultModel,
@@ -339,8 +459,8 @@ export function snapshotFor(spec: string, workspaceId: string): TeamSnapshot {
   }
 }
 
-export function readTeamSnapshot(workspaceRoot: string): TeamSnapshot {
-  return snapshotFor(teamSpecPath(workspaceRoot), workspaceRoot)
+export function readTeamSnapshot(workspaceRoot: string, options?: { sessionFile?: string | null }): TeamSnapshot {
+  return snapshotFor(teamSpecPath(workspaceRoot), workspaceRoot, options)
 }
 
 export type TeamStatusWriteOutcome =
