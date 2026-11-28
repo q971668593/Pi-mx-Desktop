@@ -247,7 +247,8 @@
     "scopeSessionHint": "仅作用于当前对话与它派出的子代理；别的对话可以单独设置不同模型，互不影响。",
     "scopeProjectHint": "作为本项目的默认团队模型配置；未单独设置的对话都会继承这里。",
     "resetToProjectDefault": "恢复继承项目默认",
-    "resetDone": "已恢复继承项目默认配置"
+    "resetDone": "已恢复继承项目默认配置",
+    "toggleCollapse": "折叠或展开子代理列表"
   },
   "delegate": {
     "hint": "点一行打开这个子 Agent 的会话，看它的思考和进度",

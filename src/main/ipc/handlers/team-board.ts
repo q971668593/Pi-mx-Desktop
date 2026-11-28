@@ -39,6 +39,7 @@ import {
   setTeamTaskStatus,
   settleTeamRun,
   sweepTeamRuns,
+  teamSessionKey,
   teamSpecPath,
 } from '../../team-board'
 import { applyRoleRoute, dispatchTeamReview, dispatchTeamTask, mergeTeamTaskWorktree, resumeTeamRun, roleBinding, submitTeamReviewVerdict, titleRoleSession } from '../../team-board-ops'
@@ -126,24 +127,31 @@ export function registerTeamBoardHandlers(): void {
       if (autoReview !== undefined) configStore.set('teamAutoReview', autoReview)
 
       const nextSnapshot = readTeamSnapshot(cwd, { sessionFile })
-      if (sessionFile && !clearSessionRoles && !beforeSnapshot.runs.some((run) => run.sessionFile === sessionFile)) {
-        const targetSession = beforeSnapshot.sessionFile || sessionFile
-        if (targetSession === sessionFile) {
-          const prevLeader = beforeSnapshot.roles.find((r) => r.role === 'Leader')
-          const nextLeader = nextSnapshot.roles.find((r) => r.role === 'Leader')
-          const prevEffective = prevLeader?.model || beforeSnapshot.defaultModel || ''
-          const nextEffective = nextLeader?.model || nextSnapshot.defaultModel || ''
-          if (
-            nextLeader
-            && (prevEffective !== nextEffective || (prevLeader?.effort || '') !== (nextLeader.effort || ''))
-            && splitTeamModel(nextEffective)
-            && existsSync(sessionFile)
-          ) {
-            try {
-              await applyRoleRoute({ ...nextLeader, model: nextEffective }, sessionFile)
-            } catch (error) {
-              console.warn('[team-board] 同步当前对话 Leader 模型失败（已保留看板配置）：', error)
-            }
+      const reqKey = teamSessionKey(sessionFile)
+      const targetSession = beforeSnapshot.sessionFile || sessionFile || ''
+      const targetKey = teamSessionKey(targetSession)
+      const shouldSyncLeader =
+        Boolean(sessionFile)
+        && Boolean(reqKey)
+        && targetKey === reqKey
+        && !beforeSnapshot.runs.some((run) => teamSessionKey(run.sessionFile) === reqKey)
+        && (effectiveScope === 'session' || beforeSnapshot.roleScope === 'project')
+      if (shouldSyncLeader && sessionFile) {
+        const prevLeader = beforeSnapshot.roles.find((r) => r.role === 'Leader')
+        const nextLeader = nextSnapshot.roles.find((r) => r.role === 'Leader')
+        const prevEffective = prevLeader?.model || beforeSnapshot.defaultModel || ''
+        const nextEffective = nextLeader?.model || nextSnapshot.defaultModel || ''
+        if (
+          nextLeader
+          && (prevEffective !== nextEffective || (prevLeader?.effort || '') !== (nextLeader.effort || ''))
+          && splitTeamModel(nextEffective)
+          && existsSync(sessionFile)
+          && workerManager.hasLiveSession(sessionFile)
+        ) {
+          try {
+            await applyRoleRoute({ ...nextLeader, model: nextEffective }, sessionFile)
+          } catch (error) {
+            console.warn('[team-board] 同步当前对话 Leader 模型失败（已保留看板配置）：', error)
           }
         }
       }
@@ -417,7 +425,8 @@ export function registerTeamBoardHandlers(): void {
       const cwd = authorizedCwd(workspaceId)
       const spec = teamSpecPath(cwd)
       const before = readTeamSnapshot(cwd)
-      const run = [...before.runs].reverse().find((item) => item.sessionFile === sessionFile)
+      const targetKey = teamSessionKey(sessionFile)
+      const run = [...before.runs].reverse().find((item) => teamSessionKey(item.sessionFile) === targetKey)
       try {
         await workerManager.abort(sessionFile)
       } catch (error) {
@@ -463,7 +472,7 @@ export function registerTeamBoardHandlers(): void {
         canonicalTeamRole(result.run.role) === 'Builder' &&
         configStore.get('teamAutoReview') === true
       ) {
-        await dispatchTeamReview(cwd, result.run.taskId).catch((error) => {
+        await dispatchTeamReview(cwd, result.run.taskId, { sessionFile: result.run.originSessionFile }).catch((error) => {
           console.warn('[team-board] 自动派发 Verifier 失败：', error)
         })
       }

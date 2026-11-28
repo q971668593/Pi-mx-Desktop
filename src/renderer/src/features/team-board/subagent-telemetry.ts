@@ -25,9 +25,6 @@ function fileBaseName(value: string): string {
   const parts = value.replace(/\\/g, '/').split('/').filter(Boolean)
   return parts[parts.length - 1] || value
 }
-import type { SessionState } from '@renderer/stores/session-state'
-import type { TimelineItem } from '@renderer/stores/ui-store-types'
-import type { TeamRun } from '@shared/team-board'
 
 export const SILENT_WARNING_MS = 90_000
 

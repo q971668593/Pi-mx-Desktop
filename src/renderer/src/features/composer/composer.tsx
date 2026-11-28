@@ -188,7 +188,7 @@ export function Composer() {
     if (!previewChildRunning || !historySessionFile) return
     const timer = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return
-      void hydrateSessionView(historySessionFile, currentSessionId, undefined, { bindWorker: false })
+      void hydrateSessionView(historySessionFile, currentSessionId, undefined, { bindWorker: false, bypassCache: true })
     }, 3500)
     return () => window.clearInterval(timer)
   }, [currentSessionId, historySessionFile, previewChildRunning])

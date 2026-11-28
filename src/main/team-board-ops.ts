@@ -30,6 +30,7 @@ import {
   recordTeamDispatch,
   setTeamTaskStatus,
   settleTeamRun,
+  teamSessionKey,
   teamSpecPath,
 } from './team-board'
 
@@ -543,6 +544,9 @@ export async function submitTeamReviewVerdict(
   const builderRun = [...snapshot.runs]
     .reverse()
     .find((run) => run.taskId === task.id && canonicalTeamRole(run.role) === 'Builder' && existsSync(run.sessionFile))
+  const originSessionFile =
+    builderRun?.originSessionFile
+    || [...snapshot.runs].reverse().find((r) => r.taskId === task.id && r.originSessionFile)?.originSessionFile
 
   if (builderRun) {
     const spec = teamSpecPath(workspaceRoot)
@@ -552,6 +556,8 @@ export async function submitTeamReviewVerdict(
       role: 'Builder',
       sessionFile: builderRun.sessionFile,
       sessionId: builderRun.sessionId,
+      ...(builderRun.model ? { model: builderRun.model } : {}),
+      ...(originSessionFile ? { originSessionFile } : {}),
       ...(task.worktreePath ? { worktreePath: task.worktreePath } : {}),
       ...(task.branch ? { branch: task.branch } : {}),
     })
@@ -570,7 +576,7 @@ export async function submitTeamReviewVerdict(
 
   if (!resumed && canonicalTeamRole(task.role) === 'Builder') {
     try {
-      await dispatchTeamTask(workspaceRoot, task.id, { trigger: 'agent', bypassGates: true })
+      await dispatchTeamTask(workspaceRoot, task.id, { trigger: 'agent', bypassGates: true, sessionFile: originSessionFile })
       resumed = true
     } catch (error) {
       console.warn('[team-board] 返工重派 Builder 失败：', error)
@@ -610,9 +616,10 @@ export async function resumeTeamRun(
   const snapshot = readTeamSnapshot(workspaceRoot, { sessionFile: input.contextSessionFile })
   if (!snapshot.exists) throw new Error('当前项目还没有看板')
   const spec = teamSpecPath(workspaceRoot)
+  const targetKey = teamSessionKey(input.sessionFile)
   const target = [...snapshot.runs]
     .reverse()
-    .find((run) => run.sessionFile === input.sessionFile || (!input.sessionFile && input.taskId && run.taskId === input.taskId))
+    .find((run) => (targetKey && teamSessionKey(run.sessionFile) === targetKey) || (!input.sessionFile && input.taskId && run.taskId === input.taskId))
   if (!target) throw new Error('找不到对应的子代理派发记录，请刷新看板后重试')
   if (!existsSync(target.sessionFile)) throw new Error('该子代理的会话文件已不存在，请改用「派发开工」新建会话')
 

@@ -1,4 +1,4 @@
-import { isAbsolute, join, posix, resolve } from 'path'
+import { basename, dirname, isAbsolute, posix, resolve } from 'path'
 import { existsSync, readFileSync, statSync } from 'fs'
 import { isWslWindowsPath, wslPathToWindows, wslWindowsPathDistro } from '@shared/wsl-path'
 import { configStore } from './config-store'
@@ -86,26 +86,18 @@ export function authorizeProjectCwd(reqCwd: string | undefined): { ok: true; cwd
   return { ok: false, error: 'cwd_not_trusted' }
 }
 
-function isRegisteredTeamSessionFile(workspaceRoot: string, sessionFile: string): boolean {
+function isFormerWorktreeDirOfProject(target: string, projectRoot: string): boolean {
   try {
-    const stateFile = join(workspaceRoot, '.文档', '开发规范', '协作', '团队.json')
-    if (!existsSync(stateFile)) return false
-    const parsed = JSON.parse(readFileSync(stateFile, 'utf8')) as {
-      runs?: Array<{ sessionFile?: unknown }>
-      sessions?: Record<string, { sessionFile?: unknown } | undefined>
+    const cleanRoot = comparableWorkspacePath(projectRoot)
+    const repoName = basename(cleanRoot)
+    if (!repoName) return false
+    const worktreesRoot = comparableWorkspacePath(`${dirname(cleanRoot)}/${repoName}.worktrees`)
+    const cleanTarget = comparableWorkspacePath(target)
+    const windowsPath = /^[a-zA-Z]:[\\/]/.test(target) || /^[a-zA-Z]:[\\/]/.test(projectRoot)
+    if (windowsPath) {
+      return cleanTarget.toLowerCase().startsWith(`${worktreesRoot.toLowerCase()}/`)
     }
-    const candidates: string[] = []
-    if (Array.isArray(parsed.runs)) {
-      for (const run of parsed.runs) {
-        if (typeof run?.sessionFile === 'string' && run.sessionFile) candidates.push(run.sessionFile)
-      }
-    }
-    if (parsed.sessions && typeof parsed.sessions === 'object') {
-      for (const entry of Object.values(parsed.sessions)) {
-        if (typeof entry?.sessionFile === 'string' && entry.sessionFile) candidates.push(entry.sessionFile)
-      }
-    }
-    return candidates.some((candidate) => workspacePathsEqual(candidate, sessionFile))
+    return cleanTarget.startsWith(`${worktreesRoot}/`)
   } catch {
     return false
   }
@@ -139,7 +131,7 @@ export async function authorizeTrustedSessionFile(
   const allowed =
     workspacePathsEqual(sessionCwd, authorizedCwd.cwd) ||
     isWorktreeOfTrustedProject(sessionCwd, [authorizedCwd.cwd]) ||
-    isRegisteredTeamSessionFile(authorizedCwd.cwd, sessionFile)
+    isFormerWorktreeDirOfProject(sessionCwd, authorizedCwd.cwd)
   if (!allowed) {
     return { ok: false, error: 'session_workspace_mismatch' }
   }

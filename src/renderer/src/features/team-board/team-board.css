@@ -1,16 +1,45 @@
-/* 工作团队面板：泳道、角色坞、卡片与详情抽屉。只用主题 token，不硬编码深浅色。 */
+/* 工作团队面板：Warm Editorial + Surgical Amber（暗色模式自动切换到 Dark Modern 层级），全用主题 token */
 
 .team-board {
-  /* 每列最小宽度；面板够宽时按份额平均撑开，窄时横向滑动 */
-  --team-lane-min: 152px;
+  --team-lane-min: 168px;
   --team-lane-max: 320px;
-  --team-hairline: color-mix(in srgb, var(--border-base, #e4e4e7) 62%, transparent);
-  --team-fill: color-mix(in srgb, var(--text-secondary, #71717a) 8%, transparent);
+  --team-accent: var(--brand, #d97706);
+  --team-accent-soft: color-mix(in srgb, var(--brand, #d97706) 11%, transparent);
+  --team-accent-border: color-mix(in srgb, var(--brand, #d97706) 32%, transparent);
+  --team-info: var(--primary-semantic, #165dff);
+  --team-ink: var(--text-primary, #14131b);
+  --team-muted: var(--text-secondary, #565360);
+  --team-subtle: hsl(var(--text-tertiary-hsl, 240 4% 50%));
+  --team-paper: var(--bg-base, #ffffff);
+  --team-surface: var(--bg-1, #faf8f4);
+  --team-well: var(--bg-2, #f2efe7);
+  --team-hairline: color-mix(in srgb, var(--border-base, #e4e0d5) 82%, transparent);
+  --team-fill: color-mix(in srgb, var(--text-secondary, #565360) 7%, transparent);
+  --team-card-shadow:
+    0 1px 2px rgb(20 19 27 / 0.04),
+    0 4px 12px -6px rgb(20 19 27 / 0.08);
+  --team-card-shadow-hover:
+    0 2px 6px rgb(20 19 27 / 0.07),
+    0 10px 20px -10px rgb(20 19 27 / 0.14);
+}
+
+.dark .team-board {
+  --team-paper: var(--bg-1, #212028);
+  --team-surface: var(--bg-base, #1a1920);
+  --team-well: color-mix(in srgb, var(--bg-2, #282730) 72%, transparent);
+  --team-hairline: color-mix(in srgb, var(--border-base, #2d2b36) 92%, transparent);
+  --team-fill: color-mix(in srgb, var(--text-secondary, #9c98a6) 10%, transparent);
+  --team-card-shadow:
+    0 1px 2px rgb(0 0 0 / 0.28),
+    0 4px 12px -6px rgb(0 0 0 / 0.36);
+  --team-card-shadow-hover:
+    0 3px 10px rgb(0 0 0 / 0.36),
+    0 10px 22px -10px rgb(0 0 0 / 0.48);
 }
 
 .team-scroll {
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--text-secondary) 22%, transparent) transparent;
+  scrollbar-color: color-mix(in srgb, var(--team-muted) 22%, transparent) transparent;
 }
 
 .team-scroll::-webkit-scrollbar {
@@ -24,27 +53,28 @@
 
 .team-scroll::-webkit-scrollbar-thumb {
   border-radius: 4px;
-  background: color-mix(in srgb, var(--text-secondary) 22%, transparent);
+  background: color-mix(in srgb, var(--team-muted) 22%, transparent);
 }
 
 .team-scroll::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--text-secondary) 40%, transparent);
+  background: color-mix(in srgb, var(--team-muted) 40%, transparent);
 }
 
-/* ---- 顶部信息 ---- */
+/* ---- 顶部信息与批次进度 ---- */
 
 .team-head {
   border-bottom: 1px solid var(--team-hairline);
-  background: color-mix(in srgb, var(--bg-1, #fafafa) 46%, transparent);
+  background: color-mix(in srgb, var(--team-surface) 76%, transparent);
 }
 
 .team-project {
-  max-width: 46%;
+  max-width: 48%;
   border-radius: 9999px;
-  padding: 0 6px;
+  padding: 1px 7px;
   font-size: 10px;
   line-height: 15px;
-  color: var(--text-tertiary);
+  font-weight: 500;
+  color: var(--team-muted);
   background: var(--team-fill);
 }
 
@@ -52,39 +82,61 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
-  padding: 4px;
-  color: var(--text-secondary);
-  transition: background-color 120ms ease, color 120ms ease;
+  border-radius: 7px;
+  padding: 5px;
+  color: var(--team-muted);
+  transition: background-color 140ms ease, color 140ms ease;
 }
 
 .team-icon-btn:hover {
-  background: var(--bg-hover, rgb(0 0 0 / 0.04));
-  color: var(--text-primary);
+  background: var(--bg-hover, rgb(0 0 0 / 0.05));
+  color: var(--team-ink);
 }
 
 .team-batch {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 12px 8px;
-  border-radius: 10px;
-  border: 1px solid color-mix(in srgb, var(--border-base, #e4e4e7) 55%, transparent);
-  background: color-mix(in srgb, var(--bg-1, #fafafa) 78%, transparent);
-  padding: 7px 9px;
+  flex-direction: column;
+  gap: 6px;
+  margin: 2px 12px 10px;
+  border-radius: 11px;
+  border: 1px solid var(--team-hairline);
+  background: var(--team-paper);
+  box-shadow: var(--team-card-shadow);
+  padding: 9px 11px;
+}
+
+.team-progress-track {
+  position: relative;
+  height: 4px;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: var(--team-fill);
+}
+
+.team-progress-fill {
+  height: 100%;
+  border-radius: 9999px;
+  background: var(--team-accent);
+  transition: width 280ms var(--ease-enter, cubic-bezier(0.22, 1, 0.36, 1)), background-color 200ms ease;
+}
+
+.team-progress-fill[data-complete='true'] {
+  background: var(--success-semantic, #059669);
 }
 
 .team-count {
   display: inline-flex;
-  min-width: 15px;
+  min-width: 16px;
   align-items: center;
   justify-content: center;
   border-radius: 9999px;
-  padding: 0 4px;
+  padding: 0 5px;
   font-size: 9.5px;
-  line-height: 14px;
+  line-height: 15px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
-  color: var(--text-tertiary);
+  color: var(--team-subtle);
   background: var(--team-fill);
 }
 
@@ -93,9 +145,9 @@
 .team-seg {
   display: inline-flex;
   align-items: center;
-  border-radius: 7px;
+  border-radius: 8px;
   background: var(--team-fill);
-  padding: 1px;
+  padding: 2px;
 }
 
 .team-seg-btn {
@@ -103,33 +155,33 @@
   align-items: center;
   justify-content: center;
   border-radius: 6px;
-  padding: 2px 6px;
+  padding: 2px 7px;
   font-size: 10.5px;
   line-height: 15px;
-  color: var(--text-secondary);
-  transition: background-color 120ms ease, color 120ms ease;
+  font-weight: 500;
+  color: var(--team-muted);
+  transition: background-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
 }
 
 .team-seg-btn:hover {
-  color: var(--text-primary);
+  color: var(--team-ink);
 }
 
 .team-seg-btn[data-active='true'] {
-  background: var(--bg-1, #fff);
-  color: var(--text-primary);
+  background: var(--team-paper);
+  color: var(--team-ink);
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
 }
 
-/* ---- 角色坞：五个角色平均分一整行 ---- */
+/* ---- 角色坞 ---- */
 
 .team-roles {
   display: flex;
   align-items: stretch;
-  gap: 2px;
-  border-radius: 11px;
-  border: 1px solid var(--team-hairline);
-  background: color-mix(in srgb, var(--bg-2, #f4f4f5) 34%, transparent);
-  padding: 3px;
+  gap: 3px;
+  border-radius: 12px;
+  background: var(--team-well);
+  padding: 4px;
 }
 
 .team-role-chip {
@@ -141,64 +193,76 @@
   align-items: center;
   gap: 2px;
   overflow: hidden;
-  border-radius: 10px;
-  padding: 6px 5px 5px;
+  border-radius: 9px;
+  padding: 7px 4px 6px;
   border: 1px solid transparent;
-  transition: background-color 120ms ease, border-color 120ms ease, opacity 120ms ease;
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease, opacity 140ms ease;
 }
 
 .team-role-chip:hover {
-  background: var(--bg-hover, rgb(0 0 0 / 0.04));
-  border-color: color-mix(in srgb, var(--team-role, #64748b) 28%, transparent);
+  background: var(--team-paper);
+  border-color: var(--team-hairline);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.05);
+}
+
+.team-role-chip[data-running='true'] {
+  background: color-mix(in srgb, var(--team-paper) 82%, transparent);
 }
 
 .team-role-chip[data-disabled='true'] {
-  opacity: 0.45;
+  opacity: 0.44;
 }
 
-.team-role-chip[data-role='Leader'] {
-  background: color-mix(in srgb, var(--team-role, #f59e0b) 7%, transparent);
-  border-color: color-mix(in srgb, var(--team-role, #f59e0b) 18%, transparent);
+.team-role-chip[data-role='Leader'] .team-avatar {
+  box-shadow:
+    0 0 0 1.5px color-mix(in srgb, var(--team-accent) 42%, transparent),
+    0 1px 3px rgb(0 0 0 / 0.08);
 }
 
 .team-role-face {
   position: relative;
   display: inline-flex;
   flex: none;
-  margin-bottom: 1px;
+  margin-bottom: 2px;
 }
 
 .team-role-count {
   position: absolute;
   top: -4px;
   right: -6px;
-  min-width: 13px;
+  min-width: 14px;
   border-radius: 9999px;
-  padding: 0 3px;
+  padding: 0 3.5px;
   text-align: center;
   font-size: 9px;
-  line-height: 13px;
+  line-height: 14px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: var(--text-secondary);
-  background: var(--bg-2, #f4f4f5);
-  box-shadow: 0 0 0 1.5px var(--bg-1, #fff);
+  color: var(--team-muted);
+  background: var(--team-paper);
+  box-shadow: 0 0 0 1.5px var(--team-well), 0 1px 2px rgb(0 0 0 / 0.08);
+}
+
+.team-role-count[data-active='true'] {
+  color: #fff;
+  background: var(--team-accent);
 }
 
 .team-avatar {
   position: relative;
   display: inline-flex;
-  height: 32px;
-  width: 32px;
+  height: 34px;
+  width: 34px;
   flex: none;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   border-radius: 9999px;
-  border: 1px solid color-mix(in srgb, var(--team-role, #64748b) 40%, var(--border-base, #d4d4d8));
+  border: 1.5px solid color-mix(in srgb, var(--team-role, #64748b) 42%, var(--border-base, #e4e0d5));
   background:
-    radial-gradient(circle at 32% 24%, color-mix(in srgb, var(--team-role, #64748b) 26%, transparent), transparent 68%),
-    var(--bg-2, #f4f4f5);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+    radial-gradient(circle at 32% 24%, color-mix(in srgb, var(--team-role, #64748b) 22%, transparent), transparent 68%),
+    var(--team-surface);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.08);
 }
 
 .team-avatar img {
@@ -218,12 +282,12 @@
 }
 
 .team-role-chip[data-running='true'] .team-role-ring {
-  opacity: 0.75;
+  opacity: 0.78;
   animation: team-role-breathe 1.8s ease-in-out infinite;
 }
 
 @keyframes team-role-breathe {
-  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--team-role, #64748b) 45%, transparent); }
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--team-role, #64748b) 42%, transparent); }
   50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--team-role, #64748b) 0%, transparent); }
 }
 
@@ -241,15 +305,14 @@
 
 @keyframes team-dot-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(0.82); }
+  50% { opacity: 0.48; transform: scale(0.8); }
 }
 
-/* ---- 泳道：滚轮横滑 / 按住背景拖动 ---- */
+/* ---- 泳道 ---- */
 
 .team-lanes-wrap {
   position: relative;
   display: flex;
-  /* flex 子项的 min-width 默认是内容宽度：不归零的话泳道会把整个面板撑宽（页面级横向滚动条）。 */
   min-width: 0;
   min-height: 0;
   flex: 1;
@@ -262,10 +325,10 @@
   top: 0;
   right: 0;
   bottom: 10px;
-  width: 18px;
+  width: 20px;
   z-index: 1;
   pointer-events: none;
-  background: linear-gradient(to left, color-mix(in srgb, var(--surface-sidebar, var(--bg-1, #fff)) 92%, transparent), transparent);
+  background: linear-gradient(to left, color-mix(in srgb, var(--surface-sidebar, var(--team-surface)) 92%, transparent), transparent);
 }
 
 .team-lanes {
@@ -297,73 +360,73 @@
   max-width: var(--team-lane-max);
   flex-direction: column;
   border-radius: 12px;
-  border: 1px solid var(--team-hairline);
-  background: color-mix(in srgb, var(--bg-2, #f4f4f5) 46%, transparent);
-  transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+  border: 1px solid color-mix(in srgb, var(--team-hairline) 65%, transparent);
+  background: var(--team-well);
+  transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
 }
 
 .team-lane[data-over='true'] {
-  border-color: color-mix(in srgb, var(--lane-color, #64748b) 60%, transparent);
-  background: color-mix(in srgb, var(--lane-color, #64748b) 9%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--lane-color, #64748b) 24%, transparent);
+  border-color: color-mix(in srgb, var(--lane-color, #64748b) 56%, transparent);
+  background: color-mix(in srgb, var(--lane-color, #64748b) 8%, var(--team-well));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--lane-color, #64748b) 22%, transparent);
 }
 
 .team-lane-head {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 7px 8px 5px;
+  gap: 6px;
+  padding: 9px 10px 7px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.01em;
-  color: var(--text-secondary);
+  color: var(--team-muted);
 }
 
 .team-lane-dot {
-  height: 6px;
-  width: 6px;
+  height: 7px;
+  width: 7px;
   flex: none;
   border-radius: 9999px;
 }
 
 .team-lane-count {
   margin-left: auto;
-  min-width: 16px;
+  min-width: 18px;
   border-radius: 9999px;
-  padding: 0 4px;
+  padding: 0 5px;
   text-align: center;
   font-size: 9.5px;
-  line-height: 15px;
+  line-height: 16px;
   font-variant-numeric: tabular-nums;
-  font-weight: 500;
-  color: var(--text-tertiary);
-  background: var(--team-fill);
+  font-weight: 600;
+  color: var(--team-subtle);
+  background: color-mix(in srgb, var(--team-paper) 75%, transparent);
 }
 
 .team-lane-cards {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  min-height: 40px;
+  gap: 7px;
+  min-height: 44px;
   flex: 1;
   overflow-y: auto;
-  padding: 0 6px 6px;
+  padding: 0 7px 8px;
 }
 
 .team-lane-empty {
   display: flex;
-  min-height: 44px;
+  min-height: 48px;
   align-items: center;
   justify-content: center;
   border-radius: 9px;
-  border: 1px dashed color-mix(in srgb, var(--border-base, #e4e4e7) 78%, transparent);
-  color: var(--text-tertiary);
-  font-size: 10px;
+  border: 1px dashed color-mix(in srgb, var(--team-hairline) 85%, transparent);
+  color: var(--team-subtle);
+  font-size: 10.5px;
 }
 
 .team-lane[data-over='true'] .team-lane-empty {
   border-color: color-mix(in srgb, var(--lane-color, #64748b) 55%, transparent);
-  color: var(--text-secondary);
+  color: var(--team-muted);
 }
 
 /* ---- 卡片 ---- */
@@ -373,34 +436,36 @@
   display: block;
   width: 100%;
   overflow: hidden;
-  border-radius: 9px;
-  border: 1px solid color-mix(in srgb, var(--border-base, #e4e4e7) 70%, transparent);
-  background: var(--bg-1, #fff);
-  padding: 7px 8px 6px;
+  border-radius: 10px;
+  border: 1px solid var(--team-hairline);
+  background: var(--team-paper);
+  padding: 9px 10px 8px 12px;
   text-align: left;
-  box-shadow: 0 1px 1px rgb(0 0 0 / 0.03);
-  transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+  box-shadow: var(--team-card-shadow);
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
 }
 
-/* 左侧状态细边：一眼能看出卡片现在在哪一段 */
 .team-card::before {
   content: '';
   position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: color-mix(in srgb, var(--card-accent, #64748b) 62%, transparent);
-  opacity: 0.55;
+  left: 4px;
+  top: 9px;
+  bottom: 9px;
+  width: 2.5px;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--card-accent, #64748b) 72%, transparent);
+  opacity: 0.45;
+  transition: opacity 140ms ease;
 }
 
 .team-card:hover {
-  border-color: color-mix(in srgb, var(--card-accent, #64748b) 40%, var(--border-base, #e4e4e7));
-  box-shadow: 0 2px 8px rgb(0 0 0 / 0.08);
+  border-color: color-mix(in srgb, var(--card-accent, #64748b) 36%, var(--team-hairline));
+  box-shadow: var(--team-card-shadow-hover);
+  transform: translateY(-1px);
 }
 
 .team-card:hover::before {
-  opacity: 0.95;
+  opacity: 0.92;
 }
 
 .team-card[data-dragging='true'] {
@@ -409,7 +474,7 @@
 }
 
 .team-card[data-running='true'] {
-  border-color: color-mix(in srgb, var(--card-accent, #3b82f6) 46%, var(--border-base, #e4e4e7));
+  border-color: color-mix(in srgb, var(--card-accent, #3b82f6) 40%, var(--team-hairline));
 }
 
 .team-card-title {
@@ -419,27 +484,40 @@
   overflow: hidden;
   overflow-wrap: anywhere;
   font-size: 12px;
-  line-height: 16px;
+  line-height: 17px;
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--team-ink);
 }
 
 .team-card-id {
   font-family: var(--font-mono);
-  font-size: 9px;
-  line-height: 12px;
+  font-size: 9.5px;
+  line-height: 13px;
   letter-spacing: 0.02em;
-  color: var(--text-tertiary);
+  color: var(--team-subtle);
 }
 
 .team-card-meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
-  margin-top: 4px;
+  gap: 5px;
+  margin-top: 6px;
   font-size: 10px;
-  line-height: 13px;
-  color: var(--text-tertiary);
+  line-height: 14px;
+  color: var(--team-subtle);
+}
+
+.team-card-role-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 5px;
+  padding: 1px 6px;
+  font-size: 9.5px;
+  line-height: 14px;
+  font-weight: 500;
+  color: var(--role-tint, var(--team-muted));
+  background: color-mix(in srgb, var(--role-tint, var(--team-muted)) 11%, transparent);
 }
 
 .team-chip {
@@ -448,17 +526,18 @@
   gap: 3px;
   max-width: 100%;
   border-radius: 9999px;
-  padding: 0 5px;
+  padding: 1px 6px;
   font-size: 9.5px;
   line-height: 15px;
+  font-weight: 500;
   white-space: nowrap;
-  color: var(--text-secondary);
-  background: color-mix(in srgb, var(--text-secondary) 9%, transparent);
+  color: var(--team-muted);
+  background: var(--team-fill);
 }
 
 .team-chip[data-tone='danger'] {
   color: var(--danger-semantic, #dc2626);
-  background: color-mix(in srgb, var(--danger-semantic, #dc2626) 12%, transparent);
+  background: color-mix(in srgb, var(--danger-semantic, #dc2626) 11%, transparent);
 }
 
 .team-chip[data-tone='warning'] {
@@ -472,18 +551,17 @@
 }
 
 .team-chip[data-tone='info'] {
-  color: var(--primary);
-  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--team-accent);
+  background: var(--team-accent-soft);
 }
 
 .team-chip[data-tone='neutral'] {
-  color: var(--text-secondary);
-  background: color-mix(in srgb, var(--text-secondary) 9%, transparent);
+  color: var(--team-muted);
+  background: var(--team-fill);
 }
 
-/* 需要主人动手的卡：左边框加粗，不靠单纯变色（色弱也能看出）。 */
 .team-card[data-stage='awaiting-approval'] {
-  border-color: color-mix(in srgb, var(--warning-semantic, #d97706) 55%, transparent);
+  border-color: color-mix(in srgb, var(--warning-semantic, #d97706) 45%, var(--team-hairline));
 }
 
 .team-card[data-stage='awaiting-approval']::before {
@@ -494,7 +572,7 @@
 
 .team-card[data-stage='stale'],
 .team-card[data-stage='failed'] {
-  border-color: color-mix(in srgb, var(--danger-semantic, #dc2626) 45%, transparent);
+  border-color: color-mix(in srgb, var(--danger-semantic, #dc2626) 42%, var(--team-hairline));
 }
 
 .team-card[data-stage='stale']::before,
@@ -504,13 +582,7 @@
   background: var(--danger-semantic, #dc2626);
 }
 
-/* ---- 进度环 ---- */
-
-.team-progress-ring circle.value {
-  transition: stroke-dashoffset 280ms ease;
-}
-
-/* ---- 覆盖层 ---- */
+/* ---- 覆盖层与表单 ---- */
 
 .team-overlay {
   position: absolute;
@@ -518,17 +590,16 @@
   z-index: 20;
   display: flex;
   flex-direction: column;
-  /* 玻璃主题下 --surface-sidebar 带透明度：加一层模糊，别让底下的卡片透上来变成重影 */
-  background: color-mix(in srgb, var(--surface-sidebar, var(--bg-1)) 96%, transparent);
+  background: color-mix(in srgb, var(--surface-sidebar, var(--team-surface)) 96%, transparent);
   backdrop-filter: blur(var(--pane-blur, 14px)) saturate(1.05);
   box-shadow: -12px 0 32px rgb(0 0 0 / 0.12);
-  animation: team-overlay-in 140ms ease both;
+  animation: team-overlay-in 150ms var(--ease-enter, ease) both;
 }
 
 .team-sheet-head {
   border-bottom: 1px solid var(--team-hairline);
-  background: color-mix(in srgb, var(--bg-1, #fff) 66%, transparent);
-  padding: 7px 8px;
+  background: color-mix(in srgb, var(--team-paper) 75%, transparent);
+  padding: 8px 10px;
 }
 
 .team-sheet-role {
@@ -537,25 +608,26 @@
   gap: 8px;
   border-radius: 10px;
   border: 1px solid var(--team-hairline);
-  background: color-mix(in srgb, var(--bg-1, #fff) 72%, transparent);
-  padding: 7px 8px;
+  background: var(--team-paper);
+  padding: 8px 10px;
 }
 
 .team-sheet-input {
   width: 100%;
   border-radius: 7px;
-  border: 1px solid color-mix(in srgb, var(--border-base, #e4e4e7) 78%, transparent);
-  background: color-mix(in srgb, var(--bg-1, #fff) 92%, transparent);
-  padding: 5px 7px;
+  border: 1px solid var(--team-hairline);
+  background: var(--team-paper);
+  padding: 5px 8px;
   font-size: 12px;
   line-height: 17px;
-  color: var(--text-primary);
+  color: var(--team-ink);
   outline: none;
-  transition: border-color 120ms ease;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
 }
 
 .team-sheet-input:focus {
-  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+  border-color: var(--team-accent);
+  box-shadow: 0 0 0 2px var(--team-accent-soft);
 }
 
 @keyframes team-overlay-in {
@@ -566,17 +638,17 @@
 .team-sheet-scroll {
   flex: 1;
   min-height: 0;
-  /* 横向也不许冒出去：子项里只要有 min-content 更宽的长串，整列就会顶到面板外。 */
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 10px 12px 16px;
+  padding: 12px 12px 18px;
 }
 
 .team-sheet-card {
-  border-radius: 10px;
+  border-radius: 11px;
   border: 1px solid var(--team-hairline);
-  background: color-mix(in srgb, var(--bg-1, #fff) 66%, transparent);
-  padding: 7px 8px;
+  background: var(--team-paper);
+  padding: 9px 10px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.03);
 }
 
 .team-field-label {
@@ -587,7 +659,7 @@
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--text-tertiary);
+  color: var(--team-subtle);
 }
 
 .team-status-button {
@@ -596,52 +668,53 @@
   align-items: center;
   gap: 5px;
   overflow: hidden;
-  border-radius: 7px;
-  border: 1px solid color-mix(in srgb, var(--border-base, #e4e4e7) 78%, transparent);
-  background: color-mix(in srgb, var(--bg-1, #fff) 62%, transparent);
-  padding: 6px 7px;
+  border-radius: 8px;
+  border: 1px solid var(--team-hairline);
+  background: var(--team-paper);
+  padding: 6px 8px;
   font-size: 11px;
   line-height: 16px;
-  color: var(--text-secondary);
-  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+  color: var(--team-muted);
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
 }
 
 .team-status-button:hover {
   background: var(--bg-hover, rgb(0 0 0 / 0.04));
-  color: var(--text-primary);
+  color: var(--team-ink);
 }
 
 .team-status-button[data-active='true'] {
-  border-color: color-mix(in srgb, var(--status-color, #64748b) 60%, transparent);
-  background: color-mix(in srgb, var(--status-color, #64748b) 10%, transparent);
-  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--status-color, #64748b) 56%, transparent);
+  background: color-mix(in srgb, var(--status-color, #64748b) 10%, var(--team-paper));
+  color: var(--team-ink);
   font-weight: 600;
 }
 
 .team-raw {
   max-height: 180px;
   overflow: auto;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--text-secondary) 6%, transparent);
-  padding: 6px 8px;
+  border-radius: 7px;
+  background: var(--team-fill);
+  padding: 7px 9px;
   font-family: var(--font-mono);
   font-size: 10px;
   line-height: 14px;
-  color: var(--text-secondary);
+  color: var(--team-muted);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-/* 按人视图 */
+/* ---- 按人视图 ---- */
+
 .team-people-group {
-  border-radius: 10px;
-  border: 1px solid var(--team-hairline);
-  background: color-mix(in srgb, var(--bg-2, #f4f4f5) 40%, transparent);
-  padding: 5px 6px 6px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--team-hairline) 72%, transparent);
+  background: var(--team-well);
+  padding: 7px 8px 8px;
 }
 
 .team-people-group + .team-people-group {
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
 .team-person-card {
@@ -649,22 +722,24 @@
   display: flex;
   width: 100%;
   align-items: flex-start;
-  gap: 6px;
-  border-radius: 7px;
-  border: 1px solid color-mix(in srgb, var(--border-base, #e4e4e7) 60%, transparent);
+  gap: 7px;
+  border-radius: 8px;
+  border: 1px solid var(--team-hairline);
   border-left: 3px solid var(--card-accent, #64748b);
-  background: var(--bg-1, #fff);
-  padding: 5px 7px;
+  background: var(--team-paper);
+  padding: 7px 8px;
   text-align: left;
-  transition: border-color 120ms ease, background-color 120ms ease;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.03);
+  transition: border-color 140ms ease, box-shadow 140ms ease;
 }
 
 .team-person-card + .team-person-card {
-  margin-top: 4px;
+  margin-top: 5px;
 }
 
 .team-person-card:hover {
-  border-color: color-mix(in srgb, var(--card-accent, #64748b) 44%, var(--border-base, #e4e4e7));
+  border-color: color-mix(in srgb, var(--card-accent, #64748b) 42%, var(--team-hairline));
+  box-shadow: var(--team-card-shadow);
 }
 
 .team-person-dot {
@@ -672,47 +747,86 @@
   width: 6px;
   flex: none;
   border-radius: 9999px;
-  margin-top: 4px;
+  margin-top: 5px;
 }
 
-/* ---- 子代理区块与卡片入口 ---- */
+/* ---- 子代理实况区 ---- */
 
 .team-subagents {
   border-bottom: 1px solid var(--team-hairline);
-  background: color-mix(in srgb, var(--bg-2, #f4f4f5) 24%, transparent);
+  background: color-mix(in srgb, var(--team-surface) 82%, transparent);
+}
+
+.team-subagents-toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 6px;
+  border-radius: 7px;
+  padding: 3px 4px;
+  text-align: left;
+  transition: background-color 140ms ease;
+}
+
+.team-subagents-toggle:hover {
+  background: var(--bg-hover, rgb(0 0 0 / 0.04));
 }
 
 .team-subagent-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  max-height: 176px;
+  gap: 6px;
+  max-height: 196px;
   overflow-y: auto;
+  padding: 1px 0 2px;
 }
 
-.team-subagent-row {
+.team-subagent-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  overflow: hidden;
+  border-radius: 10px;
+  border: 1px solid var(--team-hairline);
+  background: var(--team-paper);
+  padding: 7px 9px 7px 11px;
+  box-shadow: var(--team-card-shadow);
+  transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+}
+
+.team-subagent-card::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 8px;
+  bottom: 8px;
+  width: 2.5px;
+  border-radius: 9999px;
+  background: var(--subagent-accent, var(--team-accent));
+  opacity: 0.72;
+}
+
+.team-subagent-card:hover {
+  border-color: color-mix(in srgb, var(--subagent-accent, var(--team-accent)) 36%, var(--team-hairline));
+  box-shadow: var(--team-card-shadow-hover);
+}
+
+.team-subagent-card[data-active='true'] {
+  border-color: color-mix(in srgb, var(--subagent-accent, var(--team-accent)) 28%, var(--team-hairline));
+}
+
+.team-subagent-card[data-viewing='true'] {
+  border-color: var(--team-accent-border);
+  background: color-mix(in srgb, var(--team-accent) 6%, var(--team-paper));
+}
+
+.team-subagent-foot {
   display: flex;
   align-items: center;
   gap: 6px;
-  border-radius: 9px;
-  border: 1px solid color-mix(in srgb, var(--border-base, #e4e4e7) 72%, transparent);
-  background: var(--bg-1, #fff);
-  padding: 5px 7px;
-  transition: border-color 120ms ease, background-color 120ms ease;
-}
-
-.team-subagent-row:hover {
-  border-color: color-mix(in srgb, var(--primary) 42%, var(--border-base, #e4e4e7));
-  background: color-mix(in srgb, var(--bg-hover, rgb(0 0 0 / 0.04)) 70%, var(--bg-1, #fff));
-}
-
-.team-subagent-row[data-active='true'] {
-  border-color: color-mix(in srgb, var(--primary) 36%, var(--border-base, #e4e4e7));
-}
-
-.team-subagent-row[data-viewing='true'] {
-  border-color: color-mix(in srgb, var(--primary) 65%, transparent);
-  background: color-mix(in srgb, var(--primary) 7%, var(--bg-1, #fff));
+  padding-top: 4px;
+  border-top: 1px solid color-mix(in srgb, var(--team-hairline) 65%, transparent);
 }
 
 .team-subagent-enter {
@@ -721,20 +835,21 @@
   gap: 2px;
   flex: none;
   border-radius: 9999px;
-  border: 1px solid color-mix(in srgb, var(--primary) 32%, transparent);
-  background: color-mix(in srgb, var(--primary) 9%, transparent);
-  padding: 1px 7px;
+  border: 1px solid var(--team-accent-border);
+  background: var(--team-accent-soft);
+  padding: 2px 8px;
   font-size: 10px;
   line-height: 15px;
-  font-weight: 500;
-  color: var(--primary);
-  transition: background-color 120ms ease, border-color 120ms ease;
+  font-weight: 600;
+  color: var(--team-accent);
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
 }
 
-.team-subagent-row:hover .team-subagent-enter,
-.team-subagent-row[data-viewing='true'] .team-subagent-enter {
-  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
-  background: color-mix(in srgb, var(--primary) 16%, transparent);
+.team-subagent-card:hover .team-subagent-enter,
+.team-subagent-card[data-viewing='true'] .team-subagent-enter,
+.team-subagent-enter:hover {
+  border-color: color-mix(in srgb, var(--team-accent) 52%, transparent);
+  background: color-mix(in srgb, var(--team-accent) 18%, transparent);
 }
 
 .team-card-run-btn {
@@ -744,62 +859,39 @@
   gap: 5px;
   margin-top: 5px;
   border-radius: 6px;
-  border: 1px solid color-mix(in srgb, var(--border-base, #e4e4e7) 68%, transparent);
-  background: color-mix(in srgb, var(--bg-2, #f4f4f5) 42%, transparent);
-  padding: 3px 6px;
+  border: 1px solid var(--team-hairline);
+  background: var(--team-paper);
+  padding: 4px 7px;
   font-size: 10px;
   line-height: 14px;
-  color: var(--text-secondary);
-  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+  font-weight: 500;
+  color: var(--team-muted);
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
 }
 
 .team-card-run-btn:hover,
 .team-card-run-btn[data-viewing='true'] {
-  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
-  background: color-mix(in srgb, var(--primary) 10%, transparent);
-  color: var(--primary);
-}
-
-.team-role-count[data-active='true'] {
-  color: var(--primary-foreground, #fff);
-  background: var(--primary);
+  border-color: var(--team-accent-border);
+  background: var(--team-accent-soft);
+  color: var(--team-accent);
 }
 
 .team-role-picker {
-  margin-top: 4px;
-  border-radius: 9px;
-  border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--border-base, #e4e4e7));
-  background: color-mix(in srgb, var(--bg-1, #fff) 92%, transparent);
-  padding: 5px 6px;
-}
-
-.team-subagent-card {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  border-radius: 9px;
-  border: 1px solid color-mix(in srgb, var(--border-base, #e4e4e7) 72%, transparent);
-  background: var(--bg-1, #fff);
-  padding: 5px 7px;
-  transition: border-color 120ms ease, background-color 120ms ease;
-}
-
-.team-subagent-card[data-active='true'] {
-  border-color: color-mix(in srgb, var(--primary) 38%, var(--border-base, #e4e4e7));
-}
-
-.team-subagent-card[data-viewing='true'] {
-  border-color: color-mix(in srgb, var(--primary) 68%, transparent);
-  background: color-mix(in srgb, var(--primary) 6%, var(--bg-1, #fff));
+  margin-top: 6px;
+  border-radius: 10px;
+  border: 1px solid var(--team-accent-border);
+  background: var(--team-paper);
+  padding: 6px 7px;
+  box-shadow: var(--team-card-shadow);
 }
 
 .team-subagent-steps {
-  margin-left: 30px;
-  border-left: 1px solid color-mix(in srgb, var(--border-base, #e4e4e7) 80%, transparent);
-  padding-left: 7px;
+  margin-left: 28px;
+  border-left: 1.5px solid var(--team-hairline);
+  padding-left: 8px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .team-subagent-step {
@@ -808,40 +900,40 @@
   gap: 5px;
   font-size: 10px;
   line-height: 14px;
-  color: var(--text-secondary);
+  color: var(--team-muted);
 }
 
 .team-subagent-icon-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 5px;
-  padding: 3px;
-  color: var(--text-tertiary);
-  transition: background-color 120ms ease, color 120ms ease;
+  border-radius: 6px;
+  padding: 3.5px;
+  color: var(--team-subtle);
+  transition: background-color 140ms ease, color 140ms ease;
 }
 
 .team-subagent-icon-btn:hover {
-  background: var(--bg-hover, rgb(0 0 0 / 0.06));
-  color: var(--text-primary);
+  background: var(--bg-hover, rgb(0 0 0 / 0.05));
+  color: var(--team-ink);
 }
 
 .team-subagent-icon-btn[data-active='true'] {
-  color: var(--primary);
-  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--team-accent);
+  background: var(--team-accent-soft);
 }
 
 .team-card-worker {
-  margin-top: 5px;
-  border-radius: 6px;
-  border: 1px solid color-mix(in srgb, var(--border-base, #e4e4e7) 64%, transparent);
-  background: color-mix(in srgb, var(--bg-2, #f4f4f5) 45%, transparent);
-  padding: 4px 6px;
+  margin-top: 7px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--team-hairline) 80%, transparent);
+  background: var(--team-surface);
+  padding: 6px 7px;
 }
 
 .team-card-actions {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-top: 4px;
+  margin-top: 5px;
 }

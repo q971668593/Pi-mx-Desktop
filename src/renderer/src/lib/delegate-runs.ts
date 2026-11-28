@@ -24,6 +24,8 @@ export type DelegateRun = {
   file?: string
   /** 结束摘要，用来在行里给一句「它做完了什么」。 */
   preview?: string
+  /** 尚未拿到宿主真实 runId，仅由 acp_delegate 工具调用暂时占位。 */
+  provisional?: boolean
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -49,8 +51,10 @@ export function delegateRunFromItem(item: TimelineItem): DelegateRun | null {
     && (item.toolPhase === 'start' || item.toolPhase === 'update')
   if (!isDelegateDetails && !isLiveAcpDelegate) return null
 
-  const runId = nonEmptyString(details?.runId) ?? (isLiveAcpDelegate ? nonEmptyString(item.toolCallId) ?? nonEmptyString(item.id) : undefined)
+  const explicitRunId = nonEmptyString(details?.runId)
+  const runId = explicitRunId ?? (isLiveAcpDelegate ? nonEmptyString(item.toolCallId) ?? nonEmptyString(item.id) : undefined)
   if (!runId) return null
+  const provisional = !explicitRunId && isLiveAcpDelegate
 
   const rawStatus = nonEmptyString(details?.status)
   const failed = item.isError === true || rawStatus === 'failed' || rawStatus === 'cancelled'
@@ -70,6 +74,7 @@ export function delegateRunFromItem(item: TimelineItem): DelegateRun | null {
     durationMs,
     file: nonEmptyString(details?.file),
     preview: nonEmptyString(details?.preview),
+    ...(provisional ? { provisional: true } : {}),
   }
 }
 
@@ -98,6 +103,7 @@ export function collectDelegateRuns(items: TimelineItem[]): DelegateRun[] {
       durationMs: run.durationMs ?? previous.durationMs,
       file: run.file ?? previous.file,
       preview: previous.preview ?? run.preview,
+      provisional: Boolean(run.provisional && previous.provisional),
     })
   }
   return [...byRunId.values()].sort((left, right) => right.startedAt - left.startedAt)
@@ -129,7 +135,7 @@ export function selectDelegateRuns(items: TimelineItem[]): DelegateRun[] {
   }
 
   const signature = next
-    .map((run) => `${run.runId}\u0001${run.state}\u0001${run.agent}\u0001${run.task}\u0001${run.startedAt}`)
+    .map((run) => `${run.runId}\u0001${run.state}\u0001${run.agent}\u0001${run.task}\u0001${run.startedAt}\u0001${run.provisional ? '1' : '0'}`)
     .join('\u0002')
   const existing = memoBySignature.get(signature)
   if (existing) {

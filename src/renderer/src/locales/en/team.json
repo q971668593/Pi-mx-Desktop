@@ -247,7 +247,8 @@
     "scopeSessionHint": "Applies only to this conversation and subagents it dispatches. Other conversations stay independent.",
     "scopeProjectHint": "Project-wide default inherited by conversations without an override.",
     "resetToProjectDefault": "Inherit project default",
-    "resetDone": "Reverted to project default"
+    "resetDone": "Reverted to project default",
+    "toggleCollapse": "Collapse or expand subagents"
   },
   "delegate": {
     "hint": "Click a row to open that subagent's session and watch its thinking and progress",

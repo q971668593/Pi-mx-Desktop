@@ -31,6 +31,7 @@ export function SubAgentStrip() {
   const [snapshot, setSnapshot] = useState<TeamSnapshot | null>(null)
   const [opening, setOpening] = useState('')
   const [returning, setReturning] = useState(false)
+  const [nowMs, setNowMs] = useState(() => Date.now())
 
   const refresh = useCallback(async () => {
     if (!workspaceId) {
@@ -38,12 +39,15 @@ export function SubAgentStrip() {
       return
     }
     try {
-      const response = await ipcClient.invoke('teamBoard.snapshot', { workspaceId })
+      const response = await ipcClient.invoke('teamBoard.snapshot', {
+        workspaceId,
+        ...(historySessionFile ? { sessionFile: historySessionFile } : {}),
+      })
       setSnapshot((response?.snapshot ?? null) as TeamSnapshot | null)
     } catch {
       /* 看板还没初始化或读失败：条直接不显示 */
     }
-  }, [workspaceId])
+  }, [historySessionFile, workspaceId])
 
   useEffect(() => {
     void refresh()
@@ -91,13 +95,34 @@ export function SubAgentStrip() {
     return map
   }, [snapshot?.tasks])
 
-  const activeRuns = useMemo(
-    () =>
-      [...runs]
-        .reverse()
-        .filter((run) => run.status === 'starting' || run.status === 'running'),
-    [runs],
-  )
+  const activeRuns = useMemo(() => {
+    const currentNow = Math.max(nowMs, Date.now())
+    return [...runs]
+      .reverse()
+      .filter(
+        (run) =>
+          (run.status === 'starting' || run.status === 'running')
+          && !run.staleAt
+          && (isSessionRunning(sessionRuntimeRunning, run.sessionFile)
+            || (run.startedAt > 0 && currentNow - run.startedAt < 30_000)),
+      )
+  }, [nowMs, runs, sessionRuntimeRunning])
+
+  useEffect(() => {
+    const currentNow = Date.now()
+    let soonestExpireMs = Infinity
+    for (const run of runs) {
+      if ((run.status !== 'starting' && run.status !== 'running') || run.staleAt) continue
+      if (isSessionRunning(sessionRuntimeRunning, run.sessionFile)) continue
+      if (run.startedAt > 0) {
+        const remain = run.startedAt + 30_000 - currentNow
+        if (remain > 0 && remain < soonestExpireMs) soonestExpireMs = remain
+      }
+    }
+    if (!Number.isFinite(soonestExpireMs)) return
+    const timer = window.setTimeout(() => setNowMs(Date.now()), soonestExpireMs + 150)
+    return () => window.clearTimeout(timer)
+  }, [runs, sessionRuntimeRunning, nowMs])
 
   const viewingRun = useMemo(() => {
     if (!historySessionFile) return null
@@ -166,12 +191,12 @@ export function SubAgentStrip() {
   return (
     <div className="mb-1.5 flex flex-col gap-1">
       {(viewingRun || hasReturnTargetForCurrent) && (
-        <div className="flex items-center gap-2 rounded-lg border border-primary/25 bg-primary/[0.06] px-2.5 py-1 text-2xs text-foreground-secondary">
+        <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/[0.06] px-2.5 py-1 text-2xs text-foreground-secondary">
           <span
             className={cn(
               'h-1.5 w-1.5 shrink-0 rounded-full',
               viewingLive
-                ? 'animate-pulse bg-primary'
+                ? 'animate-pulse bg-amber-500'
                 : viewingRun?.status === 'failed' || viewingRun?.status === 'cancelled'
                   ? 'bg-destructive'
                   : 'bg-emerald-500',
@@ -208,7 +233,7 @@ export function SubAgentStrip() {
               type="button"
               disabled={returning}
               onClick={() => void goBack()}
-              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-primary/35 bg-background/80 px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/10 disabled:opacity-50"
+              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-500/35 bg-background/85 px-2 py-0.5 text-[11px] font-medium text-amber-700 hover:bg-amber-500/10 disabled:opacity-50 dark:text-amber-300"
             >
               <ArrowLeft className="h-3 w-3" />
               {t('team:subagentSection.returnToParent')}
@@ -244,14 +269,14 @@ export function SubAgentStrip() {
                 className={cn(
                   'inline-flex max-w-64 items-center gap-1 truncate rounded-full border py-0.5 pl-1.5 pr-2 text-2xs transition-colors disabled:opacity-50',
                   isViewingThis
-                    ? 'border-primary/60 bg-primary/10 text-primary'
-                    : 'border-border/50 bg-[var(--bg-hover)] text-foreground-secondary hover:border-primary/50 hover:text-foreground',
+                    ? 'border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                    : 'border-border/60 bg-[var(--bg-hover)] text-foreground-secondary hover:border-amber-500/45 hover:text-foreground',
                 )}
               >
                 <span
                   className="h-1.5 w-1.5 shrink-0 rounded-full"
                   data-live={runtimeLive}
-                  style={{ background: runtimeLive ? 'var(--primary)' : 'var(--warning-semantic)' }}
+                  style={{ background: runtimeLive ? 'var(--brand, #d97706)' : 'var(--warning-semantic)' }}
                 />
                 <span className="shrink-0 font-medium">{roleLabel(run.role, t)}</span>
                 <span className="shrink-0 font-mono opacity-80">{run.taskId}</span>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ArrowLeft, CheckCheck, Loader2 } from '@renderer/components/icons'
@@ -30,6 +30,12 @@ const CONCURRENCY_OPTIONS = Array.from(
   { length: TEAM_MAX_CONCURRENCY_MAX - TEAM_MAX_CONCURRENCY_MIN + 1 },
   (_, i) => TEAM_MAX_CONCURRENCY_MIN + i,
 )
+
+function rolesSignature(list: readonly TeamRoleBinding[]): string {
+  return list
+    .map((r) => `${r.role}|${r.model}|${r.effort}|${r.enabled ? '1' : '0'}|${r.directEnabled ? '1' : '0'}|${r.note}`)
+    .join('\n')
+}
 
 export function TeamSettingsSheet({
   workspaceId,
@@ -63,6 +69,9 @@ export function TeamSettingsSheet({
   const [projectDraft, setProjectDraft] = useState<TeamRoleBinding[]>(() =>
     (projectRoles ?? roles).map((role) => ({ ...role })),
   )
+  const [sessionDirty, setSessionDirty] = useState(false)
+  const [projectDirty, setProjectDirty] = useState(false)
+  const prevSessionFileRef = useRef(sessionFile)
   const draft = scope === 'session' ? sessionDraft : projectDraft
   const [models, setModels] = useState<ModelInfo[]>(() => peekAvailableModels())
   const [enabledScope, setEnabledScope] = useState<string[] | undefined>(() => peekEnabledModels())
@@ -76,12 +85,25 @@ export function TeamSettingsSheet({
   const effectivePreset = preset || defaultModel
 
   useEffect(() => {
+    if (prevSessionFileRef.current === sessionFile) return
+    prevSessionFileRef.current = sessionFile
+    setScope(Boolean(sessionFile) ? 'session' : 'project')
     setSessionDraft(roles.map((role) => ({ ...role })))
-  }, [roles])
+    setProjectDraft((projectRoles ?? roles).map((role) => ({ ...role })))
+    setSessionDirty(false)
+    setProjectDirty(false)
+  }, [projectRoles, roles, sessionFile])
 
   useEffect(() => {
-    setProjectDraft((projectRoles ?? roles).map((role) => ({ ...role })))
-  }, [projectRoles, roles])
+    if (sessionDirty) return
+    setSessionDraft((prev) => (rolesSignature(prev) === rolesSignature(roles) ? prev : roles.map((role) => ({ ...role }))))
+  }, [roles, sessionDirty])
+
+  useEffect(() => {
+    if (projectDirty) return
+    const nextProject = projectRoles ?? roles
+    setProjectDraft((prev) => (rolesSignature(prev) === rolesSignature(nextProject) ? prev : nextProject.map((role) => ({ ...role }))))
+  }, [projectDirty, projectRoles, roles])
 
   useEffect(() => {
     const unsubModels = subscribeAvailableModels(setModels)
@@ -135,8 +157,13 @@ export function TeamSettingsSheet({
   const update = (role: TeamRoleBinding['role'], patch: Partial<TeamRoleBinding>) => {
     const updater = (current: TeamRoleBinding[]) =>
       current.map((item) => (item.role === role ? { ...item, ...patch } : item))
-    if (scope === 'session') setSessionDraft(updater)
-    else setProjectDraft(updater)
+    if (scope === 'session') {
+      setSessionDirty(true)
+      setSessionDraft(updater)
+    } else {
+      setProjectDirty(true)
+      setProjectDraft(updater)
+    }
   }
 
   const effortsFor = (model: string): string[] => {
@@ -148,16 +175,44 @@ export function TeamSettingsSheet({
   const save = async () => {
     setSaving(true)
     try {
-      const response = await ipcClient.invoke('teamBoard.roles.save', {
-        workspaceId,
-        ...(sessionFile ? { sessionFile } : {}),
-        scope: hasSessionScope ? scope : 'project',
-        roles: draft,
+      const globalFields = {
         ...(preset !== defaultModelOverride ? { defaultModelOverride: preset } : {}),
         ...(concurrency !== maxConcurrency ? { maxConcurrency: concurrency } : {}),
         ...(autoReviewDraft !== autoReview ? { autoReview: autoReviewDraft } : {}),
-      })
-      if (response?.snapshot) onSaved(response.snapshot)
+      }
+      let finalSnapshot: TeamSnapshot | undefined
+      if (hasSessionScope && projectDirty && sessionDirty) {
+        await ipcClient.invoke('teamBoard.roles.save', {
+          workspaceId,
+          ...(sessionFile ? { sessionFile } : {}),
+          scope: 'project',
+          roles: projectDraft,
+          ...globalFields,
+        })
+        const res = await ipcClient.invoke('teamBoard.roles.save', {
+          workspaceId,
+          ...(sessionFile ? { sessionFile } : {}),
+          scope: 'session',
+          roles: sessionDraft,
+        })
+        finalSnapshot = res?.snapshot
+      } else {
+        const targetScope: 'session' | 'project' = hasSessionScope
+          ? (projectDirty && !sessionDirty ? 'project' : sessionDirty && !projectDirty ? 'session' : scope)
+          : 'project'
+        const targetRoles = targetScope === 'session' ? sessionDraft : projectDraft
+        const res = await ipcClient.invoke('teamBoard.roles.save', {
+          workspaceId,
+          ...(sessionFile ? { sessionFile } : {}),
+          scope: targetScope,
+          roles: targetRoles,
+          ...globalFields,
+        })
+        finalSnapshot = res?.snapshot
+      }
+      setSessionDirty(false)
+      setProjectDirty(false)
+      if (finalSnapshot) onSaved(finalSnapshot)
       notifyTeamBoardChanged()
       toast.success(t('team:saved'))
       onClose()
@@ -179,7 +234,11 @@ export function TeamSettingsSheet({
         clearSessionRoles: true,
         roles: projectDraft,
       })
-      if (response?.snapshot) onSaved(response.snapshot)
+      setSessionDirty(false)
+      if (response?.snapshot) {
+        setSessionDraft(response.snapshot.roles.map((role) => ({ ...role })))
+        onSaved(response.snapshot)
+      }
       notifyTeamBoardChanged()
       toast.success(t('team:subagentSection.resetDone'))
     } catch (error) {
@@ -191,7 +250,7 @@ export function TeamSettingsSheet({
 
   return (
     <div className="team-overlay" role="dialog" aria-modal="true" aria-label={t('team:settingsTitle')}>
-      <div className="flex shrink-0 items-center gap-2 border-b border-border/40 px-2.5 py-2">
+      <div className="team-sheet-head flex shrink-0 items-center gap-2">
         <button
           type="button"
           onClick={onClose}
@@ -205,7 +264,7 @@ export function TeamSettingsSheet({
           type="button"
           onClick={() => void save()}
           disabled={saving || resetting}
-          className="ml-auto inline-flex items-center gap-1 rounded bg-primary px-2 py-1 text-2xs font-medium text-primary-foreground disabled:opacity-50"
+          className="ml-auto inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-2xs font-medium text-primary-foreground disabled:opacity-50"
         >
           {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCheck className="h-3 w-3" />}
           {t('team:save')}
@@ -214,7 +273,7 @@ export function TeamSettingsSheet({
 
       <div className="team-sheet-scroll team-scroll">
         {hasSessionScope ? (
-          <div className="mb-2.5 rounded-lg border border-border/50 bg-[color-mix(in_srgb,var(--bg-2,transparent)_45%,transparent)] p-2">
+          <div className="team-sheet-card mb-2.5">
             <div className="flex items-center gap-1.5">
               <div className="team-seg">
                 <button
@@ -239,13 +298,13 @@ export function TeamSettingsSheet({
                   type="button"
                   disabled={resetting || saving}
                   onClick={() => void resetToProjectDefault()}
-                  className="ml-auto rounded px-1.5 py-0.5 text-[10px] text-primary hover:bg-primary/10 disabled:opacity-50"
+                  className="ml-auto rounded-md px-2 py-0.5 text-[10px] font-medium text-amber-700 hover:bg-amber-500/10 disabled:opacity-50 dark:text-amber-300"
                 >
                   {resetting ? t('team:loadingModels') : t('team:subagentSection.resetToProjectDefault')}
                 </button>
               ) : null}
             </div>
-            <p className="mt-1 text-[10.5px] leading-relaxed text-foreground-tertiary">
+            <p className="mt-1.5 text-[10.5px] leading-relaxed text-foreground-tertiary">
               {scope === 'session'
                 ? t('team:subagentSection.scopeSessionHint')
                 : t('team:subagentSection.scopeProjectHint')}
@@ -253,53 +312,55 @@ export function TeamSettingsSheet({
           </div>
         ) : null}
         <p className="text-2xs leading-relaxed text-foreground-secondary">{t('team:settingsDesc')}</p>
-        <label className="mt-2 block text-2xs text-foreground-secondary">
-          {t('team:defaultModel')}
-          <select
-            value={preset}
-            onChange={(event) => setPreset(event.target.value)}
-            className="team-sheet-input mt-0.5"
-          >
-            <option value="">{t('team:followGlobalModel')}</option>
-            {modelOptions(preset)}
-          </select>
-        </label>
-        <p className="mt-1 text-2xs text-foreground-secondary">{t('team:defaultModelHint')}</p>
-        <label className="mt-2 block text-2xs text-foreground-secondary">
-          {t('team:maxConcurrency')}
-          <select
-            value={concurrency}
-            onChange={(event) => setConcurrency(Number(event.target.value))}
-            className="team-sheet-input mt-0.5"
-          >
-            {CONCURRENCY_OPTIONS.map((count) => (
-              <option key={count} value={count}>
-                {count}
-              </option>
-            ))}
-          </select>
-        </label>
-        <p className="mt-1 text-2xs text-foreground-secondary">{t('team:maxConcurrencyHint')}</p>
-        <label className="mt-2 flex cursor-pointer items-center gap-1.5 text-2xs text-foreground-secondary">
-          <input
-            type="checkbox"
-            checked={autoReviewDraft}
-            onChange={(event) => setAutoReviewDraft(event.target.checked)}
-            className="h-3 w-3"
-          />
-          <span>{t('team:autoReview')}</span>
-        </label>
-        <p className="mt-0.5 text-2xs text-foreground-tertiary">{t('team:autoReviewHint')}</p>
-        {effectivePreset ? null : <p className="mt-1 text-2xs text-foreground-secondary">{t('team:globalDefaultMissing')}</p>}
-        {loading ? <p className="mt-1 text-2xs text-foreground-tertiary">{t('team:loadingModels')}</p> : null}
-        {loadError ? <p className="mt-1 text-2xs text-amber-600">{t('team:modelLoadFailed')}</p> : null}
+        <div className="team-sheet-card mt-2">
+          <label className="block text-2xs text-foreground-secondary">
+            {t('team:defaultModel')}
+            <select
+              value={preset}
+              onChange={(event) => setPreset(event.target.value)}
+              className="team-sheet-input mt-0.5"
+            >
+              <option value="">{t('team:followGlobalModel')}</option>
+              {modelOptions(preset)}
+            </select>
+          </label>
+          <p className="mt-1 text-[10.5px] text-foreground-tertiary">{t('team:defaultModelHint')}</p>
+          <label className="mt-2.5 block text-2xs text-foreground-secondary">
+            {t('team:maxConcurrency')}
+            <select
+              value={concurrency}
+              onChange={(event) => setConcurrency(Number(event.target.value))}
+              className="team-sheet-input mt-0.5"
+            >
+              {CONCURRENCY_OPTIONS.map((count) => (
+                <option key={count} value={count}>
+                  {count}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="mt-1 text-[10.5px] text-foreground-tertiary">{t('team:maxConcurrencyHint')}</p>
+          <label className="mt-2.5 flex cursor-pointer items-center gap-1.5 text-2xs text-foreground-secondary">
+            <input
+              type="checkbox"
+              checked={autoReviewDraft}
+              onChange={(event) => setAutoReviewDraft(event.target.checked)}
+              className="h-3 w-3"
+            />
+            <span>{t('team:autoReview')}</span>
+          </label>
+          <p className="mt-0.5 text-[10.5px] text-foreground-tertiary">{t('team:autoReviewHint')}</p>
+        </div>
+        {effectivePreset ? null : <p className="mt-1.5 text-2xs text-foreground-secondary">{t('team:globalDefaultMissing')}</p>}
+        {loading ? <p className="mt-1.5 text-2xs text-foreground-tertiary">{t('team:loadingModels')}</p> : null}
+        {loadError ? <p className="mt-1.5 text-2xs text-amber-600">{t('team:modelLoadFailed')}</p> : null}
 
-        <div className="mt-2 space-y-2">
+        <div className="mt-2.5 space-y-2">
           {draft.map((role) => {
             const accent = roleColor(role.role)
             const efforts = effortsFor(role.model || effectivePreset)
             return (
-              <div key={role.role} className="team-people-group !p-2" style={{ marginTop: 0 }}>
+              <div key={role.role} className="team-sheet-card !p-2.5">
                 <div className="flex items-center gap-1.5">
                   <span className="team-avatar" style={{ '--team-role': accent } as CSSProperties}>
                     <img src={roleAvatar(role.role)} alt="" />

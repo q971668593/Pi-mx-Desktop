@@ -629,6 +629,12 @@ export class WorkerManager {
     return out
   }
 
+  hasLiveSession(sessionFile: string): boolean {
+    const sk = normalizeSessionKey(sessionFile)
+    const slot = sk ? this.pool.get(sk) : undefined
+    return Boolean(slot && !slot.stopping)
+  }
+
   /** Prompt text of the enabled session capabilities, applied from the next agent turn on. */
   async setCapabilities(sections: Record<string, string>, tools: string[], sessionFile?: string): Promise<void> {
     await this.request('setCapabilities', { sections, tools, sessionFile })

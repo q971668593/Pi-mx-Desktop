@@ -266,6 +266,14 @@ export function resolveEffectiveSessionFile(state: TeamState, sessionFile?: stri
       return run.originSessionFile
     }
   }
+  for (const [parentKey, roleSessions] of Object.entries(state.sessionRoleSessions ?? {})) {
+    if (!roleSessions || typeof roleSessions !== 'object') continue
+    for (const entry of Object.values(roleSessions)) {
+      if (entry?.sessionFile && teamSessionKey(entry.sessionFile) === targetKey) {
+        return parentKey
+      }
+    }
+  }
   return clean
 }
 
@@ -387,10 +395,11 @@ export function recordTeamDispatch(
 
 /** 提示词已真正发出：把 starting 的派发记录转成 running。 */
 export function markTeamRunRunning(spec: string, sessionFile: string): void {
+  const targetKey = teamSessionKey(sessionFile)
   withTeamState(spec, (state) => {
     for (let i = state.runs.length - 1; i >= 0; i--) {
       const run = state.runs[i]
-      if (run.sessionFile !== sessionFile) continue
+      if (teamSessionKey(run.sessionFile) !== targetKey) continue
       if (run.status !== 'starting') continue
       run.status = 'running'
       break
@@ -429,8 +438,8 @@ export function snapshotFor(spec: string, workspaceId: string, options?: { sessi
   const effective = readEffectiveTeamRoles(spec, state, options?.sessionFile)
   const sessionKey = teamSessionKey(effective.effectiveSessionFile)
   const scopedSessions =
-    effective.roleScope === 'session' && sessionKey && state.sessionRoleSessions?.[sessionKey]
-      ? { ...state.sessions, ...state.sessionRoleSessions[sessionKey] }
+    effective.roleScope === 'session' && sessionKey
+      ? (state.sessionRoleSessions?.[sessionKey] ?? {})
       : state.sessions
   const defaultModelOverride = configStore.get('teamDefaultModel') || ''
   const settings = exists ? readPiAgentGlobalSettingsFromDisk() : null
@@ -542,10 +551,11 @@ export function settleTeamRun(
   options: TeamSettleOptions = {},
 ): TeamSettleOutcome {
   const settledAt = Date.now()
+  const targetKey = teamSessionKey(sessionFile)
   const settledRun = withTeamState(spec, (state) => {
     for (let i = state.runs.length - 1; i >= 0; i--) {
       const run = state.runs[i]
-      if (run.sessionFile !== sessionFile) continue
+      if (teamSessionKey(run.sessionFile) !== targetKey) continue
       if (!isTeamRunActive(run)) continue
       run.status = outcome === 'success' ? 'done' : outcome
       run.endedAt = settledAt

@@ -78,13 +78,27 @@ import { TeamTaskCreateSheet } from './team-task-create-sheet'
 import { useLanePan } from './use-lane-pan'
 
 const VIEW_STORAGE_KEY = 'pi-desktop:team-view'
-const RING_LENGTH = 2 * Math.PI * 9
+const SUBAGENTS_COLLAPSED_STORAGE_KEY = 'pi-desktop:team-subagents-collapsed'
 
 type PanelView = 'lanes' | 'people'
 
 function projectNameOf(workspaceId: string): string {
   const normalized = String(workspaceId || '').split(String.fromCharCode(92)).join('/')
   return normalized.split('/').filter(Boolean).pop() || normalized
+}
+
+function formatDelegateDisplay(run: DelegateRun): { taskId: string; summary: string } {
+  const raw = String(run.task || '').replace(/\s+/g, ' ').trim()
+  const match = /\b(T-\d+)\b/i.exec(raw)
+  const taskId = match ? match[1].toUpperCase() : ''
+  let summary = raw
+    .replace(/^\(resumed\s*[—–-]\s*[^)]*\)\s*/i, '')
+    .replace(/^你是\s*[A-Za-z\u4e00-\u9fa5]+[\s，,:：]+(?:请)?(?:执行|处理|完成)?(?:看板卡|任务卡)?\s*(?:T-\d+[\s，,:：·-]*)?/i, '')
+    .trim()
+  if (taskId && summary.toUpperCase().startsWith(taskId)) {
+    summary = summary.slice(taskId.length).replace(/^[\s·:：-]+/, '').trim()
+  }
+  return { taskId, summary: summary || raw }
 }
 
 export function TeamBoardPanel() {
@@ -125,13 +139,39 @@ export function TeamBoardPanel() {
   const [roleMenuRole, setRoleMenuRole] = useState<string | null>(null)
   const [resumingRunId, setResumingRunId] = useState('')
   const [openingSubagentKey, setOpeningSubagentKey] = useState('')
-  const [showRecentSubagents, setShowRecentSubagents] = useState(false)
+  const [subagentsCollapsed, setSubagentsCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(SUBAGENTS_COLLAPSED_STORAGE_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
+  const [probedDelegateStates, setProbedDelegateStates] = useState<Record<string, 'running' | 'completed' | 'stale'>>({})
   const [nowMs, setNowMs] = useState(() => Date.now())
 
   const requestSeq = useRef(0)
   const prevWorkspaceRef = useRef(workspaceId)
   const hydratedOnceRef = useRef(false)
   const lanes = useLanePan<HTMLDivElement>({ enabled: view === 'lanes' })
+
+  const applyBoardSnapshot = useCallback((next: TeamSnapshot) => {
+    if (next.sessionFile) {
+      setSnapshot(next)
+      return
+    }
+    setSnapshot((prev) =>
+      prev && prev.workspaceId === next.workspaceId && prev.roleScope === 'session'
+        ? {
+            ...next,
+            roles: prev.roles,
+            projectRoles: prev.projectRoles,
+            roleScope: prev.roleScope,
+            sessionFile: prev.sessionFile,
+            sessions: prev.sessions,
+          }
+        : next,
+    )
+  }, [])
 
   const refresh = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -208,6 +248,53 @@ export function TeamBoardPanel() {
     }
   }, [view])
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(SUBAGENTS_COLLAPSED_STORAGE_KEY, subagentsCollapsed ? '1' : '0')
+    } catch {
+      /* noop */
+    }
+  }, [subagentsCollapsed])
+
+  const candidateDelegateRuns = useMemo(
+    () => delegateRuns.filter((run) => run.state === 'running'),
+    [delegateRuns],
+  )
+  const candidateDelegateIdsKey = candidateDelegateRuns
+    .filter((run) => !run.provisional)
+    .map((run) => run.runId)
+    .join('|')
+
+  useEffect(() => {
+    if (!candidateDelegateIdsKey) {
+      setProbedDelegateStates({})
+      return
+    }
+    let cancelled = false
+    const runIds = candidateDelegateIdsKey.split('|')
+    const probe = async () => {
+      try {
+        const res = (await ipcClient.invoke('delegate.runStates', { runIds })) as {
+          states?: Record<string, 'running' | 'completed' | 'stale'>
+        }
+        if (!cancelled && res?.states) setProbedDelegateStates(res.states)
+      } catch {
+        /* 探活失败时不误报旧记录为运行中 */
+      }
+    }
+    void probe()
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void probe()
+    }, 10_000)
+    const onFocus = () => void probe()
+    window.addEventListener('focus', onFocus)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [candidateDelegateIdsKey])
+
   const tasks = snapshot?.tasks ?? []
   const roles = snapshot?.roles.map((role) => ({ ...role, model: role.model || snapshot.defaultModel || '' })) ?? []
   const runs = snapshot?.runs ?? []
@@ -218,16 +305,52 @@ export function TeamBoardPanel() {
     }
     return map
   }, [roles])
-  const slotByRunId = useMemo(() => assignRunSlots(runs), [runs])
   const taskTitleById = useMemo(() => {
     const map = new Map<string, string>()
     for (const task of tasks) map.set(task.id, task.title)
     return map
   }, [tasks])
-  const activeTeamRuns = useMemo(
-    () => [...runs].reverse().filter((run) => run.status === 'starting' || run.status === 'running'),
-    [runs],
+  const activeTeamRuns = useMemo(() => {
+    const currentNow = Math.max(nowMs, Date.now())
+    return [...runs]
+      .reverse()
+      .filter(
+        (run) =>
+          (run.status === 'starting' || run.status === 'running')
+          && !run.staleAt
+          && (isSessionRunning(sessionRuntimeRunning, run.sessionFile)
+            || (run.startedAt > 0 && currentNow - run.startedAt < 30_000)),
+      )
+  }, [nowMs, runs, sessionRuntimeRunning])
+  const slotByRunId = useMemo(() => assignRunSlots(activeTeamRuns), [activeTeamRuns])
+  const liveDelegateRuns = useMemo(() => {
+    const currentNow = Math.max(nowMs, Date.now())
+    return candidateDelegateRuns.filter((run) => {
+      if (run.provisional) return true
+      const probed = probedDelegateStates[run.runId]
+      if (probed === 'running') return true
+      if (probed === 'completed' || probed === 'stale') return false
+      return run.startedAt > 0 && currentNow - run.startedAt < 20_000
+    })
+  }, [candidateDelegateRuns, nowMs, probedDelegateStates])
+  const liveTreeSubagents = useMemo(
+    () =>
+      treeSubagents.filter(
+        (child) => (child.state === 'running' || child.state === 'pending') && !!child.sessionFile,
+      ),
+    [treeSubagents],
   )
+  const liveDelegateByTaskId = useMemo(() => {
+    const map = new Map<string, DelegateRun>()
+    for (const run of liveDelegateRuns) {
+      const match = /\b(T-\d+)\b/i.exec(run.task || '')
+      if (match) {
+        const key = match[1].toUpperCase()
+        if (!map.has(key)) map.set(key, run)
+      }
+    }
+    return map
+  }, [liveDelegateRuns])
   const activeRunsForRole = useCallback(
     (role: string): TeamRun[] => activeTeamRuns.filter((run) => run.role === role),
     [activeTeamRuns],
@@ -241,7 +364,7 @@ export function TeamBoardPanel() {
   )
   const telemetryByRunId = useMemo(() => {
     const map = new Map<string, SubagentTelemetry>()
-    for (const run of runs) {
+    for (const run of activeTeamRuns) {
       map.set(
         run.id,
         extractSubagentTelemetry({
@@ -254,14 +377,11 @@ export function TeamBoardPanel() {
       )
     }
     return map
-  }, [nowMs, roleModelMap, runs, sessionStates, slotByRunId, snapshot?.defaultModel])
-  const hasLiveSubagent = useMemo(
-    () =>
-      activeTeamRuns.length > 0
-      || delegateRuns.some((run) => run.state === 'running')
-      || treeSubagents.some((child) => child.state === 'running' || child.state === 'pending'),
-    [activeTeamRuns, delegateRuns, treeSubagents],
-  )
+  }, [activeTeamRuns, nowMs, roleModelMap, sessionStates, slotByRunId, snapshot?.defaultModel])
+  const hasLiveSubagent = activeTeamRuns.length > 0 || liveDelegateRuns.length > 0 || liveTreeSubagents.length > 0
+  useEffect(() => {
+    setNowMs(Date.now())
+  }, [candidateDelegateIdsKey, historySessionFile])
   useEffect(() => {
     if (!hasLiveSubagent) return
     setNowMs(Date.now())
@@ -318,7 +438,7 @@ export function TeamBoardPanel() {
           await refresh({ silent: true })
           return false
         }
-        if (response?.snapshot) setSnapshot(response.snapshot as TeamSnapshot)
+        if (response?.snapshot) applyBoardSnapshot(response.snapshot as TeamSnapshot)
         notifyTeamBoardChanged()
         toast.success(t('team:statusChanged', { status: statusLabel(to, t) }))
         return true
@@ -327,7 +447,7 @@ export function TeamBoardPanel() {
         return false
       }
     },
-    [refresh, t, workspaceId],
+    [applyBoardSnapshot, refresh, t, workspaceId],
   )
 
   const openTask = (task: TeamTask, pending?: TeamStatus) => {
@@ -394,7 +514,7 @@ export function TeamBoardPanel() {
     setMergingTaskId(task.id)
     try {
       const response = await ipcClient.invoke('teamBoard.merge', { workspaceId, taskId: task.id })
-      if (response?.snapshot) setSnapshot(response.snapshot as TeamSnapshot)
+      if (response?.snapshot) applyBoardSnapshot(response.snapshot as TeamSnapshot)
       notifyTeamBoardChanged()
       toast.success(t('team:merged', { branch: task.branch }))
     } catch (caught) {
@@ -528,6 +648,7 @@ export function TeamBoardPanel() {
   }
 
   const openDelegateRun = async (run: DelegateRun) => {
+    if (run.provisional) return
     setOpeningSubagentKey(`delegate:${run.runId}`)
     try {
       await openDelegateSessionPreview(run)
@@ -573,7 +694,7 @@ export function TeamBoardPanel() {
         closedBy: 'human',
         note: '人工确认这轮已结束',
       })
-      if (response?.snapshot) setSnapshot(response.snapshot as TeamSnapshot)
+      if (response?.snapshot) applyBoardSnapshot(response.snapshot as TeamSnapshot)
       notifyTeamBoardChanged()
       toast.success(t('team:settled'))
     } catch (caught) {
@@ -584,7 +705,7 @@ export function TeamBoardPanel() {
   const interveneRun = async (task: TeamTask, text: string): Promise<boolean> => {
     try {
       const response = await ipcClient.invoke('teamBoard.intervene', { workspaceId, taskId: task.id, text })
-      if (response?.snapshot) setSnapshot(response.snapshot as TeamSnapshot)
+      if (response?.snapshot) applyBoardSnapshot(response.snapshot as TeamSnapshot)
       notifyTeamBoardChanged()
       toast.success(t('team:intervened'))
       return true
@@ -597,7 +718,7 @@ export function TeamBoardPanel() {
   const abortRun = async (run: TeamRun) => {
     try {
       const response = await ipcClient.invoke('teamBoard.abortRun', { workspaceId, sessionFile: run.sessionFile })
-      if (response?.snapshot) setSnapshot(response.snapshot as TeamSnapshot)
+      if (response?.snapshot) applyBoardSnapshot(response.snapshot as TeamSnapshot)
       notifyTeamBoardChanged()
       toast.success(t('team:aborted'))
     } catch (caught) {
@@ -614,7 +735,7 @@ export function TeamBoardPanel() {
         ...(note.trim() ? { note: note.trim() } : {}),
         from: task.status,
       })
-      if (response?.snapshot) setSnapshot(response.snapshot as TeamSnapshot)
+      if (response?.snapshot) applyBoardSnapshot(response.snapshot as TeamSnapshot)
       notifyTeamBoardChanged()
       toast.success(decision === 'approve' ? t('team:approvalApproved') : t('team:approvalDenied'))
       return true
@@ -633,7 +754,7 @@ export function TeamBoardPanel() {
         text,
         taskId: task.id,
       })
-      if (response?.snapshot) setSnapshot(response.snapshot as TeamSnapshot)
+      if (response?.snapshot) applyBoardSnapshot(response.snapshot as TeamSnapshot)
       toast.success(t('team:memorySaved'))
       return true
     } catch (caught) {
@@ -650,7 +771,7 @@ export function TeamBoardPanel() {
         ...(nextBatchName.trim() ? { nextBatch: nextBatchName.trim() } : {}),
         ...(nextBatchGoal.trim() ? { nextGoal: nextBatchGoal.trim() } : {}),
       })
-      if (response?.snapshot) setSnapshot(response.snapshot as TeamSnapshot)
+      if (response?.snapshot) applyBoardSnapshot(response.snapshot as TeamSnapshot)
       notifyTeamBoardChanged()
       setArchiveOpen(false)
       setNextBatchName('')
@@ -675,9 +796,10 @@ export function TeamBoardPanel() {
   return (
     <div className="team-board relative flex h-full min-h-0 flex-col">
       <header className="team-head shrink-0">
-        <div className="flex items-center gap-1.5 px-3 pb-1 pt-2">
-          <Users className="h-3.5 w-3.5 shrink-0 text-foreground-secondary" />
-          <span className="shrink-0 text-[12.5px] font-semibold leading-4">{t('team:title')}</span>
+        <div className="flex items-center gap-1.5 px-3 pb-1.5 pt-2.5">
+          <Users className="h-3.5 w-3.5 shrink-0 text-[color:var(--team-accent)]" />
+          <span className="shrink-0 text-[12.5px] font-semibold leading-4 tracking-[-0.01em]">{t('team:title')}</span>
+          <span className="text-[11px] text-foreground-tertiary/60">/</span>
           <span className="team-project min-w-0 truncate" title={workspaceId}>{projectName}</span>
           <div className="team-head-actions ml-auto flex shrink-0 items-center gap-0.5">
             {snapshot?.exists ? (
@@ -718,15 +840,16 @@ export function TeamBoardPanel() {
           </div>
         </div>
 
-        {snapshot?.exists ? (
-          <div className="team-batch">
-            <ProgressRing accepted={progress.accepted} total={progress.total} label={t('team:progressHint')} />
-            <div className="min-w-0 flex-1">
+        {snapshot?.exists ? (() => {
+          const ratio = progress.total > 0 ? Math.min(1, Math.max(0, progress.accepted / progress.total)) : 0
+          const allDone = progress.total > 0 && progress.accepted === progress.total
+          return (
+            <div className="team-batch" title={t('team:progressHint')}>
               <div className="flex items-center gap-1.5">
-                <span className="min-w-0 truncate text-xs font-semibold" title={snapshot.batch}>
+                <span className="min-w-0 flex-1 truncate text-[12px] font-semibold leading-4" title={snapshot.batch}>
                   {snapshot.batch || t('team:batchFallback')}
                 </span>
-                <span className="team-chip shrink-0 tabular-nums" data-tone="info">
+                <span className="team-chip shrink-0 tabular-nums" data-tone={allDone ? 'success' : 'info'}>
                   {t('team:progress', { accepted: progress.accepted, total: progress.total })}
                 </span>
                 {progress.blocked > 0 ? (
@@ -741,18 +864,27 @@ export function TeamBoardPanel() {
                   </span>
                 ) : null}
               </div>
-              <div className="truncate text-2xs leading-4 text-foreground-tertiary" title={snapshot.goal}>
-                {snapshot.goal || t('team:goalFallback')}
+              {snapshot.goal ? (
+                <div className="truncate text-[10.5px] leading-4 text-foreground-secondary" title={snapshot.goal}>
+                  {snapshot.goal}
+                </div>
+              ) : null}
+              <div className="team-progress-track">
+                <div
+                  className="team-progress-fill"
+                  data-complete={allDone ? 'true' : undefined}
+                  style={{ width: `${Math.round(ratio * 100)}%` }}
+                />
               </div>
             </div>
-          </div>
-        ) : null}
+          )
+        })() : null}
 
         {error ? (
-          <div className="mx-3 mb-1.5 flex items-center gap-1.5 rounded-md bg-[color-mix(in_srgb,var(--danger-semantic,#dc2626)_8%,transparent)] px-2 py-1 text-2xs text-destructive">
+          <div className="mx-3 mb-2 flex items-center gap-1.5 rounded-lg bg-[color-mix(in_srgb,var(--danger-semantic,#dc2626)_8%,transparent)] px-2.5 py-1.5 text-2xs text-destructive">
             <AlertTriangle className="h-3 w-3 shrink-0" />
             <span className="min-w-0 flex-1 truncate" title={error}>{error}</span>
-            <button type="button" onClick={() => void refresh({ silent: false })} className="shrink-0 underline">
+            <button type="button" onClick={() => void refresh({ silent: false })} className="shrink-0 font-medium underline">
               {t('team:refresh')}
             </button>
           </div>
@@ -905,19 +1037,19 @@ export function TeamBoardPanel() {
           </div>
 
           <SubagentSection
-            runs={runs}
+            activeTeamRuns={activeTeamRuns}
+            liveDelegateRuns={liveDelegateRuns}
+            liveTreeSubagents={liveTreeSubagents}
             tasks={tasks}
             taskTitleById={taskTitleById}
             telemetryByRunId={telemetryByRunId}
-            delegateRuns={delegateRuns}
-            treeSubagents={treeSubagents}
             runtimeRunning={sessionRuntimeRunning}
             historySessionFile={historySessionFile}
             openingKey={openingSubagentKey}
             resumingRunId={resumingRunId}
             nowMs={nowMs}
-            showRecent={showRecentSubagents}
-            onToggleRecent={() => setShowRecentSubagents((prev) => !prev)}
+            collapsed={subagentsCollapsed}
+            onToggleCollapsed={() => setSubagentsCollapsed((prev) => !prev)}
             onOpenTeamRun={(run) => void openRunSession(run)}
             onSplitTeamRun={(run) => void splitRunSession(run)}
             onResumeTeamRun={(run) => void resumeRun(run)}
@@ -1022,25 +1154,31 @@ export function TeamBoardPanel() {
                       </div>
                       <div className="team-lane-cards team-scroll">
                         {items.map((task) => {
-                          const run = latestRun(task, runs)
-                          const viewingRun = Boolean(run && historySessionFile && sessionFilesEqual(run.sessionFile, historySessionFile))
-                          const telemetry = run ? telemetryByRunId.get(run.id) : undefined
+                          const latest = latestRun(task, runs)
+                          const activeRun = activeTeamRuns.find((item) => item.taskId === task.id)
+                          const liveDelegate = !activeRun ? liveDelegateByTaskId.get(task.id.toUpperCase()) : undefined
+                          const viewingRun = Boolean(
+                            activeRun && historySessionFile && sessionFilesEqual(activeRun.sessionFile, historySessionFile),
+                          )
+                          const telemetry = activeRun ? telemetryByRunId.get(activeRun.id) : undefined
                           return (
                             <TaskCard
                               key={task.id}
                               task={task}
-                              run={run}
+                              activeRun={activeRun}
+                              liveDelegate={liveDelegate}
                               telemetry={telemetry}
                               nowMs={nowMs}
-                              stage={deriveTeamStage({ task, run })}
-                              running={isSessionRunning(sessionRuntimeRunning, run?.sessionFile)}
+                              stage={deriveTeamStage({ task, run: latest })}
+                              running={Boolean(activeRun && isSessionRunning(sessionRuntimeRunning, activeRun.sessionFile))}
                               viewingRun={viewingRun}
-                              resuming={Boolean(run && resumingRunId === run.id)}
+                              resuming={Boolean(activeRun && resumingRunId === activeRun.id)}
                               dragging={draggingId === task.id}
                               onOpen={() => openTask(task)}
-                              onOpenRun={run ? () => void openRunSession(run) : undefined}
-                              onSplitRun={run ? () => void splitRunSession(run) : undefined}
-                              onResumeRun={run ? () => void resumeRun(run) : undefined}
+                              onOpenRun={activeRun ? () => void openRunSession(activeRun) : undefined}
+                              onSplitRun={activeRun ? () => void splitRunSession(activeRun) : undefined}
+                              onResumeRun={activeRun ? () => void resumeRun(activeRun) : undefined}
+                              onOpenDelegate={liveDelegate ? () => void openDelegateRun(liveDelegate) : undefined}
                               onDragStart={(event) => {
                                 event.dataTransfer.effectAllowed = 'move'
                                 event.dataTransfer.setData('text/plain', task.id)
@@ -1064,12 +1202,14 @@ export function TeamBoardPanel() {
             <PeopleView
               tasks={tasks}
               roles={roles}
-              runs={runs}
+              activeTeamRuns={activeTeamRuns}
+              liveDelegateByTaskId={liveDelegateByTaskId}
               telemetryByRunId={telemetryByRunId}
               historySessionFile={historySessionFile}
               onOpen={openTask}
               onOpenRun={(run) => void openRunSession(run)}
               onSplitRun={(run) => void splitRunSession(run)}
+              onOpenDelegate={(run) => void openDelegateRun(run)}
               runtimeRunning={sessionRuntimeRunning}
             />
           )}
@@ -1091,6 +1231,7 @@ export function TeamBoardPanel() {
           busy={busyTaskId === selectedTask.id}
           merging={mergingTaskId === selectedTask.id}
           reviewing={reviewingTaskId === selectedTask.id}
+          resuming={Boolean(resumingRunId)}
           initialPending={pendingStatus}
           onClose={() => {
             setSelectedTaskId(null)
@@ -1105,6 +1246,7 @@ export function TeamBoardPanel() {
             if (selectedBinding) void openRole(selectedBinding)
           }}
           onOpenSession={(run) => void openRunSession(run)}
+          onResumeRun={(run) => void resumeRun(run)}
           onSettleRun={(run) => void settleRun(run)}
           onApproval={(decision, note) => resolveApproval(selectedTask, decision, note)}
           onIntervene={(text) => interveneRun(selectedTask, text)}
@@ -1186,7 +1328,7 @@ export function TeamBoardPanel() {
           specPath={specPath}
           onClose={() => setInitMode(null)}
           onDone={(next) => {
-            setSnapshot(next)
+            applyBoardSnapshot(next)
             notifyTeamBoardChanged()
           }}
         />
@@ -1198,38 +1340,12 @@ export function TeamBoardPanel() {
           defaultRole={roles[1]?.role || 'Builder'}
           onClose={() => setCreateOpen(false)}
           onDone={(next) => {
-            setSnapshot(next)
+            applyBoardSnapshot(next)
             notifyTeamBoardChanged()
           }}
         />
       ) : null}
     </div>
-  )
-}
-
-function ProgressRing({ accepted, total, label }: { accepted: number; total: number; label: string }) {
-  const ratio = total > 0 ? Math.min(1, Math.max(0, accepted / total)) : 0
-  return (
-    <span className="relative inline-flex h-6 w-6 shrink-0 items-center justify-center" title={label}>
-      <svg viewBox="0 0 24 24" className="h-6 w-6 -rotate-90" aria-hidden="true">
-        <circle cx="12" cy="12" r="9" fill="none" stroke="color-mix(in srgb, var(--text-secondary) 16%, transparent)" strokeWidth="2.6" />
-        <circle
-          className="value"
-          cx="12"
-          cy="12"
-          r="9"
-          fill="none"
-          stroke="hsl(var(--primary))"
-          strokeWidth="2.6"
-          strokeLinecap="round"
-          strokeDasharray={RING_LENGTH}
-          strokeDashoffset={RING_LENGTH * (1 - ratio)}
-        />
-      </svg>
-      <span className="absolute text-[8px] font-medium tabular-nums text-foreground-secondary">
-        {total > 0 ? Math.round(ratio * 100) : 0}
-      </span>
-    </span>
   )
 }
 
@@ -1304,19 +1420,19 @@ function RoleChip({
 }
 
 function SubagentSection({
-  runs,
+  activeTeamRuns,
+  liveDelegateRuns,
+  liveTreeSubagents,
   tasks,
   taskTitleById,
   telemetryByRunId,
-  delegateRuns,
-  treeSubagents,
   runtimeRunning,
   historySessionFile,
   openingKey,
   resumingRunId,
   nowMs,
-  showRecent,
-  onToggleRecent,
+  collapsed,
+  onToggleCollapsed,
   onOpenTeamRun,
   onSplitTeamRun,
   onResumeTeamRun,
@@ -1325,19 +1441,19 @@ function SubagentSection({
   onOpenDelegate,
   onOpenTree,
 }: {
-  runs: TeamRun[]
+  activeTeamRuns: TeamRun[]
+  liveDelegateRuns: DelegateRun[]
+  liveTreeSubagents: SubagentSessionChild[]
   tasks: TeamTask[]
   taskTitleById: Map<string, string>
   telemetryByRunId: Map<string, SubagentTelemetry>
-  delegateRuns: DelegateRun[]
-  treeSubagents: SubagentSessionChild[]
   runtimeRunning: Record<string, boolean> | null | undefined
   historySessionFile: string
   openingKey: string
   resumingRunId: string
   nowMs: number
-  showRecent: boolean
-  onToggleRecent: () => void
+  collapsed: boolean
+  onToggleCollapsed: () => void
   onOpenTeamRun: (run: TeamRun) => void
   onSplitTeamRun: (run: TeamRun) => void
   onResumeTeamRun: (run: TeamRun) => void
@@ -1355,95 +1471,52 @@ function SubagentSection({
   const taskById = new Map<string, TeamTask>()
   for (const task of tasks) taskById.set(task.id, task)
 
-  const activeTeamRuns = [...runs]
-    .reverse()
-    .filter((run) => run.status === 'starting' || run.status === 'running')
-  const recentTeamRuns = [...runs]
-    .reverse()
-    .filter((run) => run.status !== 'starting' && run.status !== 'running')
-    .slice(0, 6)
-
-  const activeDelegates = delegateRuns.filter((run) => run.state === 'running')
-  const recentDelegates = delegateRuns.filter((run) => run.state !== 'running').slice(0, 4)
-
-  const activeTrees = treeSubagents.filter(
-    (child) => (child.state === 'running' || child.state === 'pending') && !!child.sessionFile,
-  )
-
-  const activeCount = activeTeamRuns.length + activeDelegates.length + activeTrees.length
-  const recentCount = recentTeamRuns.length + recentDelegates.length
-  if (activeCount === 0 && recentCount === 0) return null
-
-  const visibleRecentTeam = showRecent
-    ? recentTeamRuns
-    : activeCount === 0
-      ? recentTeamRuns.slice(0, 2)
-      : []
-  const visibleRecentDelegates = showRecent
-    ? recentDelegates
-    : activeCount === 0 && visibleRecentTeam.length < 2
-      ? recentDelegates.slice(0, 2 - visibleRecentTeam.length)
-      : []
-  const hiddenRecentCount = recentCount - visibleRecentTeam.length - visibleRecentDelegates.length
+  const activeCount = activeTeamRuns.length + liveDelegateRuns.length + liveTreeSubagents.length
+  if (activeCount === 0) return null
 
   const teamStatusLabel = (run: TeamRun, live: boolean) => {
     if (run.staleAt) return t('team:stages.stale')
     if (live) return t('team:runRunning')
-    switch (run.status) {
-      case 'starting':
-        return t('team:runStarting')
-      case 'running':
-        return t('team:runRunning')
-      case 'done':
-        return t('team:runDone')
-      case 'failed':
-        return t('team:runFailed')
-      case 'cancelled':
-        return t('team:runCancelled')
-    }
+    return run.status === 'starting' ? t('team:runStarting') : t('team:runRunning')
   }
 
   return (
     <section className="team-subagents shrink-0 px-3 pb-1.5 pt-1" aria-label={t('team:subagentSection.title')}>
-      <div className="flex items-center gap-1.5 pb-1">
+      <button
+        type="button"
+        onClick={onToggleCollapsed}
+        aria-expanded={!collapsed}
+        title={t('team:subagentSection.toggleCollapse')}
+        className="team-subagents-toggle"
+      >
         <Bot className="h-3 w-3 shrink-0 text-foreground-tertiary" />
         <span className="text-2xs font-semibold uppercase tracking-wider text-foreground-tertiary">
           {t('team:subagentSection.title')}
         </span>
-        {activeCount > 0 ? (
-          <span className="team-chip" data-tone="info">
-            <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-            {t('team:subagentSection.runningCount', { count: activeCount })}
-          </span>
-        ) : null}
-        {recentCount > 0 && (hiddenRecentCount > 0 || showRecent) ? (
-          <button
-            type="button"
-            onClick={onToggleRecent}
-            className="ml-auto inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] text-foreground-tertiary hover:bg-[var(--bg-hover)] hover:text-foreground"
-          >
-            <span>
-              {showRecent
-                ? t('team:subagentSection.hideRecent')
-                : t('team:subagentSection.recentToggle', { count: recentCount })}
-            </span>
-            <ChevronDown className={cn('h-2.5 w-2.5 transition-transform', !showRecent && '-rotate-90')} />
-          </button>
-        ) : null}
-      </div>
+        <span className="team-chip" data-tone="info">
+          <span className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: 'var(--team-accent)' }} />
+          {t('team:subagentSection.runningCount', { count: activeCount })}
+        </span>
+        <ChevronDown
+          className={cn(
+            'ml-auto h-3 w-3 shrink-0 text-foreground-tertiary transition-transform',
+            collapsed && '-rotate-90',
+          )}
+        />
+      </button>
 
-      <div className="team-subagent-list team-scroll">
-        {activeTeamRuns.map((run) => renderTeamRow(run, true))}
-        {activeDelegates.map((run) => renderDelegateRow(run))}
-        {activeTrees.map((child) => renderTreeRow(child))}
-        {visibleRecentTeam.map((run) => renderTeamRow(run, false))}
-        {visibleRecentDelegates.map((run) => renderDelegateRow(run))}
-      </div>
+      {!collapsed ? (
+        <div className="team-subagent-list team-scroll mt-1">
+          {activeTeamRuns.map((run) => renderTeamRow(run))}
+          {liveDelegateRuns.map((run) => renderDelegateRow(run))}
+          {liveTreeSubagents.map((child) => renderTreeRow(child))}
+        </div>
+      ) : null}
     </section>
   )
 
-  function renderTeamRow(run: TeamRun, isActive: boolean) {
-    const live = isActive && isSessionRunning(runtimeRunning, run.sessionFile)
+  function renderTeamRow(run: TeamRun) {
+    const live = isSessionRunning(runtimeRunning, run.sessionFile)
     const viewing = Boolean(historySessionFile && sessionFilesEqual(run.sessionFile, historySessionFile))
     const opening = openingKey === run.id || openingKey === `split:${run.id}`
     const resuming = resumingRunId === run.id
@@ -1452,13 +1525,9 @@ function SubagentSection({
     const taskObj = taskById.get(run.taskId)
     const telemetry = telemetryByRunId.get(run.id)
     const workerBadge = formatWorkerBadge(roleLabel(run.role, t), telemetry?.slot)
-    const elapsed = formatRunElapsed(run.startedAt, run.endedAt, nowMs)
+    const elapsed = formatRunElapsed(run.startedAt, undefined, nowMs)
     const modelShort = telemetry?.model ? shortModel(telemetry.model) : ''
-    const canResume =
-      run.status === 'failed'
-      || run.status === 'cancelled'
-      || Boolean(run.staleAt)
-      || Boolean(telemetry?.isSilentWarning)
+    const canResume = Boolean(telemetry?.isSilentWarning)
     const silentText = telemetry?.isSilentWarning
       ? t('team:subagentSection.silentWarning', {
           elapsed: formatRunElapsed(telemetry.lastActivityAt, undefined, nowMs) || '90s+',
@@ -1486,45 +1555,46 @@ function SubagentSection({
           event.preventDefault()
           if (!opening) onOpenTeamRun(run)
         }}
-        data-active={isActive}
+        data-active="true"
         data-viewing={viewing}
+        style={{ '--subagent-accent': roleColor(run.role) } as CSSProperties}
         className="team-subagent-card cursor-pointer text-left"
         title={`${workerBadge} · ${run.taskId}${taskTitle ? ` · ${taskTitle}` : ''}`}
       >
-        <div className="flex items-center gap-1.5">
-          <span className="team-avatar !h-6 !w-6" style={{ '--team-role': roleColor(run.role) } as CSSProperties}>
+        <div className="flex items-start gap-2">
+          <span className="team-avatar !h-6 !w-6 mt-0.5" style={{ '--team-role': roleColor(run.role) } as CSSProperties}>
             <img src={roleAvatar(run.role)} alt="" />
           </span>
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5">
               <span
                 className={cn(
                   'h-1.5 w-1.5 shrink-0 rounded-full',
-                  telemetry?.isSilentWarning
-                    ? 'bg-amber-500'
-                    : live
-                      ? 'animate-pulse bg-primary'
-                      : run.staleAt
-                        ? 'bg-amber-500'
-                        : isActive
-                          ? 'bg-amber-500'
-                          : run.status === 'failed' || run.status === 'cancelled'
-                            ? 'bg-destructive'
-                            : 'bg-emerald-500',
+                  telemetry?.isSilentWarning || !live ? 'bg-amber-500' : 'animate-pulse',
                 )}
+                style={!telemetry?.isSilentWarning && live ? { background: 'var(--team-accent)' } : undefined}
               />
               <span className="shrink-0 text-[11px] font-semibold" style={{ color: roleColor(run.role) }}>
                 {workerBadge}
               </span>
               {run.taskId ? (
-                <span className="shrink-0 font-mono text-[9.5px] text-foreground-tertiary">{run.taskId}</span>
+                <span className="shrink-0 rounded bg-[var(--team-fill)] px-1 py-0 font-mono text-[9.5px] leading-[14px] text-foreground-secondary">
+                  {run.taskId}
+                </span>
               ) : null}
-              {taskTitle ? (
-                <span className="min-w-0 flex-1 truncate text-[10.5px] text-foreground">{taskTitle}</span>
+              {elapsed ? (
+                <span className="ml-auto shrink-0 font-mono text-[9.5px] tabular-nums text-foreground-tertiary">
+                  {elapsed}
+                </span>
               ) : null}
             </div>
+            {taskTitle ? (
+              <div className="mt-0.5 truncate text-[11px] font-medium leading-[15px] text-foreground">
+                {taskTitle}
+              </div>
+            ) : null}
             {(telemetry?.currentAction || silentText) ? (
-              <div className="flex items-center gap-1 truncate text-[10px] leading-[14px]">
+              <div className="mt-0.5 flex items-center gap-1 truncate text-[10px] leading-[14px]">
                 {silentText ? (
                   <span className="shrink-0 font-medium text-amber-600 dark:text-amber-400">{silentText}</span>
                 ) : null}
@@ -1533,16 +1603,30 @@ function SubagentSection({
                 ) : null}
               </div>
             ) : null}
-            <div className="flex items-center gap-1.5 truncate text-[9.5px] leading-[13px] text-foreground-tertiary">
-              <span className="truncate">{summaryParts.join(' · ')}</span>
-              {telemetry && telemetry.errorCount > 0 ? (
-                <span className="shrink-0 font-medium text-destructive">
-                  {t('team:subagentSection.errorsCount', { count: telemetry.errorCount })}
-                </span>
-              ) : null}
-            </div>
           </div>
+          <span className="team-subagent-enter mt-0.5">
+            {opening ? (
+              <Loader2 className="h-2.5 w-2.5 animate-spin" />
+            ) : viewing ? (
+              t('team:subagentSection.viewing')
+            ) : (
+              <>
+                {t('team:subagentSection.enter')}
+                <ChevronRight className="h-2.5 w-2.5" />
+              </>
+            )}
+          </span>
+        </div>
 
+        <div className="team-subagent-foot">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-[9.5px] leading-[13px] text-foreground-tertiary">
+            <span className="truncate">{summaryParts.join(' · ')}</span>
+            {telemetry && telemetry.errorCount > 0 ? (
+              <span className="shrink-0 font-medium text-destructive">
+                {t('team:subagentSection.errorsCount', { count: telemetry.errorCount })}
+              </span>
+            ) : null}
+          </div>
           <div className="flex shrink-0 items-center gap-0.5">
             <button
               type="button"
@@ -1568,7 +1652,7 @@ function SubagentSection({
             >
               <Columns2 className="h-3 w-3" />
             </button>
-            {isActive && taskObj ? (
+            {taskObj ? (
               <button
                 type="button"
                 onClick={(event) => {
@@ -1599,32 +1683,18 @@ function SubagentSection({
                 {resuming ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
               </button>
             ) : null}
-            <span className="team-subagent-enter">
-              {opening ? (
-                <Loader2 className="h-2.5 w-2.5 animate-spin" />
-              ) : viewing ? (
-                t('team:subagentSection.viewing')
-              ) : (
-                <>
-                  {t('team:subagentSection.enter')}
-                  <ChevronRight className="h-2.5 w-2.5" />
-                </>
-              )}
-            </span>
-            {isActive ? (
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  onAbortTeamRun(run)
-                }}
-                title={t('team:abortRun')}
-                aria-label={t('team:abortRun')}
-                className="team-subagent-icon-btn hover:text-destructive"
-              >
-                <Square className="h-2.5 w-2.5" />
-              </button>
-            ) : null}
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                onAbortTeamRun(run)
+              }}
+              title={t('team:abortRun')}
+              aria-label={t('team:abortRun')}
+              className="team-subagent-icon-btn hover:text-destructive"
+            >
+              <Square className="h-2.5 w-2.5" />
+            </button>
           </div>
         </div>
 
@@ -1695,47 +1765,51 @@ function SubagentSection({
   }
 
   function renderDelegateRow(run: DelegateRun) {
-    const isActive = run.state === 'running'
     const opening = openingKey === `delegate:${run.runId}`
-    const elapsed = formatRunElapsed(run.startedAt, run.durationMs ? run.startedAt + run.durationMs : undefined, nowMs)
-    const statusText =
-      run.state === 'running'
-        ? t('team:delegate.stateRunning')
-        : run.state === 'failed'
-          ? t('team:delegate.stateFailed')
-          : t('team:delegate.stateDone')
-    const metaParts = [statusText, elapsed, run.preview || ''].filter(Boolean)
+    const provisional = Boolean(run.provisional)
+    const elapsed = formatRunElapsed(run.startedAt, undefined, nowMs)
+    const { taskId, summary } = formatDelegateDisplay(run)
+    const metaParts = [provisional ? t('team:runStarting') : t('team:delegate.stateRunning'), elapsed, run.preview || ''].filter(Boolean)
 
     return (
       <div
         key={`del:${run.runId}`}
-        role="button"
-        tabIndex={0}
+        role={provisional ? undefined : 'button'}
+        tabIndex={provisional ? undefined : 0}
         onClick={() => {
-          if (!opening) onOpenDelegate(run)
+          if (!opening && !provisional) onOpenDelegate(run)
         }}
         onKeyDown={(event) => {
-          if (event.key !== 'Enter' && event.key !== ' ') return
+          if (provisional || (event.key !== 'Enter' && event.key !== ' ')) return
           event.preventDefault()
           if (!opening) onOpenDelegate(run)
         }}
-        data-active={isActive}
-        className="team-subagent-card cursor-pointer text-left"
+        data-active="true"
+        className={cn('team-subagent-card text-left', !provisional && 'cursor-pointer')}
         title={run.task || run.runId}
       >
-        <div className="flex items-center gap-1.5">
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border/60 bg-[var(--bg-hover)] text-foreground-secondary">
-            {isActive ? <Loader2 className="h-3 w-3 animate-spin text-primary" /> : <Bot className="h-3 w-3" />}
+        <div className="flex items-center gap-2">
+          <span
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[color:var(--team-accent-border)] bg-[var(--team-accent-soft)]"
+            style={{ color: 'var(--team-accent)' }}
+          >
+            <Loader2 className="h-3 w-3 animate-spin" />
           </span>
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1">
-              <span className="shrink-0 text-[11px] font-medium text-foreground">{run.agent}</span>
-              <span className="shrink-0 font-mono text-[9.5px] text-foreground-tertiary">
-                {run.runId.replace(/^del_/, '')}
-              </span>
-              {run.task ? (
-                <span className="min-w-0 flex-1 truncate text-[10.5px] text-foreground-secondary">{run.task}</span>
+            <div className="flex items-center gap-1.5">
+              <span className="shrink-0 text-[11px] font-semibold text-foreground">{run.agent}</span>
+              {taskId ? (
+                <span className="shrink-0 rounded bg-[var(--team-fill)] px-1 py-0 font-mono text-[9.5px] leading-[14px] text-foreground-secondary">
+                  {taskId}
+                </span>
               ) : null}
+              {summary ? (
+                <span className="min-w-0 flex-1 truncate text-[10.5px] text-foreground-secondary">{summary}</span>
+              ) : (
+                <span className="min-w-0 flex-1 truncate font-mono text-[9.5px] text-foreground-tertiary">
+                  {run.runId.replace(/^del_/, '')}
+                </span>
+              )}
             </div>
             {metaParts.length > 0 ? (
               <div className="truncate text-[9.5px] leading-[13px] text-foreground-tertiary">
@@ -1743,16 +1817,20 @@ function SubagentSection({
               </div>
             ) : null}
           </div>
-          <span className="team-subagent-enter">
-            {opening ? (
-              <Loader2 className="h-2.5 w-2.5 animate-spin" />
-            ) : (
-              <>
-                {t('team:subagentSection.enter')}
-                <ChevronRight className="h-2.5 w-2.5" />
-              </>
-            )}
-          </span>
+          {!provisional ? (
+            <span className="team-subagent-enter">
+              {opening ? (
+                <Loader2 className="h-2.5 w-2.5 animate-spin" />
+              ) : (
+                <>
+                  {t('team:subagentSection.enter')}
+                  <ChevronRight className="h-2.5 w-2.5" />
+                </>
+              )}
+            </span>
+          ) : (
+            <span className="text-[10px] text-foreground-tertiary">{t('team:runStarting')}</span>
+          )}
         </div>
       </div>
     )
@@ -1774,13 +1852,16 @@ function SubagentSection({
           event.preventDefault()
           if (!opening) onOpenTree(child)
         }}
-        data-active
+        data-active="true"
         data-viewing={viewing}
         className="team-subagent-card cursor-pointer text-left"
         title={child.task || child.agent}
       >
         <div className="flex items-center gap-1.5">
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border/60 bg-[var(--bg-hover)] text-primary">
+          <span
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[color:var(--team-accent-border)] bg-[var(--team-accent-soft)]"
+            style={{ color: 'var(--team-accent)' }}
+          >
             <Loader2 className="h-3 w-3 animate-spin" />
           </span>
           <div className="min-w-0 flex-1">
@@ -1814,7 +1895,8 @@ function SubagentSection({
 
 function TaskCard({
   task,
-  run,
+  activeRun,
+  liveDelegate,
   telemetry,
   nowMs,
   stage,
@@ -1826,11 +1908,13 @@ function TaskCard({
   onOpenRun,
   onSplitRun,
   onResumeRun,
+  onOpenDelegate,
   onDragStart,
   onDragEnd,
 }: {
   task: TeamTask
-  run: TeamRun | undefined
+  activeRun: TeamRun | undefined
+  liveDelegate?: DelegateRun
   telemetry?: SubagentTelemetry
   nowMs: number
   stage: TeamStage
@@ -1842,19 +1926,22 @@ function TaskCard({
   onOpenRun?: () => void
   onSplitRun?: () => void
   onResumeRun?: () => void
+  onOpenDelegate?: () => void
   onDragStart: (event: DragEvent<HTMLDivElement>) => void
   onDragEnd: () => void
 }) {
   const { t } = useTranslation()
   const accepted = task.acceptance.filter((item) => item.done).length
-  const runActive = run?.status === 'starting' || run?.status === 'running'
+  const runActive = Boolean(activeRun || liveDelegate)
   const showStage = CARD_STAGES.has(stage)
-  const workerBadge = run ? formatWorkerBadge(roleLabel(run.role, t), telemetry?.slot) : ''
+  const workerBadge = activeRun ? formatWorkerBadge(roleLabel(activeRun.role, t), telemetry?.slot) : ''
   const modelShort = telemetry?.model ? shortModel(telemetry.model) : ''
-  const elapsed = run ? formatRunElapsed(run.startedAt, run.endedAt, nowMs) : ''
-  const canResume = Boolean(
-    run && onResumeRun && (run.status === 'failed' || run.status === 'cancelled' || run.staleAt || telemetry?.isSilentWarning),
-  )
+  const elapsed = activeRun
+    ? formatRunElapsed(activeRun.startedAt, undefined, nowMs)
+    : liveDelegate
+      ? formatRunElapsed(liveDelegate.startedAt, undefined, nowMs)
+      : ''
+  const canResume = Boolean(activeRun && onResumeRun && telemetry?.isSilentWarning)
   const silentText = telemetry?.isSilentWarning
     ? t('team:subagentSection.silentWarning', {
         elapsed: formatRunElapsed(telemetry.lastActivityAt, undefined, nowMs) || '90s+',
@@ -1891,15 +1978,22 @@ function TaskCard({
         ) : runActive ? (
           <span
             className="team-role-dot ml-auto"
-            data-live={running && !telemetry?.isSilentWarning}
-            style={{ background: telemetry?.isSilentWarning || !running ? 'var(--warning-semantic)' : 'var(--primary)' }}
-            title={silentText || (running ? t('team:runRunning') : t('team:staleRun'))}
+            data-live={Boolean(liveDelegate) || (running && !telemetry?.isSilentWarning)}
+            style={{
+              background:
+                telemetry?.isSilentWarning || (activeRun && !running)
+                  ? 'var(--warning-semantic)'
+                  : 'var(--team-accent)',
+            }}
+            title={silentText || (running || liveDelegate ? t('team:runRunning') : t('team:staleRun'))}
           />
         ) : null}
       </div>
-      <div className="team-card-title mt-0.5">{task.title}</div>
+      <div className="team-card-title mt-1">{task.title}</div>
       <div className="team-card-meta">
-        <span className="truncate" style={{ color: roleColor(task.role) }}>{roleLabel(task.role, t)}</span>
+        <span className="team-card-role-pill" style={{ '--role-tint': roleColor(task.role) } as CSSProperties}>
+          {roleLabel(task.role, t)}
+        </span>
         {task.branch ? (
           <span className="inline-flex items-center gap-0.5 truncate font-mono text-[9.5px] text-foreground-tertiary" title={task.branch}>
             <GitBranch className="h-2.5 w-2.5 shrink-0" />
@@ -1923,13 +2017,13 @@ function TaskCard({
           </span>
         ) : null}
       </div>
-      {run && onOpenRun ? (
+      {activeRun && onOpenRun ? (
         <div className="team-card-worker" onClick={(event) => event.stopPropagation()}>
           <div className="flex items-center gap-1.5">
-            <span className="team-avatar !h-4 !w-4" style={{ '--team-role': roleColor(run.role) } as CSSProperties}>
-              <img src={roleAvatar(run.role)} alt="" />
+            <span className="team-avatar !h-4 !w-4" style={{ '--team-role': roleColor(activeRun.role) } as CSSProperties}>
+              <img src={roleAvatar(activeRun.role)} alt="" />
             </span>
-            <span className="shrink-0 text-[10px] font-semibold" style={{ color: roleColor(run.role) }}>
+            <span className="shrink-0 text-[10px] font-semibold" style={{ color: roleColor(activeRun.role) }}>
               {workerBadge}
             </span>
             {modelShort ? (
@@ -1970,23 +2064,12 @@ function TaskCard({
               <span
                 className={cn(
                   'h-1.5 w-1.5 shrink-0 rounded-full',
-                  telemetry?.isSilentWarning
-                    ? 'bg-amber-500'
-                    : runActive && running
-                      ? 'animate-pulse bg-primary'
-                      : runActive
-                        ? 'bg-amber-500'
-                        : run.status === 'failed' || run.status === 'cancelled'
-                          ? 'bg-destructive'
-                          : 'bg-emerald-500',
+                  telemetry?.isSilentWarning || !running ? 'bg-amber-500' : 'animate-pulse',
                 )}
+                style={!telemetry?.isSilentWarning && running ? { background: 'var(--team-accent)' } : undefined}
               />
               <span className="min-w-0 flex-1 truncate text-left">
-                {viewingRun
-                  ? t('team:subagentSection.viewing')
-                  : runActive
-                    ? t('team:subagentSection.cardOpenLive')
-                    : t('team:subagentSection.cardOpenRecent')}
+                {viewingRun ? t('team:subagentSection.viewing') : t('team:subagentSection.cardOpenLive')}
               </span>
               <ChevronRight className="h-2.5 w-2.5 shrink-0 opacity-75" />
             </button>
@@ -2015,6 +2098,33 @@ function TaskCard({
             ) : null}
           </div>
         </div>
+      ) : liveDelegate && onOpenDelegate ? (
+        <div className="team-card-worker" onClick={(event) => event.stopPropagation()}>
+          <div className="flex items-center gap-1.5">
+            <Bot className="h-3 w-3 shrink-0 text-primary" />
+            <span className="shrink-0 text-[10px] font-semibold text-foreground">{liveDelegate.agent}</span>
+            <span className="min-w-0 flex-1 truncate font-mono text-[9.5px] text-foreground-tertiary">
+              {liveDelegate.runId.replace(/^del_/, '')}
+            </span>
+            {elapsed ? <span className="shrink-0 font-mono text-[9.5px] text-foreground-tertiary">{elapsed}</span> : null}
+          </div>
+          {liveDelegate.task ? (
+            <div className="mt-0.5 truncate text-[9.5px] leading-[13px] text-foreground-secondary">
+              {liveDelegate.task}
+            </div>
+          ) : null}
+          <div className="team-card-actions">
+            {liveDelegate.provisional ? (
+              <span className="text-[10px] text-foreground-tertiary">{t('team:runStarting')}</span>
+            ) : (
+              <button type="button" onClick={onOpenDelegate} className="team-card-run-btn !mt-0 flex-1">
+                <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full" style={{ background: 'var(--team-accent)' }} />
+                <span className="min-w-0 flex-1 truncate text-left">{t('team:subagentSection.cardOpenLive')}</span>
+                <ChevronRight className="h-2.5 w-2.5 shrink-0 opacity-75" />
+              </button>
+            )}
+          </div>
+        </div>
       ) : null}
     </div>
   )
@@ -2023,23 +2133,27 @@ function TaskCard({
 function PeopleView({
   tasks,
   roles,
-  runs,
+  activeTeamRuns,
+  liveDelegateByTaskId,
   telemetryByRunId,
   historySessionFile,
   runtimeRunning,
   onOpen,
   onOpenRun,
   onSplitRun,
+  onOpenDelegate,
 }: {
   tasks: TeamTask[]
   roles: TeamRoleBinding[]
-  runs: TeamRun[]
+  activeTeamRuns: TeamRun[]
+  liveDelegateByTaskId: Map<string, DelegateRun>
   telemetryByRunId: Map<string, SubagentTelemetry>
   historySessionFile: string
   runtimeRunning: Record<string, boolean> | null | undefined
   onOpen: (task: TeamTask) => void
   onOpenRun: (run: TeamRun) => void
   onSplitRun: (run: TeamRun) => void
+  onOpenDelegate: (run: DelegateRun) => void
 }) {
   const { t } = useTranslation()
   const known = new Set<string>(roles.map((binding) => binding.role))
@@ -2059,8 +2173,11 @@ function PeopleView({
             <span className="text-xs font-semibold">{roleLabel(group.role, t)}</span>
             <span className="team-count">{group.items.length}</span>
             {group.items.some((task) => {
-              const run = latestRun(task, runs)
-              return (run?.status === 'starting' || run?.status === 'running') && isSessionRunning(runtimeRunning, run.sessionFile)
+              const active = activeTeamRuns.find((item) => item.taskId === task.id)
+              return Boolean(
+                (active && isSessionRunning(runtimeRunning, active.sessionFile))
+                || liveDelegateByTaskId.has(task.id.toUpperCase()),
+              )
             }) ? (
               <span className="team-role-dot" data-live="true" style={{ background: roleColor(group.role) }} />
             ) : null}
@@ -2069,10 +2186,15 @@ function PeopleView({
             <div className="px-1 py-1 text-2xs text-foreground-tertiary">{t('team:noTasks')}</div>
           ) : (
             group.items.map((task) => {
-              const run = latestRun(task, runs)
-              const telemetry = run ? telemetryByRunId.get(run.id) : undefined
-              const viewingRun = Boolean(run && historySessionFile && sessionFilesEqual(run.sessionFile, historySessionFile))
-              const workerBadge = run ? formatWorkerBadge(roleLabel(run.role, t), telemetry?.slot) : ''
+              const activeRun = activeTeamRuns.find((item) => item.taskId === task.id)
+              const liveDelegate = !activeRun ? liveDelegateByTaskId.get(task.id.toUpperCase()) : undefined
+              const telemetry = activeRun ? telemetryByRunId.get(activeRun.id) : undefined
+              const viewingRun = Boolean(
+                activeRun && historySessionFile && sessionFilesEqual(activeRun.sessionFile, historySessionFile),
+              )
+              const workerBadge = activeRun
+                ? formatWorkerBadge(roleLabel(activeRun.role, t), telemetry?.slot)
+                : liveDelegate?.agent || ''
               return (
                 <div
                   key={task.id}
@@ -2094,19 +2216,19 @@ function PeopleView({
                     <span className="block truncate font-mono text-[9.5px] leading-[12px]" style={{ color: STATUS_COLORS[task.status] }}>
                       {task.id} · {statusLabel(task.status, t)}{workerBadge ? ` · ${workerBadge}` : ''}
                     </span>
-                    {telemetry?.currentAction ? (
+                    {telemetry?.currentAction || liveDelegate?.task ? (
                       <span className="block truncate text-[9.5px] leading-[12px] text-foreground-tertiary">
-                        {telemetry.currentAction}
+                        {telemetry?.currentAction || liveDelegate?.task}
                       </span>
                     ) : null}
                   </span>
-                  {run ? (
+                  {activeRun ? (
                     <div className="flex shrink-0 items-center gap-0.5">
                       <button
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation()
-                          onSplitRun(run)
+                          onSplitRun(activeRun)
                         }}
                         title={t('team:subagentSection.splitWatch')}
                         className="team-subagent-icon-btn"
@@ -2117,13 +2239,24 @@ function PeopleView({
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation()
-                          onOpenRun(run)
+                          onOpenRun(activeRun)
                         }}
                         className="team-subagent-enter shrink-0"
                       >
                         {viewingRun ? t('team:subagentSection.viewing') : t('team:subagentSection.enter')}
                       </button>
                     </div>
+                  ) : liveDelegate && !liveDelegate.provisional ? (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        onOpenDelegate(liveDelegate)
+                      }}
+                      className="team-subagent-enter shrink-0"
+                    >
+                      {t('team:subagentSection.enter')}
+                    </button>
                   ) : null}
                   {task.acceptance.length ? (
                     <span

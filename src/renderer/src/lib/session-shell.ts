@@ -318,7 +318,7 @@ export async function hydrateSessionView(
   sessionFileOrKey: string,
   sessionId: string | null,
   navToken?: number,
-  options?: { bindWorker?: boolean },
+  options?: { bindWorker?: boolean; bypassCache?: boolean },
 ): Promise<void> {
   if (navToken != null && !assertSessionNavigation(navToken)) return
   const sessionKey = sessionKeyFromFile(sessionFileOrKey)
@@ -347,7 +347,7 @@ export async function hydrateSessionView(
     // Disk-first IPC — never spawns a worker.
     const diskAuthoritative = isSessionDiskAuthoritative(sessionKey)
     const hist = await fetchSessionHistoryTail(sessionKey, 80, {
-      bypassCache: !hadRows || diskAuthoritative || sessionTurnActive(sessionKey),
+      bypassCache: Boolean(options?.bypassCache) || !hadRows || diskAuthoritative || sessionTurnActive(sessionKey),
     })
     if (navToken != null && !assertSessionNavigation(navToken)) {
       restorePhaseIfUnfinished()

@@ -8,6 +8,7 @@ import {
   GitBranch,
   Loader2,
   Play,
+  RotateCcw,
   X,
 } from '@renderer/components/icons'
 import { cn } from '@renderer/lib/utils'
@@ -30,6 +31,7 @@ export function TeamTaskSheet({
   busy,
   merging,
   reviewing,
+  resuming,
   initialPending,
   onClose,
   onStatus,
@@ -39,6 +41,7 @@ export function TeamTaskSheet({
   onCopyPrompt,
   onOpenRole,
   onOpenSession,
+  onResumeRun,
   onSettleRun,
   onApproval,
   onIntervene,
@@ -52,6 +55,7 @@ export function TeamTaskSheet({
   busy: boolean
   merging?: boolean
   reviewing?: boolean
+  resuming?: boolean
   initialPending?: TeamStatus | null
   onClose: () => void
   onStatus: (to: TeamStatus, options?: StatusOptions) => Promise<boolean>
@@ -61,6 +65,7 @@ export function TeamTaskSheet({
   onCopyPrompt: () => void
   onOpenRole: () => void
   onOpenSession: (run: TeamRun) => void
+  onResumeRun?: (run: TeamRun) => void
   onSettleRun: (run: TeamRun) => void
   onApproval: (decision: 'approve' | 'deny', note: string) => Promise<boolean>
   onIntervene: (text: string) => Promise<boolean>
@@ -448,6 +453,17 @@ export function TeamTaskSheet({
                 <button type="button" onClick={() => onOpenSession(run)} className="rounded bg-[var(--bg-hover)] px-2 py-1 text-2xs hover:bg-[var(--bg-active)]">
                   {t('team:openSession')}
                 </button>
+                {onResumeRun && task.status !== '已验收' && (!live || Boolean(run.staleAt)) ? (
+                  <button
+                    type="button"
+                    disabled={resuming}
+                    onClick={() => onResumeRun(run)}
+                    className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-2 py-1 text-2xs text-amber-700 hover:bg-amber-500/20 disabled:opacity-40 dark:text-amber-300"
+                  >
+                    {resuming ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+                    {t('team:subagentSection.resume')}
+                  </button>
+                ) : null}
                 {runActive && !live ? (
                   <button type="button" onClick={() => onSettleRun(run)} className="rounded bg-amber-500/10 px-2 py-1 text-2xs text-amber-700 hover:bg-amber-500/20 dark:text-amber-300">
                     {t('team:settleRun')}
