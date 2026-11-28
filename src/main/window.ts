@@ -91,7 +91,7 @@ export function createWindow(closeToTray = false): BrowserWindow {
     ...(isMac && useFrameless
       ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 12, y: 10 } }
       : {}),
-    title: 'Pi mx',
+    title: is.dev ? 'Pi mx [DEV]' : 'Pi mx',
     icon: resolveAppIcon(),
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
@@ -104,11 +104,28 @@ export function createWindow(closeToTray = false): BrowserWindow {
 
   installWindowCloseGuard(mainWindow, closeToTray)
 
+  const revealDevWindow = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.moveTop()
+    mainWindow.focus()
+    if (isWin) {
+      // Windows 前台锁可能压住子进程新窗口：短脉冲置顶确保开发版立刻浮现到最前
+      mainWindow.setAlwaysOnTop(true)
+      setTimeout(() => {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setAlwaysOnTop(false)
+      }, 250)
+    }
+  }
+
   mainWindow.on('ready-to-show', () => {
     if (isE2eTestMode()) {
       mainWindow?.show()
-    } else if (is.dev) {
+    } else if (is.dev && process.env.PI_DEV_INACTIVE === '1') {
       mainWindow?.showInactive()
+    } else if (is.dev) {
+      revealDevWindow()
     } else {
       mainWindow?.show()
     }

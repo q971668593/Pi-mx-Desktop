@@ -7,11 +7,18 @@ import {
 } from '@renderer/lib/extension-ui-tool-sync'
 import { useExtensionUIStore } from '@renderer/stores/extension-ui-store'
 import { useUIStore } from '@renderer/stores/ui-store'
+import { getSessionState } from '@renderer/stores/use-view-session'
 import type { QuestionnaireAnswer } from './questionnaire-model'
 
 /** 交互请求对应的工具行（行内小卡、挂起提示都挂在它上面）。 */
-export function findToolContextForUi(): { toolCallId?: string; toolName?: string; timelineItemId?: string } {
-  const items = useUIStore.getState().timelineItems
+export function findToolContextForUi(sessionFile?: string | null): {
+  toolCallId?: string
+  toolName?: string
+  timelineItemId?: string
+} {
+  const items = sessionFile
+    ? (getSessionState(sessionFile)?.timelineItems ?? [])
+    : useUIStore.getState().timelineItems
   for (let i = items.length - 1; i >= 0; i--) {
     const it = items[i]
     if (it.type !== 'tool-call') continue
@@ -50,18 +57,22 @@ export function suspendActiveDialog(): string | undefined {
 }
 
 /** 提交问答答案：清掉工具行标记，再让 Worker 继续。 */
-export function answerQuestionnaire(id: string, answers: QuestionnaireAnswer[]): void {
-  const tid = findToolContextForUi().timelineItemId
+export function answerQuestionnaire(
+  id: string,
+  answers: QuestionnaireAnswer[],
+  sessionFile?: string | null,
+): void {
+  const tid = findToolContextForUi(sessionFile).timelineItemId
   respondToExtensionUI({ id, result: { cancelled: false, answers } })
-  clearExtensionToolRowFlags(tid)
-  useExtensionUIStore.getState().clearAfterRespond()
+  clearExtensionToolRowFlags(tid, sessionFile)
+  useExtensionUIStore.getState().dismissById(id)
 }
 
 /** 明确放弃：通知扩展取消，并把交互工具行收尾，避免一直转圈。 */
-export function cancelQuestionnaire(id: string): void {
-  const tid = findToolContextForUi().timelineItemId
+export function cancelQuestionnaire(id: string, sessionFile?: string | null): void {
+  const tid = findToolContextForUi(sessionFile).timelineItemId
   respondToExtensionUI({ id, cancelled: true })
-  clearExtensionToolRowFlags(tid)
-  useExtensionUIStore.getState().clearAfterRespond()
-  reconcileStaleInteractiveToolRows(id)
+  clearExtensionToolRowFlags(tid, sessionFile)
+  useExtensionUIStore.getState().dismissById(id)
+  reconcileStaleInteractiveToolRows(id, sessionFile)
 }

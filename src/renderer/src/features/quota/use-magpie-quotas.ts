@@ -10,7 +10,7 @@ export interface UseMagpieQuotasResult {
   codex?: MagpieQuotaEntry
   opencode?: MagpieQuotaEntry
   error: string | null
-  refresh: () => void
+  refresh: (force?: boolean) => void
 }
 
 /** 只取 codex（GPT）与 opencode-go（opencode）两条；popover 打开时 5s 轮询，否则 30s。 */
@@ -18,9 +18,9 @@ export function useMagpieQuotas(fast: boolean): UseMagpieQuotasResult {
   const [entries, setEntries] = useState<MagpieQuotaEntry[]>([])
   const [error, setError] = useState<string | null>(null)
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (force = false) => {
     try {
-      const res = (await ipcClient.invoke('magpie.quotas', {})) as MagpieQuotasResponse
+      const res = (await ipcClient.invoke('magpie.quotas', force ? { force: true } : {})) as MagpieQuotasResponse
       if (!res || !res.ok) {
         setError(res?.error || 'load-failed')
         return

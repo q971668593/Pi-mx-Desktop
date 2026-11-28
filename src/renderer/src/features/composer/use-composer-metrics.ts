@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { lookupContextWindow } from '@renderer/lib/model-context-window'
+import { sessionFilesEqual } from '@renderer/lib/session-file-key'
 import { useUIStore } from '@renderer/stores/ui-store'
+import { usePaneSessionIdentity, usePaneSessionState } from '@renderer/stores/pane-session-context'
 import { formatTokens, estTokensFromChars, estTokensFromText } from '@renderer/lib/format-tokens'
 import type { ContextRoleSlice } from '@renderer/features/run/context-donut'
 import { useSessionContextPreview } from '@renderer/features/context/use-session-context-preview'
@@ -8,19 +10,26 @@ import { noteStreamProgress } from '@renderer/lib/token-stream-clock'
 
 export function useComposerMetrics(options?: { enabled?: boolean }) {
   const metricsEnabled = options?.enabled !== false
-  const workspace = useUIStore((s) => s.currentWorkspace)
-  const model = useUIStore((s) => s.runState.model)
-  const usage = useUIStore((s) => s.runState.usage)
-  const isRunning = useUIStore((s) => s.runState.status === 'running')
-  const streamingId = useUIStore((s) => s.streamingAssistantId)
-  const streamSample = useUIStore((s) => {
+  const { isActive, workspace, sessionFile } = usePaneSessionIdentity()
+  const globalHistoryLoading = useUIStore((s) => s.historyLoading)
+  const runModel = usePaneSessionState((s) => s.runState.model)
+  const sessionListModel = useUIStore((s) =>
+    !runModel && sessionFile
+      ? s.sessions.find((x) => sessionFilesEqual(x.sessionFile, sessionFile))?.modelId
+      : undefined,
+  )
+  const model = runModel || sessionListModel
+  const usage = usePaneSessionState((s) => s.runState.usage)
+  const isRunning = usePaneSessionState((s) => s.runState.status === 'running')
+  const streamingId = usePaneSessionState((s) => s.streamingAssistantId)
+  const streamSample = usePaneSessionState((s) => {
     if (!s.streamingAssistantId) return '0:0'
     // Runs on every store update while streaming; the streaming row sits at the tail.
     for (let index = s.timelineItems.length - 1; index >= 0; index--) {
       const item = s.timelineItems[index]
       if (item.id === s.streamingAssistantId) {
         const text = item.text ?? ''
-        const thinking = item.thinking ?? ''
+        const thinking = item.thinkingText ?? ''
         const chars = text.length + thinking.length
         const tokens = estTokensFromText(text) + estTokensFromText(thinking)
         return `${chars}:${tokens}`
@@ -30,7 +39,14 @@ export function useComposerMetrics(options?: { enabled?: boolean }) {
   })
   const [streamLen, streamTokens] = streamSample.split(':').map(Number)
 
-  const { preview: rawContextPreview } = useSessionContextPreview({ enabled: metricsEnabled })
+  const { preview: rawContextPreview } = useSessionContextPreview({
+    enabled: metricsEnabled,
+    workspace,
+    sessionFile,
+    model,
+    isRunning,
+    historyLoading: isActive ? globalHistoryLoading : false,
+  })
   const contextPreview = rawContextPreview
     ? {
         messageCount: rawContextPreview.messageCount,

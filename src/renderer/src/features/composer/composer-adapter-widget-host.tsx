@@ -11,6 +11,7 @@ import { cn } from '@renderer/lib/utils'
 import { isTodoListWidgetProjection } from '@shared/adapter-widget'
 import { todoCounts, type TodoStatus, type TodoWidgetItem } from '@shared/todo-list'
 import { useUIStore } from '@renderer/stores/ui-store'
+import { usePaneSessionIdentity, usePaneSessionState } from '@renderer/stores/pane-session-context'
 import { normalizeSessionFileKey } from '@renderer/lib/session-file-key'
 
 /** Half-filled circle: the conventional "in progress" mark, legible at 12px in every icon theme. */
@@ -95,8 +96,8 @@ function ProgressRing({ done, total }: { done: number; total: number }) {
  */
 export function ComposerAdapterWidgetHost() {
   const { t } = useTranslation()
-  const widget = useUIStore((s) => s.composerWidget)
-  const sessionFile = useUIStore((s) => s.historySessionFile)
+  const widget = usePaneSessionState((s) => s.composerWidget)
+  const { sessionFile } = usePaneSessionIdentity()
   const expandedMap = useUIStore((s) => s.adapterWidgetExpandedBySession)
   const toggle = useUIStore((s) => s.toggleAdapterWidget)
   if (!widget || !isTodoListWidgetProjection(widget) || widget.payload.items.length === 0) return null

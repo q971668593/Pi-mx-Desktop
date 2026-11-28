@@ -5,7 +5,7 @@ import { GitBranch, X } from '@renderer/components/icons'
 import { OverlayScrollHost } from '@renderer/components/ui/overlay-scrollbar'
 import { resolveToolCardTemplate, useToolCardCatalogReady } from '@renderer/features/timeline/tool-card-registry'
 import { normalizeTreeToolItem, TreeToolCard } from '@renderer/features/timeline/tree-tool-card'
-import { useUIStore } from '@renderer/stores/ui-store'
+import { usePaneSessionIdentity, usePaneSessionState } from '@renderer/stores/pane-session-context'
 import type { TimelineItem } from '@renderer/stores/ui-store-types'
 
 type ActivityPopoverLayout = {
@@ -215,10 +215,12 @@ export function ComposerAgentActivity({
   completionPopoverOpen: boolean
 }) {
   const { t } = useTranslation()
-  const timelineItems = useUIStore((state) => state.timelineItems)
-  const currentWorkspace = useUIStore((state) => state.currentWorkspace)
-  const currentSessionId = useUIStore((state) => state.currentSessionId)
-  const historySessionFile = useUIStore((state) => state.historySessionFile)
+  const timelineItems = usePaneSessionState((state) => state.timelineItems)
+  const {
+    workspace: currentWorkspace,
+    sessionId: currentSessionId,
+    sessionFile: historySessionFile,
+  } = usePaneSessionIdentity()
   const catalogReady = useToolCardCatalogReady()
   const triggerRef = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(false)

@@ -48,6 +48,7 @@ export function useComposerAttachments(opts: {
   dragDepth: React.MutableRefObject<number>
   /** 暂存一张图片（不进编辑器，见 attachments.tsx 的 StagedImage 注释）。 */
   stageImage: (image: StagedImage) => void
+  isActive?: boolean
 }) {
   const { t } = useTranslation()
   const {
@@ -59,6 +60,7 @@ export function useComposerAttachments(opts: {
     setIsDragActive,
     dragDepth,
     stageImage,
+    isActive = true,
   } = opts
 
   /** 图片文件：先占位（图标），读完后补上缩略图 data URL。 */
@@ -110,6 +112,7 @@ export function useComposerAttachments(opts: {
   )
 
   useEffect(() => {
+    if (!isActive) return
     const onAttach = (e: Event) => {
       // `text` (optional) is inserted before the files, e.g. browser annotations or page logs.
       const detail = (e as CustomEvent<{ files?: { path: string; name: string; kind: string }[]; text?: string }>).detail
@@ -134,7 +137,7 @@ export function useComposerAttachments(opts: {
     }
     window.addEventListener('pi-desktop:composer-attach-files', onAttach)
     return () => window.removeEventListener('pi-desktop:composer-attach-files', onAttach)
-  }, [editorRef, insertMetas, stageImage, stageImagePath, updateFromEditor])
+  }, [editorRef, insertMetas, isActive, stageImage, stageImagePath, updateFromEditor])
 
   const insertPastedScreenshot = useCallback(
     async (base64: string, mimeType: string) => {

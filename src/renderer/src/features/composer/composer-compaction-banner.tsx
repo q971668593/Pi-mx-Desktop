@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { Sparkles } from '@renderer/components/icons'
 import { useUIStore } from '@renderer/stores/ui-store'
+import { usePaneSessionIdentity } from '@renderer/stores/pane-session-context'
 import { normalizeSessionFileKey } from '@renderer/lib/session-file-key'
 
 /**
@@ -13,7 +14,7 @@ import { normalizeSessionFileKey } from '@renderer/lib/session-file-key'
  */
 export function ComposerCompactionBanner() {
   const { t } = useTranslation()
-  const historySessionFile = useUIStore((s) => s.historySessionFile)
+  const { sessionFile: historySessionFile } = usePaneSessionIdentity()
   const compactingSessions = useUIStore((s) => s.compactingSessions)
   const key = historySessionFile
     ? normalizeSessionFileKey(historySessionFile) || historySessionFile

@@ -19,7 +19,7 @@ import { ModelCatalogPicker } from './model-catalog-picker'
 import { ModelEntryEditor, type LocalModelEntry } from './model-entry-editor'
 import { ProviderAvatar, maskApiKey } from './models-settings-shared'
 import { useMagpieQuotas } from '@renderer/features/quota/use-magpie-quotas'
-import { buildQuotaTitle, pickPrimaryWindow } from '@renderer/features/quota/status-quota'
+import { hasQuotaData, pickPrimaryWindow } from '@renderer/features/quota/status-quota'
 import { THINKING_LEVEL_KEYS } from './use-model-preferences'
 import type { UnifiedModelItem } from './model-assignment-cards'
 import { btnDanger, btnOutline, btnPrimary, inputCls } from './settings-controls'
@@ -38,21 +38,26 @@ export interface UnifiedProviderItem {
   authType?: 'oauth' | 'api_key'
 }
 
-function MagpieQuotaLine({ compact = false }: { compact?: boolean }) {
+function SubscriptionQuotaLine({ providerId, compact = false }: { providerId: string; compact?: boolean }) {
   const quota = useMagpieQuotas(false)
-  const codexLeft = pickPrimaryWindow(quota.codex)?.remainingPercent
-  const opencodeLeft = pickPrimaryWindow(quota.opencode)?.remainingPercent
+  const entry = providerId === 'openai-codex' ? quota.codex : providerId === 'opencode-go' ? quota.opencode : undefined
+  if (!entry || !hasQuotaData(entry)) return null
+  const primary = pickPrimaryWindow(entry)
+  const secondary = entry.windows?.find((w) => w !== primary)
   const fmt = (v: number | undefined) => (typeof v === 'number' && Number.isFinite(v) ? `${v}%` : '--')
-  const has = quota.codex || quota.opencode
+  const parts: string[] = []
+  if (primary) parts.push(`${primary.name} 剩 ${fmt(primary.remainingPercent)}`)
+  if (secondary) parts.push(`${secondary.name} 剩 ${fmt(secondary.remainingPercent)}`)
+  if (!compact && entry.balance && !entry.plan) parts.push(String(entry.balance))
+  if (parts.length === 0) return null
   return (
     <span
       className={cn(
-        'truncate text-foreground-secondary',
+        'truncate text-foreground-secondary tabular-nums',
         compact ? 'block text-[11px]' : 'text-[12px]',
       )}
-      title={quota.error ?? buildQuotaTitle(quota.codex, quota.opencode)}
     >
-      {has ? `Codex 剩 ${fmt(codexLeft)} · opencode 剩 ${fmt(opencodeLeft)}` : '额度 --'}
+      {parts.join(' · ')}
     </span>
   )
 }
@@ -329,9 +334,9 @@ export function ModelWorkbench({
                   <div className="truncate pl-[42px] font-mono text-[11px] text-foreground-secondary">
                     {p.endpoint}
                   </div>
-                  {p.id === 'magpie' && (
+                  {(p.id === 'openai-codex' || p.id === 'opencode-go') && (
                     <div className="pl-[42px]">
-                      <MagpieQuotaLine compact />
+                      <SubscriptionQuotaLine providerId={p.id} compact />
                     </div>
                   )}
                 </button>
@@ -360,7 +365,9 @@ export function ModelWorkbench({
                   <span className="rounded-md border border-border/70 bg-[var(--bg-2)]/70 px-2 py-0.5 text-[11px] text-foreground-secondary">
                     {activeProvider.protocol}
                   </span>
-                  {activeProvider.id === 'magpie' && <MagpieQuotaLine />}
+                  {(activeProvider.id === 'openai-codex' || activeProvider.id === 'opencode-go') && (
+                    <SubscriptionQuotaLine providerId={activeProvider.id} />
+                  )}
                 </div>
                 <p className="mt-1 truncate font-mono text-[11.5px] text-foreground-secondary">
                   {activeProvider.endpoint}

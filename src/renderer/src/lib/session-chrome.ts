@@ -6,6 +6,7 @@ import {
 } from '@renderer/lib/session-worker-sync'
 import { normalizeSessionFileKey } from '@renderer/lib/session-file-key'
 import { useUIStore } from '@renderer/stores/ui-store'
+import { usePaneSessionIdentity, usePaneSessionState } from '@renderer/stores/pane-session-context'
 
 export type SessionChromePhase =
   | 'idle'
@@ -192,15 +193,15 @@ export function useSessionChrome(options?: {
   const compacting = options?.compacting === true
   const retrying = options?.retrying === true
 
-  const historySessionFile = useUIStore((s) => s.historySessionFile)
-  const workerLiveSnapshot = useUIStore((s) => s.workerLiveSnapshot)
-  const runStatus = useUIStore((s) => s.runState.status)
-  const activeTool = useUIStore((s) => s.runState.activeTool)
-  const activeRunId = useUIStore((s) => s.runState.activeRunId)
-  const streamingAssistantId = useUIStore((s) => s.streamingAssistantId)
-  const optimisticPendingUserText = useUIStore((s) => s.optimisticPendingUserText)
+  const { sessionFile: historySessionFile } = usePaneSessionIdentity()
+  const workerLiveSnapshot = usePaneSessionState((s) => s.workerLiveSnapshot)
+  const runStatus = usePaneSessionState((s) => s.runState.status)
+  const activeTool = usePaneSessionState((s) => s.runState.activeTool)
+  const activeRunId = usePaneSessionState((s) => s.runState.activeRunId)
+  const streamingAssistantId = usePaneSessionState((s) => s.streamingAssistantId)
+  const optimisticPendingUserText = usePaneSessionState((s) => s.optimisticPendingUserText)
   const sessionRuntimeRunning = useUIStore((s) => s.sessionRuntimeRunning)
-  const agentTurnBootstrapping = useUIStore((s) => s.agentTurnBootstrapping)
+  const agentTurnBootstrapping = usePaneSessionState((s) => s.agentTurnBootstrapping)
   // The abort hold is a timer, not store state: re-derive once it lapses, or the chrome
   // stays on "stopping" until some unrelated store field happens to change.
   const [holdEpoch, setHoldEpoch] = useState(0)

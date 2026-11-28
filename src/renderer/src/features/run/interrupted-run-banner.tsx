@@ -5,13 +5,13 @@ import { ipcClient, onWorkerExit } from '@renderer/lib/ipc-client'
 import { sendComposerPrompt } from '@renderer/lib/send-composer-prompt'
 import { sessionFilesEqual } from '@renderer/lib/session-file-key'
 import { useUIStore } from '@renderer/stores/ui-store'
+import { usePaneSessionIdentity, usePaneSessionState } from '@renderer/stores/pane-session-context'
 import { openTurnReview } from '@renderer/features/review/turn-snapshot-panel'
 
 export function InterruptedRunBanner() {
   const { t } = useTranslation('common')
-  const sessionFile = useUIStore((state) => state.historySessionFile)
-  const workspaceId = useUIStore((state) => state.currentWorkspace)
-  const running = useUIStore((state) => state.runState.status === 'running')
+  const { sessionFile, workspace: workspaceId } = usePaneSessionIdentity()
+  const running = usePaneSessionState((state) => state.runState.status === 'running')
   const [interrupted, setInterrupted] = useState<{ sessionFile: string; runId?: string } | null>(null)
   const [sending, setSending] = useState(false)
 

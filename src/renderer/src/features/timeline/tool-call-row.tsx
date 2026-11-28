@@ -1,6 +1,7 @@
 import { memo, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useUIStore } from '@renderer/stores/ui-store'
+import { usePaneSessionIdentity, usePaneSessionState } from '@renderer/stores/pane-session-context'
 import { ChevronRight, BookOpen } from '@renderer/components/icons'
 import { cn } from '@renderer/lib/utils'
 import { normalizeSessionFileKey } from '@renderer/lib/session-file-key'
@@ -91,13 +92,14 @@ function ToolCallRowImpl({
   autoExpandedInBudget?: boolean
 }) {
   const { t } = useTranslation()
-  const agentRunning = useUIStore((s) => s.runState.status === 'running')
-  const activeRunId = useUIStore((s) => s.runState.activeRunId)
+  const { sessionFile } = usePaneSessionIdentity()
+  const agentRunning = usePaneSessionState((s) => s.runState.status === 'running')
+  const activeRunId = usePaneSessionState((s) => s.runState.activeRunId)
   const expandKey = item.toolCallId || item.id
   const rememberedExpanded = useUIStore((s) => {
     if (!expandKey) return undefined
     const sessionKey =
-      normalizeSessionFileKey(s.historySessionFile || '') || s.historySessionFile || '__none__'
+      normalizeSessionFileKey(sessionFile || '') || sessionFile || '__none__'
     return s.toolExpandBySession[sessionKey]?.[expandKey]
   })
   const setToolCallExpanded = useUIStore((s) => s.setToolCallExpanded)

@@ -20,6 +20,22 @@ function clampPercent(value: number): number {
   return Math.min(100, Math.max(0, value))
 }
 
+/** 剩余额度渐变色：剩余100%→绿色，50%→黄色，0%→红色，中间平滑过渡。只给图形用，文字不动。 */
+export function quotaColorForRemaining(remaining: number | null, usedFallback?: number | null): string {
+  const r = remaining ?? (usedFallback != null ? 100 - clampPercent(usedFallback) : null)
+  if (r == null) return '#9ca3af'
+  const clamped = clampPercent(r)
+  const hue = clamped * 1.2
+  return `hsl(${hue.toFixed(1)} 75% 45%)`
+}
+
+function quotaTrackForRemaining(remaining: number | null, usedFallback?: number | null): string {
+  const r = remaining ?? (usedFallback != null ? 100 - clampPercent(usedFallback) : null)
+  if (r == null) return '#e5e7eb'
+  const hue = clampPercent(r) * 1.2
+  return `hsl(${hue.toFixed(1)} 75% 45% / 0.15)`
+}
+
 /** 该 provider 是否有真实数据：余额或任一窗口有有效数字。没接中转/离线时全是 --，这种就不显示。 */
 export function hasQuotaData(entry: MagpieQuotaEntry | undefined): boolean {
   if (!entry) return false
@@ -103,7 +119,7 @@ export function MagpieQuotaDetails({
   const list = [codex, opencode].filter((e): e is MagpieQuotaEntry => hasQuotaData(e))
   if (list.length === 0) {
     if (error) return <p role="alert" className="workbench-error">{error}</p>
-    return <p className="workbench-empty">暂无额度数据（中转未配置或离线）</p>
+    return <p className="workbench-empty">暂无订阅额度数据（请先登录 Codex 或配置 OpenCode Go）</p>
   }
   return (
     <div className="space-y-5 px-4 py-4">
@@ -118,11 +134,16 @@ function QuotaProviderCard({ entry }: { entry: MagpieQuotaEntry }) {
   const windows = entry.windows || []
   const primary = pickPrimaryWindow(entry)
   const rest = primary ? windows.filter((w) => w !== primary) : windows
+  const badgeText = entry.plan
+    ? `${entry.plan.toUpperCase()} 套餐`
+    : entry.balance !== undefined && entry.balance !== null
+      ? String(entry.balance)
+      : '--'
   return (
     <section aria-label={entry.provider}>
       <h3 className="workbench-group-heading">
         {entry.provider === 'codex' ? 'Codex' : 'opencode'}
-        <span>余额 {String(entry.balance ?? '--')}</span>
+        <span>{badgeText}</span>
       </h3>
       {primary ? <QuotaHero window={primary} /> : null}
       {rest.length ? (
@@ -137,13 +158,13 @@ function QuotaProviderCard({ entry }: { entry: MagpieQuotaEntry }) {
   )
 }
 
-/** 主窗口（一般是 5 小时）：圆环 = 剩余比例，右边配文字。 */
+/** 主窗口（一般是 5 小时）：圆环 = 剩余比例，右边配文字。只有圆环变色，文字保持原样。 */
 function QuotaHero({ window }: { window: MagpieQuotaWindow }) {
   const remaining = numOrNull(window.remainingPercent)
   const used = numOrNull(window.usedPercent)
   return (
     <div className="mt-1 flex items-center gap-4">
-      <QuotaRing value={remaining} />
+      <QuotaRing value={remaining} usedFallback={used} />
       <div className="min-w-0 flex-1 text-xs">
         <p className="truncate text-sm font-medium text-foreground">{window.name}</p>
         <p className="mt-0.5 text-foreground-secondary tabular-nums">
@@ -155,11 +176,13 @@ function QuotaHero({ window }: { window: MagpieQuotaWindow }) {
   )
 }
 
-/** 其余窗口：一行文字 + 一条进度条（按已用比例）。 */
+/** 其余窗口：一行文字 + 一条进度条。只有进度条按剩余量渐变，文字保持原样。 */
 function QuotaBarRow({ window }: { window: MagpieQuotaWindow }) {
   const used = numOrNull(window.usedPercent)
   const remaining = numOrNull(window.remainingPercent)
   const fill = used !== null ? clampPercent(used) : remaining !== null ? 100 - clampPercent(remaining) : null
+  const color = quotaColorForRemaining(remaining, used)
+  const track = quotaTrackForRemaining(remaining, used)
   return (
     <div className="text-xs">
       <div className="flex items-baseline justify-between gap-2">
@@ -172,29 +195,32 @@ function QuotaBarRow({ window }: { window: MagpieQuotaWindow }) {
         </span>
       </div>
       <div
-        className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted"
+        className="mt-1 h-1.5 overflow-hidden rounded-full"
+        style={{ backgroundColor: track }}
         role="progressbar"
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={fill ?? undefined}
         aria-label={`${window.name}已用比例`}
       >
-        {fill !== null ? <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${fill}%` }} /> : null}
+        {fill !== null ? <div className="h-full rounded-full transition-all" style={{ width: `${fill}%`, backgroundColor: color }} /> : null}
       </div>
     </div>
   )
 }
 
-/** 圆环：value 为剩余百分比，无数据时灰圈 + --。 */
-function QuotaRing({ value }: { value: number | null }) {
+/** 圆环：value 为剩余百分比，只有圆环描边按剩余渐变（绿→黄→红），文字和底圈不动。无数据时灰圈 + --。 */
+function QuotaRing({ value, usedFallback }: { value: number | null; usedFallback?: number | null }) {
   const R = 26
   const C = 2 * Math.PI * R
   const pct = value !== null ? clampPercent(value) : null
   const offset = pct !== null ? C * (1 - pct / 100) : 0
+  const color = quotaColorForRemaining(value, usedFallback)
+  const track = quotaTrackForRemaining(value, usedFallback)
   return (
     <div className="relative h-[68px] w-[68px] shrink-0" aria-hidden={pct === null}>
       <svg viewBox="0 0 68 68" className="h-full w-full -rotate-90">
-        <circle cx="34" cy="34" r={R} fill="none" strokeWidth="7" className="stroke-border" />
+        <circle cx="34" cy="34" r={R} fill="none" strokeWidth="7" stroke={pct !== null ? track : '#e5e7eb'} />
         {pct !== null ? (
           <circle
             cx="34"
@@ -203,9 +229,10 @@ function QuotaRing({ value }: { value: number | null }) {
             fill="none"
             strokeWidth="7"
             strokeLinecap="round"
-            className="stroke-primary transition-all"
+            stroke={color}
             strokeDasharray={C}
             strokeDashoffset={offset}
+            className="transition-all"
           />
         ) : null}
       </svg>

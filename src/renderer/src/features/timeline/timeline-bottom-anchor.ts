@@ -24,6 +24,7 @@ export function useTimelineBottomAnchorController(
   scrollRef: RefObject<HTMLDivElement | null>,
   followLiveRef: MutableRefObject<boolean>,
   sessionKey: string | null,
+  isActive = true,
 ) {
   const pendingVerify = useRef(0)
 
@@ -61,13 +62,14 @@ export function useTimelineBottomAnchorController(
   )
 
   useEffect(() => {
+    if (!isActive) return
     const onAnchor = (e: Event) => {
       const reason = (e as CustomEvent<{ reason?: TimelineAnchorReason }>).detail?.reason
       if (reason) runAnchor(reason)
     }
     window.addEventListener(ANCHOR_EVENT, onAnchor)
     return () => window.removeEventListener(ANCHOR_EVENT, onAnchor)
-  }, [runAnchor])
+  }, [runAnchor, isActive])
 
   useEffect(() => {
     if (!sessionKey) return

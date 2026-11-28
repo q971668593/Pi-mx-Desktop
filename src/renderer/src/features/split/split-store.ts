@@ -3,6 +3,7 @@ import { workspacePathsEqual } from '@shared/workspace-path'
 import { activateWorkspace, switchSessionInPlace } from '@renderer/lib/activate-workspace'
 import { enterBlankSession } from '@renderer/lib/blank-session-transition'
 import { sessionFilesEqual } from '@renderer/lib/session-file-key'
+import { registerPinnedSessionKeysProvider, sessionKeyFromFile } from '@renderer/lib/session-shell'
 import { useUIStore } from '@renderer/stores/ui-store'
 import {
   applyPreset,
@@ -36,6 +37,13 @@ function load(): SplitLayout {
 }
 
 export const useSplitStore = create<SplitLayout>(load)
+
+registerPinnedSessionKeysProvider(() =>
+  useSplitStore
+    .getState()
+    .panes.map((p) => sessionKeyFromFile(p.session?.sessionFile))
+    .filter(Boolean),
+)
 
 useSplitStore.subscribe((layout) => {
   try {
@@ -98,6 +106,10 @@ export const splitActions = {
     if (layout.activePaneId === paneId) return
     const pane = layout.panes.find((p) => p.id === paneId)
     if (!pane) return
+    const ui = useUIStore.getState()
+    if (ui.modelPickerOpen || ui.thinkingPickerOpen) {
+      useUIStore.setState({ modelPickerOpen: false, thinkingPickerOpen: false })
+    }
     useSplitStore.setState(setActivePane(layout, paneId))
     void focusSessionOf(pane.session)
   },

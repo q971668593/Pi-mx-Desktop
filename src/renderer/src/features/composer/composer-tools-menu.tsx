@@ -17,6 +17,7 @@ import {
 } from '@renderer/lib/session-capabilities'
 import { cn } from '@renderer/lib/utils'
 import { useUIStore } from '@renderer/stores/ui-store'
+import { usePaneSessionIdentity } from '@renderer/stores/pane-session-context'
 import { ComposerPopover } from './composer-popover'
 
 const ICONS: Record<CapabilityId, AppIconComponent> = { 'pi-ui': Sparkles, browser: Globe, chrome: Monitor, 'web-search': Search, computer: Monitor, 'work-team': Users }
@@ -159,7 +160,10 @@ function BrowserModeRow({ builtin, chrome, enabled, sessionFile }: { builtin: Ca
 
 export function ComposerToolsMenu({ disabled, running, location = 'composer' }: { disabled?: boolean; running?: boolean; location?: 'composer' | 'status' }) {
   const { t } = useTranslation()
-  const sessionFile = useUIStore((s) => s.historySessionFile)
+  const paneIdentity = usePaneSessionIdentity()
+  const globalSessionFile = useUIStore((s) => s.historySessionFile)
+  const sessionFile = location === 'composer' ? paneIdentity.sessionFile : globalSessionFile
+  const shouldTrackDraftKey = location !== 'composer' || paneIdentity.isActive
   const key = capabilityKey(sessionFile)
   const storedEnabled = useSessionCapabilitiesStore((s) => s.byKey[key])
   // Subscribe to browser tabs so auto-mounted browser capability reflects in the badge and menu.
@@ -168,15 +172,18 @@ export function ComposerToolsMenu({ disabled, running, location = 'composer' }: 
   const [open, setOpen] = useState(false)
   const [catalog, setCatalog] = useState<CapabilityInfo[] | null>(catalogCache)
   const prevKey = useRef(key)
+  const triggerRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     void loadSessionCapabilities()
   }, [])
 
   useEffect(() => {
-    onCapabilityKeyChange(prevKey.current, key)
+    if (shouldTrackDraftKey) {
+      onCapabilityKeyChange(prevKey.current, key)
+    }
     prevKey.current = key
-  }, [key])
+  }, [key, shouldTrackDraftKey])
 
   useEffect(() => {
     // Refresh on mount and whenever the menu opens.
@@ -201,6 +208,7 @@ export function ComposerToolsMenu({ disabled, running, location = 'composer' }: 
       {/* One icon button. Enabled capabilities show as a small count (names in the tooltip
           and the menu), so turning things on never widens the toolbar. */}
       <button
+        ref={triggerRef}
         type="button"
         data-composer-tools={location}
         disabled={disabled}
@@ -232,6 +240,7 @@ export function ComposerToolsMenu({ disabled, running, location = 'composer' }: 
       {open ? (
         <ComposerPopover
           anchorSelector={`[data-composer-tools="${location}"]`}
+          anchorRef={triggerRef}
           align="start"
           width={280}
           label={t('composer:tools.title')}

@@ -162,13 +162,12 @@ export function ensureExtensionUIChannel(): void {
       p.sessionFile = viewFile
     }
     if (isBackground) {
-      useExtensionUIStore.getState().setActivePending(p)
-      useExtensionUIStore.getState().suspendActive({ background: true })
+      useExtensionUIStore.getState().parkBackgroundPending(p)
     } else {
       useExtensionUIStore.getState().setActivePending(p)
     }
     if (INTERACTIVE_TOOL_NAMES.has(p.method)) {
-      linkExtensionDialogToToolRow(p.id, p.method)
+      linkExtensionDialogToToolRow(p.id, p.method, p.sessionFile)
     }
 
     const body =

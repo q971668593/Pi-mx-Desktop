@@ -234,3 +234,91 @@ export async function applyComposerDisplayMeta(meta?: SessionDisplayMeta | null)
 
   if (sessionKey === useUIStore.getState().viewSessionKey) notifyModelFallback(meta?.modelFallbackMessage)
 }
+
+/**
+ * Hydrate model / thinkingLevel display for an inactive split-pane session without touching
+ * `displayMetaGeneration` or interfering with the active pane's refresh.
+ */
+export async function hydrateInactiveSessionDisplayMeta(
+  sessionFile: string,
+  meta?: SessionDisplayMeta | null,
+  sessionId?: string | null,
+): Promise<void> {
+  const sessionKey = normalizeSessionFileKey(sessionFile)
+  if (!sessionKey) return
+  rememberSessionDisplayMeta(sessionFile, meta ?? {})
+  const patch: SessionDisplayMeta = {}
+  let workerBoundToSession = false
+  let workerModel: string | undefined
+  let workerThinking: string | undefined
+
+  try {
+    const res = await ipcClient.invoke('runtime.getState', { sessionFile })
+    const st = res?.state as {
+      sessionFile?: string
+      model?: string
+      thinkingLevel?: string
+      bound?: boolean
+    } | null
+    workerBoundToSession =
+      st?.bound !== false && isViewingWorkerBoundSession(sessionFile, st?.sessionFile)
+    if (workerBoundToSession && st) {
+      workerModel = normalizeModelKey(st.model)
+      workerThinking = normalizeThinkingLevel(st.thinkingLevel)
+      if (workerModel) patch.model = workerModel
+      if (workerThinking) patch.thinkingLevel = workerThinking
+    } else if (st && st.bound === false && (!st.sessionFile || sessionFilesEqual(sessionFile, st.sessionFile))) {
+      const pendingModel = normalizeModelKey(st.model)
+      const pendingThinking = normalizeThinkingLevel(st.thinkingLevel)
+      if (pendingModel) patch.model = pendingModel
+      if (pendingThinking) patch.thinkingLevel = pendingThinking
+    }
+  } catch {
+    /* worker not ready */
+  }
+
+  if (workerBoundToSession) {
+    rememberSessionDisplayMeta(sessionFile, { model: workerModel, thinkingLevel: workerThinking })
+  } else {
+    const fromMetaModel = normalizeModelKey(meta?.model)
+    const fromMetaThink = normalizeThinkingLevel(meta?.thinkingLevel)
+    if (!patch.model && fromMetaModel) patch.model = fromMetaModel
+    if (!patch.thinkingLevel && fromMetaThink) patch.thinkingLevel = fromMetaThink
+
+    const remembered = sessionDisplayMeta.get(sessionKey)
+    if (!patch.model && remembered?.model) patch.model = remembered.model
+    if (!patch.thinkingLevel && remembered?.thinkingLevel) patch.thinkingLevel = remembered.thinkingLevel
+
+    const store = useUIStore.getState()
+    const row =
+      store.sessions.find((s) => sessionFilesEqual(s.sessionFile, sessionFile)) ??
+      (sessionId ? store.sessions.find((s) => s.sessionId === sessionId) : undefined)
+    const sessionModel = normalizeModelKey(row?.modelId)
+    if (!patch.model && sessionModel) patch.model = sessionModel
+  }
+
+  if (!patch.model || !patch.thinkingLevel) {
+    const defaults = await fetchPiDefaultDisplayMeta()
+    const dm = normalizeModelKey(defaults.model)
+    const dt = normalizeThinkingLevel(defaults.thinkingLevel)
+    if (!workerBoundToSession && !patch.model && dm) patch.model = dm
+    if (!patch.thinkingLevel && dt) patch.thinkingLevel = dt
+  }
+
+  const latest = useUIStore.getState()
+  const cur = latest.sessionStates[sessionKey]?.runState
+  let finalModel = workerBoundToSession && workerModel ? workerModel : (patch.model ?? normalizeModelKey(cur?.model))
+  if (!finalModel) {
+    finalModel = sessionDisplayMeta.get(sessionKey)?.model
+  }
+  const finalThink =
+    workerThinking ??
+    patch.thinkingLevel ??
+    normalizeThinkingLevel(cur?.thinkingLevel) ??
+    'off'
+
+  latest.setSessionRunState(sessionKey, {
+    ...(finalModel ? { model: finalModel } : {}),
+    thinkingLevel: finalThink,
+  })
+}

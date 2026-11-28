@@ -15,20 +15,14 @@ import {
   snapOf,
   type HandleRect,
   type Pane,
-  type PaneRect,
   type Preset,
   type Side,
 } from './split-layout'
 import { PANE_MIME, isSplitDrag, readSessionDrag, setDragLabel, zoneAt, type DropZone } from './split-dnd'
-import { PanePreview, paneDigest, usePaneTimeline } from './pane-preview'
-import { PaneQuickComposer } from './pane-quick-composer'
 import { focusedPaneSession, splitActions, useSplitStore } from './split-store'
 
 const GAP = 6
 const TABS_H = 34
-/** Below this an inactive pane shows a compact card instead of the message preview. */
-const PREVIEW_MIN_W = 380
-const PREVIEW_MIN_H = 240
 const MIN_ANY_PX = 160
 
 const mod = (e: KeyboardEvent | React.MouseEvent) => (window.piDesktop?.platform === 'darwin' ? e.metaKey : e.ctrlKey)
@@ -55,16 +49,6 @@ function useSize(ref: React.RefObject<HTMLElement | null>): { w: number; h: numb
     return () => ro.disconnect()
   }, [ref])
   return size
-}
-
-function timeAgo(ts: number | undefined, t: (k: string, o?: Record<string, unknown>) => string): string {
-  if (!ts) return ''
-  const m = Math.max(0, Math.round((Date.now() - ts) / 60000))
-  if (m < 1) return t('common:split.ago.now')
-  if (m < 60) return t('common:split.ago.minutes', { count: m })
-  const h = Math.round(m / 60)
-  if (h < 24) return t('common:split.ago.hours', { count: h })
-  return t('common:split.ago.days', { count: Math.round(h / 24) })
 }
 
 // ── Drag & drop ─────────────────────────────────────────────────────────────
@@ -319,69 +303,6 @@ function PaneHeader({ pane, index, active }: { pane: Pane; index: number; active
   )
 }
 
-/** A small inactive pane: status, the latest question and the reply so far — no composer. */
-function PaneCard({ pane, compact }: { pane: Pane; compact: boolean }) {
-  const { t } = useTranslation()
-  const attention = useAttention(pane.session?.sessionFile)
-  const meta = useUIStore((s) => (pane.session ? s.sessions.find((x) => sessionFilesEqual(x.sessionFile, pane.session!.sessionFile)) : undefined))
-  const items = usePaneTimeline(pane.session?.sessionFile ?? null)
-  const d = paneDigest(items)
-  const sess = pane.session
-  if (!sess) {
-    return (
-      <div className="flex h-full items-center justify-center px-4 text-center text-[12px] text-foreground-tertiary" data-pane-card="empty">
-        {t('common:split.emptyPane')}
-      </div>
-    )
-  }
-  const status =
-    attention === 'working'
-      ? d.toolLive
-        ? t('common:split.card.usingTools', { count: d.tools })
-        : t('common:split.replying')
-      : attention === 'needs-you'
-        ? t('common:split.status.needs-you')
-        : attention === 'done'
-          ? t('common:split.status.done')
-          : timeAgo(meta?.updatedAt, t)
-  return (
-    <div className="split-card flex h-full min-h-0 flex-col gap-2 px-4 pb-3 pt-1" data-pane-card="">
-      <div className={cn('text-[11.5px]', attention === 'needs-you' ? 'text-amber-700 dark:text-amber-400' : 'text-foreground-secondary')}>{status}</div>
-      {d.lastUser ? (
-        <div className={cn('rounded-lg bg-[var(--message-user-bg)] px-2.5 py-1.5 text-[12px] leading-[1.5] text-foreground', compact ? 'line-clamp-1' : 'line-clamp-2')}>{d.lastUser}</div>
-      ) : null}
-      {d.lastReply ? (
-        <div className={cn('min-h-0 overflow-hidden text-[12px] leading-[1.55] text-foreground-secondary', compact ? 'line-clamp-2' : 'line-clamp-[8]')}>{d.lastReply}</div>
-      ) : !d.lastUser ? (
-        <div className="text-[12px] text-foreground-secondary">{t('common:split.clickToLoad')}</div>
-      ) : null}
-      <div className="mt-auto flex items-center gap-2 text-[11px] tabular-nums text-foreground-secondary">
-        {meta?.modelId ? <span className="truncate font-mono">{meta.modelId}</span> : null}
-        {d.turns ? <span className="shrink-0">{t('common:split.card.turns', { count: d.turns })}</span> : null}
-      </div>
-      <div className="-mx-4 -mb-3 mt-1" data-pane-inactive-composer="">
-        <PaneQuickComposer session={sess} />
-      </div>
-    </div>
-  )
-}
-
-function PaneBody({ pane, active, rect, children }: { pane: Pane; active: boolean; rect: PaneRect; children: ReactNode }) {
-  const attention = useAttention(pane.session?.sessionFile)
-  if (active) return <>{children}</>
-  const roomy = rect.w >= PREVIEW_MIN_W && rect.h >= PREVIEW_MIN_H
-  if (!roomy) return <PaneCard pane={pane} compact={rect.h < 170} />
-  if (!pane.session) return <PanePreview sessionFile={null} running={false} />
-  return (
-    <div className="flex h-full min-h-0 flex-col" data-pane-inactive-composer="">
-      <div className="min-h-0 flex-1">
-        <PanePreview sessionFile={pane.session.sessionFile} running={attention === 'working'} />
-      </div>
-      <PaneQuickComposer session={pane.session} />
-    </div>
-  )
-}
-
 // ── Resize handles ──────────────────────────────────────────────────────────
 
 function Handle({ handle, rootRef, onDrag }: { handle: HandleRect; rootRef: React.RefObject<HTMLDivElement | null>; onDrag: (ratio: number | null) => void }) {
@@ -503,7 +424,13 @@ function FocusTab({ pane, index, active }: { pane: Pane; index: number; active: 
  * The active pane hosts `children` (the real timeline + composer); others show a preview or,
  * when small, a status card. Too little room for the active pane switches to tabs.
  */
-export function SplitView({ children }: { children: ReactNode }) {
+export function SplitView({
+  children,
+  renderPane,
+}: {
+  children?: ReactNode
+  renderPane?: (pane: Pane | null, active: boolean) => ReactNode
+}) {
   const { t } = useTranslation()
   const layout = useSplitStore()
   const rootRef = useRef<HTMLDivElement>(null)
@@ -539,7 +466,7 @@ export function SplitView({ children }: { children: ReactNode }) {
     <div ref={rootRef} className={cn('relative h-full min-w-0', multi && 'split-view')} role={multi ? 'group' : undefined} aria-label={multi ? t('common:split.label') : undefined}>
       {!multi ? (
         <DropTarget pane={layout.panes[0] ?? null} className="relative h-full min-w-0">
-          {children}
+          {renderPane ? renderPane(layout.panes[0] ?? null, true) : children}
         </DropTarget>
       ) : (
         <>
@@ -561,19 +488,12 @@ export function SplitView({ children }: { children: ReactNode }) {
               >
                 {focus ? null : <PaneHeader pane={pane} index={index} active={active} />}
                 <div
-                  className={cn('relative min-h-0 flex-1', !active && 'cursor-pointer')}
-                  onMouseDownCapture={(e) => {
-                    if (!active) {
-                      // 独立输入框里点/写字都不抢激活：只有点预览正文才切换。
-                      const el = e.target as HTMLElement | null
-                      if (el?.closest?.('[data-pane-inactive-composer] input, [data-pane-inactive-composer] textarea, [data-pane-inactive-composer] button')) return
-                      splitActions.focus(pane.id)
-                    }
+                  className="relative min-h-0 flex-1"
+                  onMouseDownCapture={() => {
+                    if (!active) splitActions.focus(pane.id)
                   }}
                 >
-                  <PaneBody pane={pane} active={active} rect={rect}>
-                    {children}
-                  </PaneBody>
+                  {renderPane ? renderPane(pane, active) : children}
                 </div>
               </DropTarget>
             )

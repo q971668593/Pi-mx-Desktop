@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ListOrdered, Send } from '@renderer/components/icons'
-import { useUIStore } from '@renderer/stores/ui-store'
+import { usePaneSessionState } from '@renderer/stores/pane-session-context'
 import { flushQueuedMessages } from '@renderer/lib/composer-queue-flush'
 
 function truncateLine(text: string, max = 120): string {
@@ -13,8 +13,8 @@ function truncateLine(text: string, max = 120): string {
 /** Pending steer / follow-up queue shown above input */
 export function ComposerPendingQueue({ onRestore }: { onRestore: () => Promise<void> }) {
   const { t } = useTranslation()
-  const steering = useUIStore((s) => s.pendingSteering)
-  const followUp = useUIStore((s) => s.pendingFollowUp)
+  const steering = usePaneSessionState((s) => s.pendingSteering)
+  const followUp = usePaneSessionState((s) => s.pendingFollowUp)
   const [flushing, setFlushing] = useState(false)
   const [restoring, setRestoring] = useState(false)
   if (steering.length === 0 && followUp.length === 0) return null

@@ -27,6 +27,7 @@ type ExtensionUIState = {
   suspended: ExtensionUISuspended | null
   suspendedList: ExtensionUISuspended[]
   setActivePending: (p: ExtensionUIPending | null) => void
+  parkBackgroundPending: (p: ExtensionUIPending) => void
   suspendActive: (meta: { toolCallId?: string; toolName?: string; timelineItemId?: string; background?: boolean }) => void
   resumeSuspended: () => void
   clearAfterRespond: () => void
@@ -129,6 +130,21 @@ export const useExtensionUIStore = create<ExtensionUIState>((set, get) => ({
     if (prev && (!p || prev.id !== p.id)) syncWaitingUi(pendingSessionFile(prev), false)
     if (p) syncWaitingUi(pendingSessionFile(p), true)
     set({ activePending: p })
+  },
+
+  parkBackgroundPending: (p) => {
+    syncWaitingUi(pendingSessionFile(p), true)
+    const next: ExtensionUISuspended = {
+      requestId: p.id,
+      pending: p,
+      background: true,
+      suspendedAt: Date.now(),
+    }
+    const nextList = upsertSuspended(get().suspendedList, next)
+    set({
+      suspendedList: nextList,
+      suspended: get().suspended ?? next,
+    })
   },
 
   suspendActive: (meta) => {
@@ -259,6 +275,15 @@ export const useExtensionUIStore = create<ExtensionUIState>((set, get) => ({
     void import('@renderer/lib/extension-ui-channel').then((m) => m.clearExtensionDialogDedupe())
   },
 }))
+
+export function hasPendingExtensionUiForSession(
+  state: Pick<ExtensionUIState, 'activePending' | 'suspended' | 'suspendedList'>,
+  sessionFile: string | null | undefined,
+): boolean {
+  if (state.activePending && pendingMatchesCurrentSession(state.activePending, sessionFile)) return true
+  const s = findSuspendedForSession(state.suspendedList, state.suspended, sessionFile)
+  return !!s && s.background === true
+}
 
 export function extensionUiBlocksComposer(): boolean {
   pruneStaleSuspension()

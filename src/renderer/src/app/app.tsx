@@ -4,19 +4,10 @@ import { ErrorBoundary } from '@renderer/components/app/error-boundary'
 import { MainLayoutShell } from '@renderer/components/app/main-layout-shell'
 import { Sidebar, SidebarContent, SidebarItem, RightPanel } from '@renderer/components/ui/sidebar'
 import { ProjectSidebar } from '@renderer/features/workspace/project-sidebar'
-import { MainColRightPanelToggle } from '@renderer/components/app/main-col-right-panel-toggle'
-import { MainColumnWithTimelineScroll } from '@renderer/components/app/main-column-with-timeline-scroll'
-import { GoalBar } from '@renderer/features/goal/goal-bar'
-import { SubAgentStrip } from '@renderer/features/team-board/sub-agent-strip'
-import { DelegateAgentStrip } from '@renderer/features/team-board/delegate-agent-strip'
 import { TeamBoardAutoSettle } from '@renderer/features/team-board/team-board-auto-settle'
-import { InterruptedRunBanner } from '@renderer/features/run/interrupted-run-banner'
 import { installGoalAutoLoop } from '@renderer/features/goal/goal-auto-loop'
-import { ComposerDock } from '@renderer/components/app/composer-dock'
-import { TimelineScrubber } from '@renderer/features/timeline/timeline-scrubber'
 import { SplitView } from '@renderer/features/split/split-view'
-import { Timeline } from '@renderer/features/timeline/timeline'
-import { Composer } from '@renderer/features/composer/composer'
+import { SessionPaneView } from '@renderer/components/app/session-pane-view'
 
 import { TopBar } from '@renderer/components/app/top-bar'
 import { ImmersiveChrome } from '@renderer/components/app/immersive-chrome'
@@ -42,7 +33,6 @@ import { normalizeTimelineMaxAutoExpandedTools, normalizeTimelineVisibleTurns } 
 import { SidePanelHost } from '@renderer/features/side-panels/side-panel-host'
 import { ExtensionUIHost } from '@renderer/features/extension-ui/extension-ui-host'
 import { RuntimeOnboardingDialog } from '@renderer/features/onboarding/runtime-onboarding-dialog'
-import { QuestionnaireDock } from '@renderer/features/extension-ui/questionnaire-dock'
 import { AppToaster } from '@renderer/components/app/app-toaster'
 import { markExtensionNotifyAppReady } from '@renderer/lib/extension-notify-policy'
 import {
@@ -69,7 +59,6 @@ import { applyUiZoom, readUiZoom } from '@renderer/lib/ui-zoom'
 import { matchShortcut, readShortcutBindings } from '@renderer/lib/shortcut-bindings'
 import { useTerminalShortcut } from '@renderer/features/terminal/terminal-drawer'
 import { useBrowserHelpAttention } from '@renderer/features/browser/use-help-attention'
-import { HelpBar } from '@renderer/features/browser/help-bar'
 import { OPEN_SETTINGS_PAGE_EVENT } from '@renderer/lib/settings-navigation'
 import type { ForkSource } from '@renderer/lib/session-fork'
 
@@ -89,9 +78,6 @@ const SessionTreeOverlay = lazy(() =>
 )
 const SessionForkOverlay = lazy(() =>
   import('@renderer/features/rewind/session-fork-overlay').then((m) => ({ default: m.SessionForkOverlay })),
-)
-const ProjectHomeView = lazy(() =>
-  import('@renderer/components/app/project-home-view').then((m) => ({ default: m.ProjectHomeView })),
 )
 
 function ShellSuspenseFallback({ label }: { label: string }) {
@@ -392,10 +378,6 @@ export default function App() {
     }
   }, [pendingExtensionConfig])
 
-  const currentSessionId = useUIStore((s) => s.currentSessionId)
-  const timelineItemCount = useUIStore((s) => s.timelineItems.length)
-  const historyLoading = useUIStore((s) => s.historyLoading)
-
   const handleOpenProject = async () => {
     if (!window.piDesktop) {
       console.error('piDesktop not available')
@@ -437,10 +419,6 @@ export default function App() {
     runStatus,
     contextPct: contextPreview?.contextUsage?.percent ?? null,
   })
-
-  const isHomeMode =
-    !currentSessionId && timelineItemCount === 0 && !ephemeralSandboxDraft && !historyLoading
-  const showHome = (isHomeMode || ephemeralSandboxDraft) && view === 'main'
 
   const handleSelectProject = async (path: string) => {
     await activateWorkspace(path, { preferHome: true })
@@ -519,40 +497,20 @@ export default function App() {
             </Sidebar>
           }
           center={
-            <SplitView>
-            <MainColumnWithTimelineScroll className="h-full">
-              {!showHome ? <InterruptedRunBanner /> : null}
-              {showHome ? (
-                <Suspense fallback={<ShellSuspenseFallback label={t('common:loading')} />}>
-                  <ProjectHomeView
-                    projectName={ephemeralSandboxDraft ? t('common:home.newChat') : projectName}
-                    recentProjects={visibleRecentProjects}
-                    currentWorkspace={currentWorkspace}
-                    ephemeralSandboxDraft={ephemeralSandboxDraft}
-                    onSelectProject={(p) => void handleSelectProject(p)}
-                    onOpenProject={handleOpenProject}
-                  />
-                </Suspense>
-              ) : (
-                <Timeline />
+            <SplitView
+              renderPane={(pane, active) => (
+                <SessionPaneView
+                  pane={pane}
+                  active={active}
+                  projectName={projectName}
+                  recentProjects={visibleRecentProjects}
+                  currentWorkspace={currentWorkspace}
+                  ephemeralSandboxDraft={ephemeralSandboxDraft}
+                  onSelectProject={(p) => void handleSelectProject(p)}
+                  onOpenProject={handleOpenProject}
+                />
               )}
-              <MainColRightPanelToggle />
-              {/* acp_delegate 子 Agent：右上角悬浮，只在有在跑时出现。 */}
-              {!showHome ? <DelegateAgentStrip /> : null}
-              <ComposerDock heroMode={showHome}>
-                {/* 会话目标：贴着输入框的一条窄条，进行中可终止、可再次启动、可删除。 */}
-                                {/* 派出去的子 Agent：有在跑的才显示点开跳到它的会话看细节。 */}
-                {!showHome ? <SubAgentStrip /> : null}
-                {!showHome ? <GoalBar /> : null}
-                {/* 确认问题不再整屏弹窗：贴在输入框上方，可折叠，答完自动收起。 */}
-                <QuestionnaireDock />
-                {/* The agent waiting on the user in their Chrome: answerable right above the composer. */}
-                <HelpBar activeTabId={null} where="chrome" className="mb-2 rounded-lg border" />
-                <Composer />
-              </ComposerDock>
-              {!showHome ? <TimelineScrubber /> : null}
-            </MainColumnWithTimelineScroll>
-            </SplitView>
+            />
           }
           right={
             <RightPanel>

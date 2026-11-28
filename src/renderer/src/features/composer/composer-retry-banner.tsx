@@ -3,14 +3,15 @@ import { useTranslation } from 'react-i18next'
 import { RotateCcw } from '@renderer/components/icons'
 import { normalizeSessionFileKey } from '@renderer/lib/session-file-key'
 import { useUIStore } from '@renderer/stores/ui-store'
+import { usePaneSessionIdentity } from '@renderer/stores/pane-session-context'
 import type { SessionRetryInfo } from '@renderer/stores/ui-store-types'
 
 /** Retry state of the session being viewed, if pi is retrying a failed model request. */
 export function useViewRetryInfo(): SessionRetryInfo | null {
+  const { sessionFile } = usePaneSessionIdentity()
   return useUIStore((s) => {
-    const file = s.historySessionFile
-    if (!file) return null
-    return s.retryingSessions[normalizeSessionFileKey(file) || file] ?? null
+    if (!sessionFile) return null
+    return s.retryingSessions[normalizeSessionFileKey(sessionFile) || sessionFile] ?? null
   })
 }
 

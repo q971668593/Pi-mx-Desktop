@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bot } from '@renderer/components/icons'
 import { ipcClient } from '@renderer/lib/ipc-client'
-import { useUIStore } from '@renderer/stores/ui-store'
+import { usePaneSessionIdentity } from '@renderer/stores/pane-session-context'
 import { openTeamSession, TEAM_BOARD_CHANGED_EVENT, TEAM_BOARD_RUNS_CHANGED_EVENT, notifyTeamBoardChanged, roleLabel } from './team-board-lib'
 import type { TeamRun } from '@shared/team-board'
 
@@ -12,7 +12,7 @@ import type { TeamRun } from '@shared/team-board'
  */
 export function SubAgentStrip() {
   const { t } = useTranslation()
-  const workspaceId = useUIStore((state) => state.currentWorkspace) || ''
+  const workspaceId = usePaneSessionIdentity().workspace || ''
   const [runs, setRuns] = useState<TeamRun[]>([])
   const [opening, setOpening] = useState('')
 

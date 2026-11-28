@@ -32,7 +32,7 @@ import {
   applyLiveStreamingTextToMergedTimeline,
   resolveMergedStreamingAssistantId,
 } from '@renderer/lib/streaming-timeline-preserve'
-import { applyComposerDisplayMeta } from '@renderer/lib/session-display-meta'
+import { applyComposerDisplayMeta, hydrateInactiveSessionDisplayMeta } from '@renderer/lib/session-display-meta'
 import { reportVisibleSession } from '@renderer/lib/visible-session-report'
 import { getSessionComposerWidget } from '@renderer/lib/extension-widget-cache'
 import { useUIStore } from '@renderer/stores/ui-store'
@@ -75,6 +75,11 @@ type ViewMeta = {
 
 const meta = new Map<string, ViewMeta>()
 let focusKey: string | null = null
+let pinnedKeysProvider: (() => string[]) | null = null
+
+export function registerPinnedSessionKeysProvider(fn: () => string[]): void {
+  pinnedKeysProvider = fn
+}
 
 export function sessionKeyFromFile(sessionFile: string | null | undefined): string {
   return normalizeSessionFileKey(sessionFile) || String(sessionFile || '').trim()
@@ -184,8 +189,9 @@ export function evictSessionViewsIfNeeded(runtime?: Record<string, boolean>): vo
   const keys = listSessionViewKeys()
   if (keys.length <= MAX_SESSION_VIEWS) return
 
+  const pinned = new Set(pinnedKeysProvider?.() ?? [])
   const candidates = keys
-    .filter((key) => key !== focusKey && !runtimeSaysRunning(key, runtimeMap) && !entryTurnActive(entryOf(key)))
+    .filter((key) => key !== focusKey && !pinned.has(key) && !runtimeSaysRunning(key, runtimeMap) && !entryTurnActive(entryOf(key)))
     .sort((a, b) => (meta.get(a)?.lastFocusedAt ?? 0) - (meta.get(b)?.lastFocusedAt ?? 0))
 
   let overflow = keys.length - MAX_SESSION_VIEWS
@@ -417,6 +423,8 @@ export async function hydrateSessionView(
       }
       useUIStore.getState().setHistoryLoading(false)
       void applyComposerDisplayMeta(hist.sessionMeta)
+    } else {
+      void hydrateInactiveSessionDisplayMeta(sessionKey, hist.sessionMeta, sessionId)
     }
   } catch (error) {
     console.error('[session-shell] hydrate failed:', error)

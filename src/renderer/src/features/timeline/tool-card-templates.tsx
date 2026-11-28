@@ -8,6 +8,7 @@ import i18n from '@renderer/lib/i18n'
 import { sanitizeHtml } from '@renderer/lib/sanitize'
 import { ipcClient } from '@renderer/lib/ipc-client'
 import { useUIStore } from '@renderer/stores/ui-store'
+import { usePaneSessionIdentity } from '@renderer/stores/pane-session-context'
 import { syntaxHighlight } from '@renderer/lib/syntax-highlight'
 import { FileText } from '@renderer/components/icons'
 import { renderNativeToolPreview } from './tool-previews'
@@ -143,7 +144,7 @@ function parseImageGenMeta(output: string): ImagePromptMeta | null {
 
 const MediaTemplate: ToolCardComponent = ({ item }) => {
   const { t } = useTranslation()
-  const workspace = useUIStore((s) => s.currentWorkspace)
+  const { workspace } = usePaneSessionIdentity()
   const details = item.toolDetails as Record<string, unknown> | null | undefined
   const assets = collectAssets(details, item.toolOutput || '')
 

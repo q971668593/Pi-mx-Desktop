@@ -2,7 +2,7 @@ import { memo, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, FileCode2 } from '@renderer/components/icons'
 import { cn } from '@renderer/lib/utils'
-import { useUIStore } from '@renderer/stores/ui-store'
+import { usePaneSessionIdentity, usePaneSessionState } from '@renderer/stores/pane-session-context'
 import { openWorkspaceRelativePath } from '@renderer/lib/open-workspace-path'
 import { openTurnReview } from '@renderer/features/review/turn-snapshot-panel'
 import type { TimelineDisplayItem } from './timeline-display-items'
@@ -76,8 +76,8 @@ export const TurnActivityBlock = memo(function TurnActivityBlock({
 }) {
   const { t } = useTranslation()
   const [showAllFiles, setShowAllFiles] = useState(false)
-  const fileChanges = useUIStore((s) => s.fileChanges)
-  const workspace = useUIStore((s) => s.currentWorkspace)
+  const fileChanges = usePaneSessionState((s) => s.fileChanges)
+  const { workspace } = usePaneSessionIdentity()
 
   const { summary, runId } = useMemo(() => {
     const runIds = collectRunIdsFromBlocks(blocks)

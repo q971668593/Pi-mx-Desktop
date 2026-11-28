@@ -25,6 +25,12 @@ export function MainColumnWithTimelineScroll({
       ) {
         return
       }
+      const localScroll = el.querySelector('.timeline-scroll-with-dock-pane') as HTMLElement | null
+      if (localScroll && localScroll.scrollHeight > localScroll.clientHeight) {
+        localScroll.scrollTop += e.deltaY
+        e.preventDefault()
+        return
+      }
       if (scrollTimelineByDelta(e.deltaY)) {
         e.preventDefault()
       }

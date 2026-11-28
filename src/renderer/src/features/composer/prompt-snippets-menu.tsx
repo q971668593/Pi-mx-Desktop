@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Pencil, Trash2, Zap } from '@renderer/components/icons'
 import { cn } from '@renderer/lib/utils'
@@ -10,6 +10,7 @@ import { addPromptSnippet, deletePromptSnippet, updatePromptSnippet, usePromptSn
 export function PromptSnippetsMenu({ disabled }: { disabled?: boolean }) {
   const { t } = useTranslation()
   const snippets = usePromptSnippets()
+  const triggerRef = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(false)
   const [adding, setAdding] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -46,6 +47,7 @@ export function PromptSnippetsMenu({ disabled }: { disabled?: boolean }) {
   return (
     <div className="flex min-w-0 items-center">
       <button
+        ref={triggerRef}
         type="button"
         data-composer-snippets=""
         disabled={disabled}
@@ -64,6 +66,7 @@ export function PromptSnippetsMenu({ disabled }: { disabled?: boolean }) {
       {open ? (
         <ComposerPopover
           anchorSelector="[data-composer-snippets]"
+          anchorRef={triggerRef}
           align="start"
           width={300}
           label={t('composer:snippets.title')}

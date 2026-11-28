@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { ChevronDown } from '@renderer/components/icons'
 import { cn } from '@renderer/lib/utils'
 import { findSuspendedForSession, pendingMatchesCurrentSession, useExtensionUIStore } from '@renderer/stores/extension-ui-store'
-import { useUIStore } from '@renderer/stores/ui-store'
+import { usePaneSessionIdentity } from '@renderer/stores/pane-session-context'
 import { QuestionnairePanel } from './questionnaire-panel'
 import { answerQuestionnaire, cancelQuestionnaire } from './extension-ui-actions'
 
@@ -16,25 +16,36 @@ export function QuestionnaireDock() {
   const suspendedList = useExtensionUIStore((s) => s.suspendedList)
   const suspendedFallback = useExtensionUIStore((s) => s.suspended)
   const resumeSuspended = useExtensionUIStore((s) => s.resumeSuspended)
-  const historySessionFile = useUIStore((s) => s.historySessionFile)
-  const suspended = findSuspendedForSession(suspendedList, suspendedFallback, historySessionFile)
-  if (pending && pending.method === 'ask_user_question' && pendingMatchesCurrentSession(pending, historySessionFile)) {
+  const { sessionFile } = usePaneSessionIdentity()
+  const suspended = findSuspendedForSession(suspendedList, suspendedFallback, sessionFile)
+  if (pending && pending.method === 'ask_user_question' && pendingMatchesCurrentSession(pending, sessionFile)) {
     // key = 请求 id：下一个提问不会继承上一次的收起状态。
-    return <DockCard key={pending.id} id={pending.id} questions={pending.questions} />
+    return <DockCard key={pending.id} id={pending.id} questions={pending.questions} sessionFile={sessionFile} />
   }
   if (
-    !pending &&
     suspended &&
     suspended.pending.method === 'ask_user_question' &&
-    pendingMatchesCurrentSession(suspended.pending, historySessionFile)
+    pendingMatchesCurrentSession(suspended.pending, sessionFile)
   ) {
-    return (
-      <SuspendedDockBar
-        summary={suspended.pending.questions[0]?.question ?? ''}
-        count={suspended.pending.questions.length}
-        onResume={resumeSuspended}
-      />
-    )
+    if (suspended.background === true) {
+      return (
+        <DockCard
+          key={suspended.pending.id}
+          id={suspended.pending.id}
+          questions={suspended.pending.questions}
+          sessionFile={sessionFile}
+        />
+      )
+    }
+    if (!pending) {
+      return (
+        <SuspendedDockBar
+          summary={suspended.pending.questions[0]?.question ?? ''}
+          count={suspended.pending.questions.length}
+          onResume={resumeSuspended}
+        />
+      )
+    }
   }
   return null
 }
@@ -76,7 +87,15 @@ function SuspendedDockBar({
   )
 }
 
-function DockCard({ id, questions }: { id: string; questions: Parameters<typeof QuestionnairePanel>[0]['questions'] }) {
+function DockCard({
+  id,
+  questions,
+  sessionFile,
+}: {
+  id: string
+  questions: Parameters<typeof QuestionnairePanel>[0]['questions']
+  sessionFile: string | null
+}) {
   const { t } = useTranslation()
   const [collapsed, setCollapsed] = useState(false)
   const pendingCount = questions.length
@@ -124,8 +143,8 @@ function DockCard({ id, questions }: { id: string; questions: Parameters<typeof 
             requestId={id}
             questions={questions}
             variant="dock"
-            onSubmit={(answers) => answerQuestionnaire(id, answers)}
-            onCancel={() => cancelQuestionnaire(id)}
+            onSubmit={(answers) => answerQuestionnaire(id, answers, sessionFile)}
+            onCancel={() => cancelQuestionnaire(id, sessionFile)}
           />
         </div>
       )}

@@ -5,7 +5,7 @@ import { ipcClient } from '@renderer/lib/ipc-client'
 import { cn } from '@renderer/lib/utils'
 import { selectDelegateRuns, type DelegateRun } from '@renderer/lib/delegate-runs'
 import { openDelegateSessionPreview } from '@renderer/lib/delegate-session-navigation'
-import { useUIStore } from '@renderer/stores/ui-store'
+import { usePaneSessionIdentity, usePaneSessionState } from '@renderer/stores/pane-session-context'
 
 const DISMISSED_KEY = 'pi-desktop.delegate-strip-dismissed'
 const DISMISSED_CAP = 200
@@ -41,8 +41,8 @@ function persistDismissed(next: Set<string>) {
  */
 export function DelegateAgentStrip() {
   const { t } = useTranslation()
-  const currentSessionId = useUIStore((state) => state.currentSessionId)
-  const runs = useUIStore((state) => selectDelegateRuns(state.timelineItems))
+  const { sessionId: currentSessionId } = usePaneSessionIdentity()
+  const runs = usePaneSessionState((state) => selectDelegateRuns(state.timelineItems))
   const [expanded, setExpanded] = useState(false)
   const [opening, setOpening] = useState('')
   const [dismissed, setDismissed] = useState<Set<string>>(() => readDismissed())

@@ -79,13 +79,25 @@ function ensureContextPreview(
   return request
 }
 
-export function useSessionContextPreview(options?: { enabled?: boolean }) {
+export function useSessionContextPreview(options?: {
+  enabled?: boolean
+  workspace?: string | null
+  sessionFile?: string | null
+  model?: string
+  isRunning?: boolean
+  historyLoading?: boolean
+}) {
   const enabled = options?.enabled !== false
-  const workspace = useUIStore((state) => state.currentWorkspace)
-  const sessionFile = useUIStore((state) => state.historySessionFile)
-  const historyLoading = useUIStore((state) => state.historyLoading)
-  const isRunning = useUIStore((state) => state.runState.status === 'running')
-  const model = useUIStore((state) => state.runState.model)
+  const storeWorkspace = useUIStore((state) => state.currentWorkspace)
+  const storeSessionFile = useUIStore((state) => state.historySessionFile)
+  const storeHistoryLoading = useUIStore((state) => state.historyLoading)
+  const storeIsRunning = useUIStore((state) => state.runState.status === 'running')
+  const storeModel = useUIStore((state) => state.runState.model)
+  const workspace = options && 'workspace' in options ? (options.workspace ?? null) : storeWorkspace
+  const sessionFile = options && 'sessionFile' in options ? (options.sessionFile ?? null) : storeSessionFile
+  const historyLoading = options?.historyLoading !== undefined ? options.historyLoading : storeHistoryLoading
+  const isRunning = options?.isRunning !== undefined ? options.isRunning : storeIsRunning
+  const model = options && 'model' in options ? options.model : storeModel
   const active = enabled && !!workspace && !!sessionFile && !historyLoading
   const key = active ? entryKey(workspace!, sessionFile!, model) : null
 

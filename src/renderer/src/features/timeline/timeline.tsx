@@ -1,5 +1,7 @@
 import { FailedLine, findRetryPromptBeforeItem } from './failed-line'
 import { useUIStore } from '@renderer/stores/ui-store'
+import { getSessionState } from '@renderer/stores/use-view-session'
+import { usePaneSessionIdentity, usePaneSessionState } from '@renderer/stores/pane-session-context'
 import type { TimelineItem, ToolTimelineItem } from '@renderer/stores/ui-store-types'
 import { cn } from '@renderer/lib/utils'
 import { useTranslation } from 'react-i18next'
@@ -43,7 +45,7 @@ import {
   useTimelineLiveFollow,
 } from './timeline-follow-scroll'
 import { useSessionChrome } from '@renderer/lib/session-chrome'
-import { useExtensionUIStore } from '@renderer/stores/extension-ui-store'
+import { hasPendingExtensionUiForSession, useExtensionUIStore } from '@renderer/stores/extension-ui-store'
 import {
   requestTimelineBottomAnchor,
   useTimelineBottomAnchorController,
@@ -374,30 +376,39 @@ const TimelineItemBase = memo(function TimelineItem({
   return null
 })
 
-export function Timeline() {
-  const items = useUIStore((s) => s.timelineItems)
-  const streamingAssistantId = useUIStore((s) => s.streamingAssistantId)
+export function Timeline({ inactiveHydrating = false }: { inactiveHydrating?: boolean } = {}) {
+  const {
+    isActive,
+    sessionFile: historySessionFile,
+    workspace: currentWorkspace,
+    sessionKey,
+  } = usePaneSessionIdentity()
+  const items = usePaneSessionState((s) => s.timelineItems)
+  const streamingAssistantId = usePaneSessionState((s) => s.streamingAssistantId)
   // Bucket stream length so jump-to-bottom button / follow deps don't thrash every token.
-  const streamingTailBucket = useUIStore((s) => {
+  const streamingTailBucket = usePaneSessionState((s) => {
     if (!s.streamingAssistantId) return 0
     const item = s.timelineItems.find((i) => i.id === s.streamingAssistantId)
     const len = (item?.text?.length ?? 0) + (item?.thinkingText?.length ?? 0)
     return Math.floor(len / 64)
   })
-  const extensionDialogOpen = useExtensionUIStore((s) => s.activePending != null)
+  const extensionDialogOpen = useExtensionUIStore((s) =>
+    hasPendingExtensionUiForSession(s, historySessionFile),
+  )
   const sessionChrome = useSessionChrome({ extensionDialogOpen })
   const agentRunning = sessionChrome.canStop || sessionChrome.showSpinner
-  const agentBoot = useUIStore((s) => s.agentTurnBootstrapping)
-  const currentWorkspace = useUIStore((s) => s.currentWorkspace)
-  const ephemeralDraft = useUIStore((s) => s.ephemeralSandboxDraft)
+  const agentBoot = usePaneSessionState((s) => s.agentTurnBootstrapping)
+  const globalEphemeralDraft = useUIStore((s) => s.ephemeralSandboxDraft)
+  const ephemeralDraft = isActive ? globalEphemeralDraft : false
   const hasWorkspace = !!currentWorkspace || ephemeralDraft
   const isEphemeralEmpty = ephemeralDraft && !currentWorkspace
-  const historyTotalCount = useUIStore((s) => s.historyTotalCount)
-  const historyLoadedCount = useUIStore((s) => s.historyLoadedCount)
-  const historySessionFile = useUIStore((s) => s.historySessionFile)
-  const historyLoading = useUIStore((s) => s.historyLoading)
-  const activeRunId = useUIStore((s) => s.runState.activeRunId)
+  const historyTotalCount = usePaneSessionState((s) => s.historyTotalCount)
+  const historyLoadedCount = usePaneSessionState((s) => s.historyLoadedCount)
+  const globalHistoryLoading = useUIStore((s) => s.historyLoading)
+  const historyLoading = isActive ? globalHistoryLoading : inactiveHydrating
+  const activeRunId = usePaneSessionState((s) => s.runState.activeRunId)
   const timelineMaxAutoExpandedTools = useUIStore((s) => s.timelineMaxAutoExpandedTools)
+  const stableSessionKey = sessionKey || historySessionFile || null
   const { t } = useTranslation()
 
   // Virtualization by user turns: render everything inside the last N user turns (setting,
@@ -408,10 +419,10 @@ export function Timeline() {
   const PAGE_TURNS = useUIStore((s) => s.timelineVisibleTurns)
   const FIRST_PAINT_TURNS = Math.min(2, PAGE_TURNS)
   const [windowState, setWindowState] = useState<{ sessionFile: string | null; count: number }>(() => ({
-    sessionFile: historySessionFile ?? null,
+    sessionFile: stableSessionKey,
     count: PAGE_TURNS,
   }))
-  const windowSessionFile = historySessionFile ?? null
+  const windowSessionFile = stableSessionKey
   const windowTurns =
     windowState.sessionFile === windowSessionFile ? windowState.count : FIRST_PAINT_TURNS
   const windowSessionRef = useRef(windowSessionFile)
@@ -447,7 +458,7 @@ export function Timeline() {
   const [searchActiveIdx, setSearchActiveIdx] = useState(0)
   const lastTailId = items[items.length - 1]?.id
   // contentEpoch intentionally ignores raw stream text length — height growth is observed.
-  const contentEpoch = `${lastTailId ?? ''}:${renderCount}:${historySessionFile ?? ''}`
+  const contentEpoch = `${lastTailId ?? ''}:${renderCount}:${stableSessionKey ?? ''}`
   const { followLiveRef, syncFollowFromScroll, onUserScrollIntent } = useTimelineLiveFollow(
     scrollRef,
     contentRef,
@@ -459,7 +470,7 @@ export function Timeline() {
       agentRunning,
     },
   )
-  useTimelineBottomAnchorController(scrollRef, followLiveRef, historySessionFile)
+  useTimelineBottomAnchorController(scrollRef, followLiveRef, stableSessionKey, isActive)
 
   // When a session skeleton finishes loading (cold open / switch-back), the
   // session-enter anchor above may have run while scrollRef was still null
@@ -469,14 +480,15 @@ export function Timeline() {
   useEffect(() => {
     const wasLoading = prevHistoryLoadingRef.current
     prevHistoryLoadingRef.current = historyLoading
-    if (wasLoading && !historyLoading && historySessionFile) {
+    if (isActive && wasLoading && !historyLoading && historySessionFile) {
       requestTimelineBottomAnchor('session-enter')
     }
-  }, [historyLoading, historySessionFile])
+  }, [isActive, historyLoading, historySessionFile])
 
   // View-jump listener: the tree side only dispatches an entry id; reveal logic
   // lives here because the viewport (renderCount / scrollRef / items) is local.
   useEffect(() => {
+    if (!isActive) return
     const onViewEntry = (e: Event) => {
       const detail = (e as CustomEvent<TimelineViewEntryDetail>).detail
       const entryId = detail?.entryId
@@ -491,7 +503,7 @@ export function Timeline() {
     }
     window.addEventListener(TIMELINE_VIEW_ENTRY_EVENT, onViewEntry)
     return () => window.removeEventListener(TIMELINE_VIEW_ENTRY_EVENT, onViewEntry)
-  }, [followLiveRef])
+  }, [followLiveRef, isActive])
 
   // Reveal a pending view target: scroll when rendered, expand the virtual
   // window when loaded, or fetch a bounded read-only chunk when not loaded.
@@ -671,8 +683,8 @@ export function Timeline() {
 
   useEffect(() => {
     const el = scrollNode
-    registerTimelineScrollEl(el)
-    if (!el) return () => registerTimelineScrollEl(null)
+    if (isActive) registerTimelineScrollEl(el)
+    if (!el) return () => { if (isActive) registerTimelineScrollEl(null) }
     const notify = rafThrottle(() => window.dispatchEvent(new Event('timeline-scroll')))
     el.addEventListener('scroll', notify, { passive: true })
     // Upward wheel detaches live-follow immediately so stream growth never fights the user.
@@ -690,12 +702,12 @@ export function Timeline() {
     ro.observe(el)
     notify()
     return () => {
-      registerTimelineScrollEl(null)
+      if (isActive) registerTimelineScrollEl(null)
       el.removeEventListener('scroll', notify)
       el.removeEventListener('wheel', onWheel)
       ro.disconnect()
     }
-  }, [hasWorkspace, onUserScrollIntent, historySessionFile, scrollNode])
+  }, [hasWorkspace, onUserScrollIntent, stableSessionKey, scrollNode, isActive])
   const scrollHeightBeforeLoadRef = useRef<{ scrollTop: number; scrollHeight: number } | null>(null)
   const renderCountRef = useRef(renderCount)
   renderCountRef.current = renderCount
@@ -708,7 +720,8 @@ export function Timeline() {
     // Concurrent click / scroll-triggered load guard (do not use scroll-anchor as a permanent lock).
     if (!el || fetchingOlder) return
 
-    const st = useUIStore.getState()
+    const st = isActive ? useUIStore.getState() : getSessionState(historySessionFile)
+    if (!st) return
     const current = renderCountRef.current
     const all = st.timelineItems
     const segs = splitTimelineRenderSegments(all, {
@@ -717,7 +730,7 @@ export function Timeline() {
     })
 
     const canFetchDisk =
-      !!st.historySessionFile && st.historyLoadedCount < st.historyTotalCount
+      isActive && !!historySessionFile && st.historyLoadedCount < st.historyTotalCount
     const canRevealInMemory = current < segs.history.length
 
     if (!canFetchDisk && !canRevealInMemory) return
@@ -727,7 +740,7 @@ export function Timeline() {
       setFetchingOlder(true)
       scrollHeightBeforeLoadRef.current = { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight }
       const offset = st.historyLoadedCount
-      const sessionFile = st.historySessionFile!
+      const sessionFile = historySessionFile!
       const navToken = getSessionNavigationToken()
       const stillCurrent = () => isSessionNavigationCurrent(navToken) &&
         sessionFilesEqual(useUIStore.getState().historySessionFile, sessionFile)
@@ -767,7 +780,7 @@ export function Timeline() {
     // In-memory reveal only (already loaded items outside the render window).
     scrollHeightBeforeLoadRef.current = { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight }
     if (grow) setWindowTurns((turns) => turns + useUIStore.getState().timelineVisibleTurns)
-  }, [fetchingOlder, setWindowTurns])
+  }, [fetchingOlder, setWindowTurns, isActive, historySessionFile])
 
   useLayoutEffect(() => {
     const el = scrollRef.current
@@ -794,7 +807,7 @@ export function Timeline() {
     olderLoadSeqRef.current += 1
     setFetchingOlder(false)
     const prevFile = prevSessionFileRef.current
-    prevSessionFileRef.current = historySessionFile ?? null
+    prevSessionFileRef.current = stableSessionKey
     // First hydration (null → file): keep a pending view jump so it re-plans
     // against the freshly loaded store. A real session switch drops the old jump
     // and cancels its in-flight fetch.
@@ -821,14 +834,14 @@ export function Timeline() {
       })
     })
     return () => cancelAnimationFrame(growFrame)
-  }, [historySessionFile, followLiveRef, setWindowTurns])
+  }, [stableSessionKey, followLiveRef, setWindowTurns])
 
   // Fill: when the window asks for more turns than the loaded history holds and the disk
   // has more, fetch older pages without growing the window again (initial load included).
   // Yields to view jumps and session loads (they fetch history themselves; two concurrent
   // prepends would duplicate rows) and re-checks one frame later before fetching.
   useEffect(() => {
-    if (fetchingOlder || historyLoading || viewTarget || !historySessionFile || historyLoadedCount >= historyTotalCount) return
+    if (!isActive || fetchingOlder || historyLoading || viewTarget || !historySessionFile || historyLoadedCount >= historyTotalCount) return
     let loadedTurns = 0
     for (const it of items) if (it.type === 'user-message') loadedTurns++
     if (loadedTurns >= windowTurns) return
@@ -837,7 +850,7 @@ export function Timeline() {
       loadMoreHistory(false)
     })
     return () => cancelAnimationFrame(frame)
-  }, [fetchingOlder, historyLoading, viewTarget, historySessionFile, historyLoadedCount, historyTotalCount, items, windowTurns, loadMoreHistory])
+  }, [isActive, fetchingOlder, historyLoading, viewTarget, historySessionFile, historyLoadedCount, historyTotalCount, items, windowTurns, loadMoreHistory])
 
   const handleScroll = useCallback(() => {
     const el = scrollRef.current
@@ -845,17 +858,18 @@ export function Timeline() {
     syncFollowFromScroll()
     // Skip full segmentation unless the viewport is near the older-history threshold.
     if (el.scrollTop >= TIMELINE_LOAD_OLDER_SCROLL_TOP_PX) return
-    const storeState = useUIStore.getState()
+    const storeState = isActive ? useUIStore.getState() : getSessionState(historySessionFile)
+    if (!storeState) return
     const segs = splitTimelineRenderSegments(storeState.timelineItems, {
       streamingAssistantId: storeState.streamingAssistantId,
       agentRunning: storeState.runState.status === 'running',
     })
     const canReveal = renderCountRef.current < segs.history.length
-    const canFetch = storeState.historyLoadedCount < storeState.historyTotalCount
+    const canFetch = isActive && storeState.historyLoadedCount < storeState.historyTotalCount
     if (canReveal || canFetch) {
       loadMoreHistory()
     }
-  }, [loadMoreHistory, syncFollowFromScroll])
+  }, [loadMoreHistory, syncFollowFromScroll, isActive, historySessionFile])
 
   const visibleItems = useMemo(() => {
     const historyWindow = sliceHistoryForViewport(segments.history, renderCount)
@@ -871,6 +885,7 @@ export function Timeline() {
   const activeSearchMatchId = searchMatchIds.length > 0 ? searchMatchIds[clampedSearchIdx] : null
 
   useEffect(() => {
+    if (!isActive) return
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.shiftKey || e.altKey) return
       if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'f') return
@@ -885,7 +900,7 @@ export function Timeline() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [])
+  }, [isActive])
 
   const lastScrolledMatchRef = useRef<string | null>(null)
   useEffect(() => {
@@ -1178,7 +1193,7 @@ export function Timeline() {
     >
       <div
         ref={contentRef}
-        key={historySessionFile || 'timeline'}
+        key={stableSessionKey || 'timeline'}
         className="chat-content-column py-4"
       >
       {(hiddenCount > 0 || historyLoading || fetchingOlder) && (

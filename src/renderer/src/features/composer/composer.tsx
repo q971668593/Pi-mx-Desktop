@@ -2,6 +2,8 @@ import { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } fr
 import { useTranslation } from 'react-i18next'
 import { Send, Square, Upload, Plus } from '@renderer/components/icons'
 import { useUIStore } from '@renderer/stores/ui-store'
+import { usePaneSessionIdentity, usePaneSessionState } from '@renderer/stores/pane-session-context'
+import { sessionFilesEqual } from '@renderer/lib/session-file-key'
 import { cn } from '@renderer/lib/utils'
 import {
   AttachmentMeta,
@@ -39,7 +41,7 @@ import {
   composerTurnActive,
 } from '@renderer/lib/session-worker-sync'
 import { useSessionChrome } from '@renderer/lib/session-chrome'
-import { useExtensionUIStore } from '@renderer/stores/extension-ui-store'
+import { hasPendingExtensionUiForSession, useExtensionUIStore } from '@renderer/stores/extension-ui-store'
 import { insertTextAtCursor } from './composer-editor-caret'
 import { makeComposerEditorAdapter } from './composer-editor-adapter'
 import { useComposerSlash } from './use-composer-slash'
@@ -84,13 +86,19 @@ export function Composer() {
   const dragDepth = useRef(0)
   const editorRef = useRef<HTMLDivElement>(null)
   const slashPopoverAnchorRef = useRef<HTMLDivElement>(null)
-  const currentWorkspace = useUIStore((s) => s.currentWorkspace)
-  const currentSessionId = useUIStore((s) => s.currentSessionId)
-  const historySessionFile = useUIStore((s) => s.historySessionFile)
-  const subagentSessionGroup = useUIStore((s) => s.subagentSessionGroup)
-  const workerLiveSnapshot = useUIStore((s) => s.workerLiveSnapshot)
-  const ephemeralSandboxDraft = useUIStore((s) => s.ephemeralSandboxDraft)
-  const pendingNew = useUIStore((s) => s.pendingNewSessionPlaceholder)
+  const {
+    isActive,
+    workspace: currentWorkspace,
+    sessionId: currentSessionId,
+    sessionFile: historySessionFile,
+  } = usePaneSessionIdentity()
+  const globalSubagentSessionGroup = useUIStore((s) => s.subagentSessionGroup)
+  const subagentSessionGroup = isActive ? globalSubagentSessionGroup : null
+  const workerLiveSnapshot = usePaneSessionState((s) => s.workerLiveSnapshot)
+  const globalEphemeralSandboxDraft = useUIStore((s) => s.ephemeralSandboxDraft)
+  const ephemeralSandboxDraft = isActive ? globalEphemeralSandboxDraft : false
+  const globalPendingNew = useUIStore((s) => s.pendingNewSessionPlaceholder)
+  const pendingNew = isActive ? globalPendingNew : false
   const draftContextKey = composerDraftContextKey({
     currentWorkspace,
     currentSessionId,
@@ -100,8 +108,8 @@ export function Composer() {
   })
   const canCompose = !!currentWorkspace || ephemeralSandboxDraft
   const readOnlySubagentPreview = useMemo(
-    () => isSubagentSessionPreview(subagentSessionGroup, historySessionFile),
-    [historySessionFile, subagentSessionGroup],
+    () => (isActive ? isSubagentSessionPreview(subagentSessionGroup, historySessionFile) : false),
+    [historySessionFile, isActive, subagentSessionGroup],
   )
   const sessionPreview = useMemo(
     () =>
@@ -124,21 +132,31 @@ export function Composer() {
     ],
   )
   const canSendMessages = canCompose && !sessionPreview
-  const extensionDialogOpen = useExtensionUIStore((s) => s.activePending != null)
+  const extensionDialogOpen = useExtensionUIStore((s) =>
+    hasPendingExtensionUiForSession(s, historySessionFile),
+  )
   const retrying = useViewRetryInfo() != null
   const sessionChrome = useSessionChrome({ extensionDialogOpen, retrying })
   const isRunning = sessionChrome.canStop || sessionChrome.showSpinner
   const showComposerStop = sessionChrome.canStop
-  const model = useUIStore((s) => s.runState.model)
-  const thinkingLevel = useUIStore((s) => s.runState.thinkingLevel)
-  const modelPickerOpen = useUIStore((s) => s.modelPickerOpen)
+  const runModel = usePaneSessionState((s) => s.runState.model)
+  const sessionListModel = useUIStore((s) =>
+    !runModel && historySessionFile
+      ? s.sessions.find((x) => sessionFilesEqual(x.sessionFile, historySessionFile))?.modelId
+      : undefined,
+  )
+  const model = runModel || sessionListModel
+  const thinkingLevel = usePaneSessionState((s) => s.runState.thinkingLevel)
+  const globalModelPickerOpen = useUIStore((s) => s.modelPickerOpen)
+  const modelPickerOpen = isActive && globalModelPickerOpen
   const setModelPickerOpen = useUIStore((s) => s.setModelPickerOpen)
-  const thinkingPickerOpen = useUIStore((s) => s.thinkingPickerOpen)
+  const globalThinkingPickerOpen = useUIStore((s) => s.thinkingPickerOpen)
+  const thinkingPickerOpen = isActive && globalThinkingPickerOpen
   const setThinkingPickerOpen = useUIStore((s) => s.setThinkingPickerOpen)
   const [composerFocused, setComposerFocused] = useState(false)
   const [editorRevision, setEditorRevision] = useState(0)
-  const composerPrefill = useUIStore((s) => s.composerPrefill)
-  const composerPrefillMode = useUIStore((s) => s.composerPrefillMode)
+  const composerPrefill = usePaneSessionState((s) => s.composerPrefill)
+  const composerPrefillMode = usePaneSessionState((s) => s.composerPrefillMode)
   const setComposerPrefill = useUIStore((s) => s.setComposerPrefill)
   const metrics = useComposerMetrics()
   const { voiceState, toggle: toggleVoice, holdStart, holdEnd, disabled: voiceDisabled } = useVoiceInput(canSendMessages, (spoken) => {
@@ -147,10 +165,10 @@ export function Composer() {
   })
 
   useEffect(() => {
-    if (!sessionPreview) return
+    if (!isActive || !sessionPreview) return
     setModelPickerOpen(false)
     setThinkingPickerOpen(false)
-  }, [sessionPreview, setModelPickerOpen, setThinkingPickerOpen])
+  }, [isActive, sessionPreview, setModelPickerOpen, setThinkingPickerOpen])
 
   const updateFromEditor = useCallback(() => {
     const el = editorRef.current
@@ -266,7 +284,7 @@ export function Composer() {
 
   const slash = useComposerSlash(
     text,
-    canSendMessages,
+    isActive && canSendMessages,
     currentSessionId,
     currentWorkspace,
     applySegmentsChange,
@@ -277,7 +295,7 @@ export function Composer() {
     editorRef,
     revision: editorRevision,
     workspaceRoot: currentWorkspace,
-    enabled: canSendMessages && voiceState !== 'recording' && voiceState !== 'transcribing',
+    enabled: isActive && canSendMessages && voiceState !== 'recording' && voiceState !== 'transcribing',
     onAccepted: updateFromEditor,
   })
 
@@ -306,10 +324,11 @@ export function Composer() {
     setIsDragActive,
     dragDepth,
     stageImage,
+    isActive,
   })
 
   useEffect(() => {
-    if (composerPrefill == null) return
+    if (!isActive || composerPrefill == null) return
     const el = editorRef.current
     if (!el) return
     if (composerPrefillMode === 'append') {
@@ -338,9 +357,10 @@ export function Composer() {
       el.focus()
       placeCaretAtEnd(el)
     })
-  }, [composerPrefill, composerPrefillMode, setComposerPrefill, setContent])
+  }, [isActive, composerPrefill, composerPrefillMode, setComposerPrefill, setContent])
 
   useEffect(() => {
+    if (!isActive) return
     const onRetry = (e: Event) => {
       const prompt = (e as CustomEvent<{ text?: string }>).detail?.text?.trim()
       if (!prompt) return
@@ -360,10 +380,10 @@ export function Composer() {
     }
     window.addEventListener('pi-desktop:composer-retry', onRetry)
     return () => window.removeEventListener('pi-desktop:composer-retry', onRetry)
-  }, [canSendMessages, isRunning, showComposerStop, setContent, sendCurrent])
+  }, [isActive, canSendMessages, isRunning, showComposerStop, setContent, sendCurrent])
 
   useEffect(() => {
-    if (!historySessionFile) return
+    if (!isActive || !historySessionFile) return
     let cancelled = false
     let tick: number | null = null
     const pull = () => {
@@ -405,21 +425,21 @@ export function Composer() {
       if (tick != null) window.clearInterval(tick)
       document.removeEventListener('visibilitychange', onVisibility)
     }
-  }, [currentSessionId, historySessionFile])
+  }, [isActive, currentSessionId, historySessionFile])
 
   useEffect(() => {
-    if (!canCompose) return
+    if (!isActive || !canCompose) return
     if (!currentSessionId || pendingNew || ephemeralSandboxDraft) return
     void refreshComposerRunDisplay()
-  }, [canCompose, currentWorkspace, currentSessionId, ephemeralSandboxDraft, pendingNew])
+  }, [isActive, canCompose, currentWorkspace, currentSessionId, ephemeralSandboxDraft, pendingNew])
 
   // First message of a new chat in a project: start the workspace worker while the user types, so
   // sending does not also wait for the worker process + SDK boot (the slowest part of that path).
   const hasDraftText = text.trim().length > 0
   useEffect(() => {
-    if (!hasDraftText || !pendingNew || ephemeralSandboxDraft || !currentWorkspace) return
+    if (!isActive || !hasDraftText || !pendingNew || ephemeralSandboxDraft || !currentWorkspace) return
     prewarmWorkspaceWorker(currentWorkspace)
-  }, [hasDraftText, pendingNew, ephemeralSandboxDraft, currentWorkspace])
+  }, [isActive, hasDraftText, pendingNew, ephemeralSandboxDraft, currentWorkspace])
 
   const handleKeyDown = useComposerKeyDown({
     editorRef,

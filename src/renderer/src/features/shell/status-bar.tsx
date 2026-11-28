@@ -234,7 +234,7 @@ export function StatusBar() {
         <FeedbackInboxButton />
       </div>
       <div className="ml-auto flex shrink-0 items-center">
-        {quotaSummary ? <StatusQuotaButton anchorRef={quotaAnchor} open={popover === 'quota'} label={quotaSummary} title={quota.error ?? quotaTitle} onClick={() => { setPopover((v) => v === 'quota' ? null : 'quota'); void quota.refresh() }} /> : null}
+        {quotaSummary ? <StatusQuotaButton anchorRef={quotaAnchor} open={popover === 'quota'} label={quotaSummary} title={quota.error ?? quotaTitle} onClick={() => { setPopover((v) => v === 'quota' ? null : 'quota'); void quota.refresh(true) }} /> : null}
         <button ref={workersAnchor} type="button" className="workbench-status-trigger tabular-nums" data-level={level} aria-haspopup="dialog" aria-expanded={popover === 'workers'} aria-label={t('common:statusBar.resources')} title={t('common:statusBar.memoryHint')} onClick={() => { setPopover((v) => v === 'workers' ? null : 'workers'); void refresh() }}>
           <Cpu className="h-3 w-3" /><span>{memory} · {cpuText}</span>
         </button>

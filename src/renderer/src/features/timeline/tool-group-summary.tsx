@@ -1,6 +1,7 @@
 import { memo, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useUIStore } from '@renderer/stores/ui-store'
+import { usePaneSessionIdentity, usePaneSessionState } from '@renderer/stores/pane-session-context'
 import { ChevronRight } from '@renderer/components/icons'
 import { cn } from '@renderer/lib/utils'
 import { normalizeSessionFileKey } from '@renderer/lib/session-file-key'
@@ -61,14 +62,14 @@ function ToolGroupSummaryImpl({
   foldedAssistantTexts?: string[]
 }) {
   const { t } = useTranslation()
+  const { sessionFile, workspace } = usePaneSessionIdentity()
   const userExpanded = useUIStore((s) => {
-    const sessionKey = normalizeSessionFileKey(s.historySessionFile || '') || s.historySessionFile || '__none__'
+    const sessionKey = normalizeSessionFileKey(sessionFile || '') || sessionFile || '__none__'
     return groupExpanded(s.toolExpandBySession[sessionKey], groupId, tools)
   })
   const setToolCallExpanded = useUIStore((s) => s.setToolCallExpanded)
   const attention = useMemo(() => attentionTools(tools), [tools])
-  const fileChanges = useUIStore((s) => s.fileChanges)
-  const workspace = useUIStore((s) => s.currentWorkspace)
+  const fileChanges = usePaneSessionState((s) => s.fileChanges)
 
   const failedCount = tools.filter((tool) => tool.isError).length
   const hasError = failedCount > 0

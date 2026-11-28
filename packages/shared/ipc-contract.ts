@@ -416,7 +416,7 @@ export interface IpcMethodMap {
   'pi.models.get': { request: PiModelsGetRequest; response: PiModelsGetResponse }
   'pi.models.set': { request: PiModelsSetRequest; response: PiModelsSetResponse }
   'pi.models.fetch': { request: PiModelsFetchRequest; response: PiModelsFetchResponse }
-  'magpie.quotas': { request: Record<string, never>; response: MagpieQuotasResponse }
+  'magpie.quotas': { request: { force?: boolean }; response: MagpieQuotasResponse }
   'magpie.statusline': { request: Record<string, never>; response: MagpieStatuslineResponse }
   'thinkingLevel.set': { request: ThinkingLevelSetRequest; response: ThinkingLevelSetResponse }
   'commands.list': { request: CommandsListRequest; response: CommandsListResponse }

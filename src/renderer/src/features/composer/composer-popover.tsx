@@ -41,6 +41,7 @@ export function placeAbove(
  */
 export function ComposerPopover({
   anchorSelector,
+  anchorRef,
   width,
   label,
   onClose,
@@ -49,6 +50,7 @@ export function ComposerPopover({
   children,
 }: {
   anchorSelector: string
+  anchorRef?: React.RefObject<HTMLElement | null>
   width: number
   /** Which anchor edge the menu lines up with. */
   align?: 'start' | 'end'
@@ -62,7 +64,12 @@ export function ComposerPopover({
 
   useLayoutEffect(() => {
     const place = () => {
-      const anchor = document.querySelector(anchorSelector) ?? document.querySelector('[data-composer-shell]')
+      const anchor =
+        anchorRef?.current ??
+        document.querySelector(`[data-active="true"] ${anchorSelector}`) ??
+        document.querySelector(anchorSelector) ??
+        document.querySelector('[data-active="true"] [data-composer-shell]') ??
+        document.querySelector('[data-composer-shell]')
       const zoom = uiZoom()
       const viewport = { width: window.innerWidth, height: window.innerHeight }
       if (anchor) setPlacement(placeAbove(anchor.getBoundingClientRect(), width * zoom, viewport, zoom, align))
@@ -71,7 +78,7 @@ export function ComposerPopover({
     place()
     window.addEventListener('resize', place)
     return () => window.removeEventListener('resize', place)
-  }, [anchorSelector, width, align])
+  }, [anchorSelector, anchorRef, width, align])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -83,6 +90,7 @@ export function ComposerPopover({
     const onDown = (e: PointerEvent) => {
       const target = e.target as Node | null
       if (!target || ref.current?.contains(target)) return
+      if (anchorRef?.current?.contains(target)) return
       // A press on the anchor toggles through its own click handler.
       if (target instanceof Element && target.closest(anchorSelector)) return
       onClose()
@@ -93,7 +101,7 @@ export function ComposerPopover({
       window.removeEventListener('keydown', onKey, true)
       window.removeEventListener('pointerdown', onDown, true)
     }
-  }, [anchorSelector, onClose])
+  }, [anchorSelector, anchorRef, onClose])
 
   if (!placement) return null
   return createPortal(
