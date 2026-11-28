@@ -95,6 +95,8 @@
     <string name="tools_global">All sessions · synced with the computer</string>
     <string name="tool_piui">Visual answers</string>
     <string name="tool_piui_desc">Charts, tables, Gantt charts and more. Applies from the next message.</string>
+    <string name="tool_web_search">Web search</string>
+    <string name="tool_web_search_desc">Search and fetch web pages for up-to-date information. Applies from the next message.</string>
     <string name="tool_tokens">About %1$s more tokens per request</string>
     <string name="cache">Cache keep-alive</string>
     <string name="cache_desc">Keeps the prompt cache from expiring so repeated input costs less. Only for models that declare a cache lifetime.</string>
@@ -119,7 +121,8 @@
     <string name="thinking">Thinking</string>
     <string name="question_title">pi is waiting for you</string>
     <string name="question_desktop">Answer on desktop</string>
-    <string name="question_skip">Skip</string>
+    <string name="question_skip">Cancel question</string>
+    <string name="question_deferred_banner">%d pending question(s)</string>
     <string name="question_submit">Submit</string>
     <string name="question_unanswered">%1$d unanswered</string>
     <string name="question_multi_hint">Multiple choice</string>
@@ -294,6 +297,7 @@
     <string name="stopping">Stopping…</string>
     <string name="stop_failed">Couldn\'t reach the desktop to stop</string>
     <string name="queue_restore">Pull back</string>
+    <string name="queue_flush">Send now</string>
     <string name="queued_more">%1$d more queued</string>
     <string name="slash_model">Switch model</string>
     <string name="slash_thinking">Thinking level</string>
@@ -492,4 +496,18 @@
     <string name="team_dispatch_stale">Timed out</string>
     <string name="team_tool_desc">Use team roles and track tasks in the project board.</string>
     <string name="team_tool_update_failed">Could not update the tool. Try again.</string>
+    <string name="team_passed">Passed</string>
+    <string name="file_preview_mode">Preview</string>
+    <string name="file_source_mode">Source</string>
+    <string name="file_open_failed">Could not open this file (it may be outside the project or moved)</string>
+    <string name="file_retry">Retry</string>
+    <string name="file_too_large_preview">Document is large; switched to source view for smooth scrolling</string>
+    <string name="file_quote">Quote</string>
+    <string name="file_quoted_toast">Quoted in composer</string>
+    <string name="projfiles_show_hidden">Hidden</string>
+    <string name="projfiles_loading_file">Opening file…</string>
+    <string name="projfiles_open_failed">Couldn\'t open file</string>
+    <string name="team_passed_count">%d passed</string>
+    <string name="team_quote_task">Reference in composer</string>
+    <string name="live_tok_per_sec">%1$d tok/s</string>
 </resources>

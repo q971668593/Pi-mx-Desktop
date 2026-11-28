@@ -13,14 +13,19 @@ export function containsLeakedToolCall(text: string | null | undefined): boolean
   return LEAKED_TOOL_CALL_MARKERS.some((m) => text.includes(m))
 }
 
-function extractToolHint(leakedBlock: string): string {
+export function extractLeakedToolNames(leakedBlock: string): string[] {
+  if (!leakedBlock || typeof leakedBlock !== 'string') return []
   const names: string[] = []
   const re = /<atem:invoke[^>]*name="([^"]+)"/g
   let m: RegExpExecArray | null
   while ((m = re.exec(leakedBlock)) !== null) {
     if (m[1] && !names.includes(m[1])) names.push(m[1])
   }
-  const hint = names.slice(0, 3).join('、')
+  return names
+}
+
+function extractToolHint(leakedBlock: string): string {
+  const hint = extractLeakedToolNames(leakedBlock).slice(0, 3).join('、')
   return hint ? `（涉及工具：${hint}）` : ''
 }
 
@@ -36,7 +41,7 @@ export function sanitizeLeakedToolCallText(input: string): { text: string; leake
   const head = input.slice(0, firstIdx)
   const leakedBlock = input.slice(firstIdx)
   const hint = extractToolHint(leakedBlock)
-  const notice = `⚠️ 模型把工具调用发成了文字（未执行），已自动隐藏原文${hint}，请让它重发一次。`
+  const notice = `⚠️ 模型把工具调用发成了文字（未执行），已自动隐藏原文${hint}，系统将自动重试。`
   const headTrimmed = head.trimEnd()
   if (!headTrimmed) return { text: notice, leaked: true }
   // head 里可能还有残留的半截标签，一并清理

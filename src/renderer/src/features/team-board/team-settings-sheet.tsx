@@ -9,6 +9,12 @@ import {
   refreshAvailableModels,
   subscribeAvailableModels,
 } from '@renderer/lib/available-models-cache'
+import {
+  filterEnabledModels,
+  peekEnabledModels,
+  refreshEnabledModels,
+  subscribeEnabledModels,
+} from '@renderer/lib/enabled-models'
 import { ipcClient } from '@renderer/lib/ipc-client'
 import type { ModelInfo } from '@shared/ipc-contract'
 import {
@@ -47,6 +53,7 @@ export function TeamSettingsSheet({
   const { t } = useTranslation()
   const [draft, setDraft] = useState<TeamRoleBinding[]>(() => roles.map((role) => ({ ...role })))
   const [models, setModels] = useState<ModelInfo[]>(() => peekAvailableModels())
+  const [enabledScope, setEnabledScope] = useState<string[] | undefined>(() => peekEnabledModels())
   const [loading, setLoading] = useState(() => isAvailableModelsPending())
   const [loadError, setLoadError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -56,23 +63,29 @@ export function TeamSettingsSheet({
   const effectivePreset = preset || defaultModel
 
   useEffect(() => {
-    const unsubscribe = subscribeAvailableModels(setModels)
+    const unsubModels = subscribeAvailableModels(setModels)
+    const unsubEnabled = subscribeEnabledModels(setEnabledScope)
     return () => {
-      unsubscribe()
+      unsubModels()
+      unsubEnabled()
     }
   }, [])
 
   useEffect(() => {
     setLoading(isAvailableModelsPending() || models.length === 0)
-    void refreshAvailableModels()
-      .then(() => setLoadError(''))
-      .catch((error) => setLoadError(String(error?.message || error)))
-      .finally(() => setLoading(false))
+    void Promise.all([
+      refreshAvailableModels()
+        .then(() => setLoadError(''))
+        .catch((error) => setLoadError(String(error?.message || error))),
+      refreshEnabledModels(),
+    ]).finally(() => setLoading(false))
   }, [])
+
+  const enabledModels = useMemo(() => filterEnabledModels(models, enabledScope), [models, enabledScope])
 
   const byProvider = useMemo(() => {
     const map = new Map<string, ModelInfo[]>()
-    for (const model of models) {
+    for (const model of enabledModels) {
       const provider = model.provider || 'unknown'
       const list = map.get(provider)
       if (list) list.push(model)
@@ -81,11 +94,11 @@ export function TeamSettingsSheet({
     return [...map.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([provider, rows]) => ({ provider, rows: rows.sort((a, b) => a.id.localeCompare(b.id)) }))
-  }, [models])
+  }, [enabledModels])
 
   const modelOptions = (selected: string) => (
     <>
-      {selected && !models.some((item) => `${item.provider}/${item.id}` === selected) ? (
+      {selected && !enabledModels.some((item) => `${item.provider}/${item.id}` === selected) ? (
         <option value={selected}>{selected}</option>
       ) : null}
       {byProvider.map(({ provider, rows }) => (

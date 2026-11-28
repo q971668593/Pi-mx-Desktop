@@ -30,6 +30,7 @@ import { capabilitiesExtension, resetCapabilities } from './worker-capabilities.
 import { goalExtension, setGoalSection } from './worker-goal.js'
 import { lessonsExtension } from './worker-lessons.js'
 import { runtimeBudgetExtension } from './worker-budget.js'
+import { leakedToolCallRecoveryExtension } from './worker-leaked-tool-recovery.js'
 import { modelRoutersExtension } from './worker-model-routers.js'
 import { browserToolsExtension } from './worker-browser-tools.js'
 import { terminalToolsExtension } from './worker-terminal-tools.js'
@@ -240,7 +241,7 @@ function buildRuntimeFactory(): CreateAgentSessionRuntimeFactory {
       resourceLoaderOptions: {
         eventBus: st.sharedEventBus!,
         ...(st.builtinExtensionPaths.length > 0 ? { additionalExtensionPaths: [...st.builtinExtensionPaths] } : {}),
-        extensionFactories: [...piBuiltinExtensions(sdk), capabilitiesExtension, goalExtension, lessonsExtension, runtimeBudgetExtension, browserToolsExtension, terminalToolsExtension, teamToolsExtension, imageToolsExtension, askToolsExtension, modelRoutersExtension(agentDir)],
+        extensionFactories: [...piBuiltinExtensions(sdk), capabilitiesExtension, goalExtension, lessonsExtension, runtimeBudgetExtension, leakedToolCallRecoveryExtension, browserToolsExtension, terminalToolsExtension, teamToolsExtension, imageToolsExtension, askToolsExtension, modelRoutersExtension(agentDir)],
         extensionsOverride: (result) => guardExtensionCapabilityTools(decorateQuestionnaireTools(result, cwd)),
         skillsOverride: applySkillsOverride as never,
       },

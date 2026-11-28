@@ -149,9 +149,20 @@ fun TurnItem(turn: Turn, expanded: Boolean, divider: Long?, now: Long, mermaid: 
                     },
                 ),
             )
-            // 回复里提到的文件做成可点的小卡片：生成的说明文档、海报、日志都能直接打开。
+            // 回复里提到的文件 + 本轮修改/写入的文件做成可点的小卡片：PRD、HTML 原型、生图、日志都能直接打开。
             if (!turn.running) {
-                val refs = remember(turn.id, turn.answer) { dev.pi.remote.app.data.FileRefs.find(turn.answer) }
+                val refs = remember(turn.id, turn.answer, turn.files) {
+                    val mentioned = dev.pi.remote.app.data.FileRefs.find(turn.answer)
+                    val touched = turn.files.map { it.path }
+                    (mentioned + touched)
+                        .distinctBy { it.lowercase() }
+                        .sortedByDescending {
+                            val p = it
+                            dev.pi.remote.app.data.FileRefs.isMarkdown(p) ||
+                                dev.pi.remote.app.data.FileRefs.isHtml(p) ||
+                                dev.pi.remote.app.data.FileRefs.isImage(p)
+                        }
+                }
                 FileRefChips(refs, onOpen = cb.onOpenFile)
             }
         }
@@ -277,14 +288,44 @@ private fun ActivityRow(turn: Turn, expanded: Boolean, cb: TurnCallbacks) {
     }
 }
 
+private fun estimateLiveTokens(turn: Turn): Int {
+    var cjk = 0
+    var other = 0
+    fun count(text: String) {
+        for (ch in text) {
+            if (ch.isWhitespace()) continue
+            val code = ch.code
+            if (code in 0x4E00..0x9FFF || code in 0x3400..0x4DBF || code in 0x3040..0x30FF || code in 0xAC00..0xD7AF) cjk++
+            else other++
+        }
+    }
+    count(turn.answer)
+    for (s in turn.steps) {
+        when (s) {
+            is ThinkingStep -> count(s.text)
+            is ProseStep -> count(s.text)
+            else -> {}
+        }
+    }
+    return kotlin.math.round(cjk * 0.6f + other * 0.25f).toInt()
+}
+
 @Composable
 private fun LiveActivity(turn: Turn, now: Long, cb: TurnCallbacks) {
-    val elapsed = turn.startedAt?.let { formatClock(now - it) }
+    val elapsedMs = turn.startedAt?.let { (now - it).coerceAtLeast(0L) }
+    val elapsed = elapsedMs?.let { formatClock(it) }
+    val tokPerSec = if (elapsedMs != null && elapsedMs >= 1_200L) {
+        val tokens = estimateLiveTokens(turn)
+        if (tokens > 0) ((tokens * 1000.0) / elapsedMs).toInt().coerceAtLeast(1) else null
+    } else null
     Row(Modifier.fillMaxWidth().heightIn(min = 30.dp), verticalAlignment = Alignment.CenterVertically) {
         Spinner()
         Spacer(Modifier.width(6.dp))
         val counts = countsLine(turn.activity.counts)
         Text(listOf(stringResource(R.string.act_working), counts).filter { it.isNotEmpty() }.joinToString(" · "), style = Pi.t.secondary.copy(color = Pi.c.fg2), modifier = Modifier.weight(1f), maxLines = 1)
+        if (tokPerSec != null) {
+            Text(stringResource(R.string.live_tok_per_sec, tokPerSec) + " · ", style = Pi.t.monoSmall.copy(color = Pi.c.fg3))
+        }
         elapsed?.let { Text(it, style = Pi.t.monoSmall.copy(color = Pi.c.fg3)) }
     }
     val recent = turn.steps.filter { it !is ProseStep }.takeLast(3)

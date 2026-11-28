@@ -143,6 +143,9 @@ fun SessionPanel(
     sessionKey: String = "",
     canWrite: Boolean = false,
     usage: SessionUsage? = null,
+    mermaid: dev.pi.remote.app.ui.rich.MermaidSource? = null,
+    onOpenFile: (String) -> Unit = {},
+    onQuote: (String) -> Unit = {},
 ) {
     val p = progress()
     if (p <= 0.001f) return
@@ -168,11 +171,11 @@ fun SessionPanel(
             if (repo != null) {
                 Box(Modifier.weight(1f)) {
                     SessionPanelTabs(repo, sessionKey, canWrite, runContent = {
-                        RunTab(facts, stats, statsLoading, usage)
-                    })
+                        RunTab(facts, stats, statsLoading, usage, changes, onChanges, branchCount, onBranches)
+                    }, mermaid = mermaid, onOpenFile = onOpenFile, onQuote = onQuote)
                 }
             } else Box(Modifier.weight(1f)) {
-                RunTab(facts, stats, statsLoading, usage)
+                RunTab(facts, stats, statsLoading, usage, changes, onChanges, branchCount, onBranches)
             }
         }
     }
@@ -189,7 +192,16 @@ private fun Section(title: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun RunTab(facts: SessionFacts, stats: ContextStats?, statsLoading: Boolean, usage: SessionUsage?) {
+private fun RunTab(
+    facts: SessionFacts,
+    stats: ContextStats?,
+    statsLoading: Boolean,
+    usage: SessionUsage?,
+    changes: ReviewDiffResult? = null,
+    onChanges: (() -> Unit)? = null,
+    branchCount: Int? = null,
+    onBranches: (() -> Unit)? = null,
+) {
     Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 20.dp)) {
         Text(facts.title.ifEmpty { "—" }, style = Pi.t.bodyMedium.copy(color = Pi.c.fg), maxLines = 3, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(4.dp))
@@ -199,6 +211,46 @@ private fun RunTab(facts: SessionFacts, stats: ContextStats?, statsLoading: Bool
             Text(facts.status, style = Pi.t.secondary.copy(color = Pi.c.fg2))
         }
         Section(stringResource(R.string.panel_context)) { ContextBlock(stats, statsLoading) }
+        if (onChanges != null) {
+            Section(stringResource(R.string.panel_changes)) {
+                val changesSummary = when {
+                    changes == null -> stringResource(R.string.panel_changes_open)
+                    !changes.isRepo -> stringResource(R.string.review_not_repo)
+                    changes.files.isEmpty() -> stringResource(R.string.panel_changes_none)
+                    else -> {
+                        val add = changes.files.sumOf { it.add }
+                        val del = changes.files.sumOf { it.del }
+                        stringResource(R.string.panel_files_value, changes.files.size, add, del)
+                    }
+                }
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 38.dp).clip(RoundedCornerShape(8.dp))
+                        .clickable(role = Role.Button, onClick = onChanges).padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(changesSummary, style = Pi.t.body.copy(color = Pi.c.fg), modifier = Modifier.weight(1f))
+                    PiIcon(PiIcons.ChevronRight, Pi.c.fg3, 14.dp)
+                }
+            }
+        }
+        if (onBranches != null) {
+            Section(stringResource(R.string.panel_branches)) {
+                val branchLabel = when {
+                    branchCount == null || branchCount <= 1 -> stringResource(R.string.panel_branches_one)
+                    else -> pluralStringResource(R.plurals.panel_branches_count, branchCount, branchCount)
+                }
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 38.dp).clip(RoundedCornerShape(8.dp))
+                        .clickable(role = Role.Button, onClick = onBranches).padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    PiIcon(PiIcons.Branch, Pi.c.fg3, 14.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text(branchLabel, style = Pi.t.body.copy(color = Pi.c.fg), modifier = Modifier.weight(1f))
+                    PiIcon(PiIcons.ChevronRight, Pi.c.fg3, 14.dp)
+                }
+            }
+        }
         if (facts.files > 0) {
             Section(stringResource(R.string.panel_project_files)) {
                 Text(stringResource(R.string.panel_files_value, facts.files, facts.added, facts.deleted), style = Pi.t.body.copy(color = Pi.c.fg))

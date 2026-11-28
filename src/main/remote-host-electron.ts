@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { basename, dirname, isAbsolute, join, resolve as resolvePath, sep } from 'node:path'
 import { hostname } from 'node:os'
+import { minimatch } from 'minimatch'
 import type { CacheWarming, UiResponse } from '@shared/remote'
 import { normalizeSessionFileKey } from '@shared/session-file-key'
 import { normalizeCapabilities } from '@shared/capabilities'
@@ -15,6 +16,8 @@ import { readRemoteAttachment, writeRemoteAttachment } from './clipboard-temp-im
 import { configStore } from './config-store'
 import { getSessionLeafOverride, setSessionLeafOverride } from './session-leaf-override'
 import { resolvePathUnderWorkspace, workspaceFsListDir, workspaceFsReadText, workspaceFsWriteText } from './workspace-fs'
+import { locateWorkspaceFile } from './workspace-file-locate'
+import { readPiAgentGlobalSettingsFromDisk } from './pi-agent-settings-read'
 import { extname } from 'node:path'
 import { mkdir, readdir, readFile as readFileBytes, stat as statFile } from 'node:fs/promises'
 import { gitExec, isGitRepository } from './git-workspace'
@@ -88,7 +91,7 @@ function safeStorageAvailable(): boolean {
   }
 }
 /** Same scale as the desktop thinking picker (renderer `THINKING_LEVELS`). */
-const PHONE_TEXT_MAX_BYTES = 512 * 1024
+const PHONE_TEXT_MAX_BYTES = 2 * 1024 * 1024
 const PHONE_IMAGE_MAX_BYTES = 8 * 1024 * 1024
 const PHONE_IMAGE_MIME: Record<string, string> = {
   '.png': 'image/png',
@@ -103,6 +106,87 @@ const PHONE_IMAGE_MIME: Record<string, string> = {
 
 const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
 const comparable = (p: string) => normalizeSessionFileKey(p).replace(/\/+$/, '').toLowerCase()
+
+function cleanRemoteFilePath(raw: string): string {
+  let s = String(raw || '').trim().replace(/^[`"']+|[`"']+$/g, '')
+  if (!s) return ''
+  if (/^file:\/\//i.test(s)) {
+    s = s.replace(/^file:\/\/(?:localhost)?/i, '')
+    if (/^\/[a-zA-Z]:/.test(s)) s = s.slice(1)
+    try {
+      s = decodeURIComponent(s.replace(/\+/g, '%2B'))
+    } catch {
+      /* keep raw */
+    }
+  }
+  s = s.replace(/#.*$/, '').replace(/\?.*$/, '')
+  // Strip trailing :line or :line:col without touching Windows drive prefix (e.g. C:\...)
+  s = s.replace(/(?<=.{2}):\d+(?::\d+)?$/, '')
+  return s.trim()
+}
+
+async function readUnderRoot(root: string, target: string) {
+  const text = await workspaceFsReadText({ workspaceRoot: root, path: target, maxBytes: PHONE_TEXT_MAX_BYTES })
+  if (text.ok) return { path: target, size: text.size, truncated: text.truncated, kind: 'text' as const, text: text.content }
+  if (text.error !== 'binary') return null
+  const resolved = await resolvePathUnderWorkspace(root, target)
+  if (!resolved.ok) return null
+  const info = await statFile(resolved.abs).catch(() => null)
+  if (!info?.isFile()) return null
+  const mime = PHONE_IMAGE_MIME[extname(resolved.abs).toLowerCase()]
+  if (!mime || info.size > PHONE_IMAGE_MAX_BYTES) {
+    return { path: target, size: info.size, truncated: info.size > PHONE_IMAGE_MAX_BYTES, kind: 'binary' as const }
+  }
+  const bytes = await readFileBytes(resolved.abs).catch(() => null)
+  if (!bytes) return null
+  return { path: target, size: info.size, truncated: false, kind: 'image' as const, mime, data: bytes.toString('base64') }
+}
+
+function filterModelsForRemote<T extends { id: string; name?: string; provider?: string }>(
+  models: T[],
+  patterns: readonly string[],
+  currentModel?: string,
+): T[] {
+  const selected = new Set<T>()
+  for (const original of patterns) {
+    const text = original.trim()
+    if (!text) continue
+    const exact = (value: string) => {
+      const lower = value.toLowerCase()
+      const named = models.filter((m) => `${m.provider ?? ''}/${m.id}`.toLowerCase() === lower)
+      return named.length ? named : models.filter((m) => m.id.toLowerCase() === lower)
+    }
+    let matches = exact(text)
+    const base = text.replace(/:(off|minimal|low|medium|high|xhigh|max)$/i, '')
+    if (!matches.length) matches = exact(base)
+    if (!matches.length && /[*?[\]]/.test(base)) {
+      matches = models.filter(
+        (m) => minimatch(`${m.provider ?? ''}/${m.id}`, base, { nocase: true }) || minimatch(m.id, base, { nocase: true }),
+      )
+    } else if (!matches.length) {
+      const lower = base.toLowerCase()
+      const provider = [...new Set(models.map((m) => m.provider).filter((p): p is string => !!p))]
+        .filter((id) => lower.startsWith(`${id.toLowerCase()}/`))
+        .sort((a, b) => b.length - a.length)[0]
+      const query = provider ? lower.slice(provider.length + 1) : lower
+      const fuzzy = models.filter(
+        (m) => (!provider || m.provider === provider) && (m.id.toLowerCase().includes(query) || m.name?.toLowerCase().includes(query)),
+      )
+      const aliases = fuzzy.filter((m) => m.id.endsWith('-latest') || !/-\d{8}$/.test(m.id))
+      const best = [...(aliases.length ? aliases : fuzzy)].sort((a, b) => b.id.localeCompare(a.id))[0]
+      if (best) matches = fuzzy.filter((m) => m.id === best.id)
+    }
+    matches.forEach((m) => selected.add(m))
+  }
+  if (currentModel) {
+    const curLower = currentModel.toLowerCase()
+    for (const m of models) {
+      const full = m.provider ? `${m.provider}/${m.id}` : m.id
+      if (full.toLowerCase() === curLower || m.id.toLowerCase() === curLower) selected.add(m)
+    }
+  }
+  return selected.size ? models.filter((m) => selected.has(m)) : models
+}
 
 type ListedSession = { sessionFile: string; title: string; createdAt: number; updatedAt: number; firstMessage?: string }
 
@@ -215,7 +299,12 @@ export function createElectronRemoteHost(): RemoteHostPort {
     },
 
     async sessionProject(sessionFile: string): Promise<string | null> {
-      const cwd = (await readSessionMetaFromFile(sessionFile).catch(() => null))?.cwd
+      let cwd = (await readSessionMetaFromFile(sessionFile).catch(() => null))?.cwd
+      if (!cwd) {
+        const want = normalizeSessionFileKey(sessionFile)
+        const live = workerManager.listSessionRuntime().find((s) => normalizeSessionFileKey(s.sessionFile) === want)
+        if (live?.cwd) cwd = live.cwd
+      }
       if (!cwd) return null
       const runtime = getAgentRuntimeConfig()
       const candidates = [cwd]
@@ -257,11 +346,22 @@ export function createElectronRemoteHost(): RemoteHostPort {
       // to the desktop UI: bind this session's worker (no foreground change), apply capabilities, send.
       // A session created from the phone has a live worker but no file until its first reply:
       // re-loading it would read a missing header, so only cold sessions go through loadSession.
-      if (!workerManager.hasLiveSessionWorker(sessionFile)) await workerManager.loadSession(sessionFile, { cwd: projectId })
+      if (!workerManager.hasLiveSessionWorker(sessionFile)) {
+        if (existsSync(sessionFile)) {
+          await workerManager.loadSession(sessionFile, { cwd: projectId })
+        } else {
+          await workerManager.ensureSessionWorker(sessionFile, projectId)
+        }
+      }
       // The list is already resolved (stored switches or the desktop default) by the caller.
       await applySessionCapabilities(sessionFile, capabilities)
-      if (mode === 'steer') await workerManager.steer(text, sessionFile)
-      else if (mode === 'followUp') await workerManager.followUp(text, sessionFile)
+      let effectiveMode = mode
+      if (mode === 'steer' || mode === 'followUp') {
+        const live = await this.liveState(sessionFile).catch(() => ({ running: false }))
+        if (!live.running) effectiveMode = 'prompt'
+      }
+      if (effectiveMode === 'steer') await workerManager.steer(text, sessionFile)
+      else if (effectiveMode === 'followUp') await workerManager.followUp(text, sessionFile)
       else await workerManager.sendPrompt(text, sessionFile)
     },
 
@@ -330,9 +430,12 @@ export function createElectronRemoteHost(): RemoteHostPort {
         invokeHandler<{ models?: Array<{ id: string; name?: string; provider?: string; available?: boolean; auth?: { source?: string; type?: string } }> }>('ipc:model.list', { scope: 'available' }),
         this.liveState(sessionFile),
       ])
+      const available = (list.models ?? []).filter((m) => m.available !== false)
+      const rawEnabled = readPiAgentGlobalSettingsFromDisk()?.enabledModels
+      const enabledPatterns = Array.isArray(rawEnabled) ? rawEnabled.filter((x): x is string => typeof x === 'string' && x.trim().length > 0) : []
+      const filtered = enabledPatterns.length ? filterModelsForRemote(available, enabledPatterns, state.model) : available
       return {
-        models: (list.models ?? [])
-          .filter((m) => m.available !== false)
+        models: filtered
           .map((m) => ({
             id: m.provider ? `${m.provider}/${m.id}` : m.id,
             ...(m.name ? { name: m.name } : {}),
@@ -416,26 +519,43 @@ export function createElectronRemoteHost(): RemoteHostPort {
       const r = await workspaceFsListDir({ workspaceRoot: projectId, path, includeDotfiles: dotfiles })
       if (!r.ok) return null
       return {
-        entries: r.entries.map((e) => ({ name: e.name, path: e.path, dir: e.isDirectory, size: e.size, mtime: e.mtimeMs == null ? undefined : Math.round(e.mtimeMs) })),
+        entries: r.entries.map((e) => ({
+          name: e.name,
+          path: e.path,
+          dir: e.isDirectory,
+          ...(typeof e.size === 'number' && Number.isFinite(e.size) && e.size >= 0 ? { size: Math.trunc(e.size) } : {}),
+          ...(typeof e.mtimeMs === 'number' && Number.isFinite(e.mtimeMs) ? { mtime: Math.round(e.mtimeMs) } : {}),
+        })),
         truncated: r.truncated,
       }
     },
 
     async readFile(projectId: string, path: string) {
-      const text = await workspaceFsReadText({ workspaceRoot: projectId, path, maxBytes: PHONE_TEXT_MAX_BYTES })
-      if (text.ok) return { path, size: text.size, truncated: text.truncated, kind: 'text' as const, text: text.content }
-      if (text.error !== 'binary') return null
-      const resolved = await resolvePathUnderWorkspace(projectId, path)
-      if (!resolved.ok) return null
-      const info = await statFile(resolved.abs).catch(() => null)
-      if (!info?.isFile()) return null
-      const mime = PHONE_IMAGE_MIME[extname(resolved.abs).toLowerCase()]
-      if (!mime || info.size > PHONE_IMAGE_MAX_BYTES) {
-        return { path, size: info.size, truncated: info.size > PHONE_IMAGE_MAX_BYTES, kind: 'binary' as const }
+      const cleaned = cleanRemoteFilePath(path)
+      if (!cleaned) return null
+      const candidates = [cleaned]
+      const runtime = getAgentRuntimeConfig()
+      if (runtime.mode === 'wsl' && runtime.distro && cleaned.startsWith('/')) {
+        const winPath = wslPathToWindows(runtime.distro, cleaned)
+        if (winPath && winPath !== cleaned) candidates.push(winPath)
       }
-      const bytes = await readFileBytes(resolved.abs).catch(() => null)
-      if (!bytes) return null
-      return { path, size: info.size, truncated: false, kind: 'image' as const, mime, data: bytes.toString('base64') }
+      for (const candidate of candidates) {
+        const direct = await readUnderRoot(projectId, candidate)
+        if (direct) return direct
+        const located = await locateWorkspaceFile(projectId, candidate, { preferSuffix: true }).catch(() => null)
+        if (located) {
+          const hit = await readUnderRoot(projectId, located)
+          if (hit) return hit
+        }
+        if (isAbsolute(candidate) || /^[a-zA-Z]:[\\/]/.test(candidate)) {
+          for (const root of trustedProjects()) {
+            if (comparable(root) === comparable(projectId)) continue
+            const cross = await readUnderRoot(root, candidate)
+            if (cross) return cross
+          }
+        }
+      }
+      return null
     },
 
     async deleteSession(sessionFile: string, projectId: string) {

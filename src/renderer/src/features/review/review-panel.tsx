@@ -38,29 +38,48 @@ type Scope = (typeof SCOPES)[number]
 type ToolTouchRow = { toolName?: string; runId?: string; toolDetail?: unknown; toolArgs?: unknown }
 
 const EMPTY_GROUPS: ReviewFileGroups = { staged: [], unstaged: [], cleanTouched: [] }
-let memoItems: TimelineItem[] | null = null
-let memoSignature = ''
-let memoRows: ToolTouchRow[] = []
+const EMPTY_TOOL_TOUCH_ROWS: ToolTouchRow[] = []
+const MAX_TOOL_TOUCH_SIGNATURE_CACHE = 32
+const memoToolTouchByItems = new WeakMap<TimelineItem[], ToolTouchRow[]>()
+const memoToolTouchBySignature = new Map<string, ToolTouchRow[]>()
 
 /**
  * Tool rows that can touch files, as a stable array: streaming text rebuilds `timelineItems`
  * every token, but the file scopes only change when a tool row appears or finishes.
  */
 function selectToolTouchRows(items: TimelineItem[]): ToolTouchRow[] {
-  if (items === memoItems) return memoRows
-  memoItems = items
+  if (items.length === 0) return EMPTY_TOOL_TOUCH_ROWS
+  const cached = memoToolTouchByItems.get(items)
+  if (cached) return cached
+
   const tools = items.filter((item) => item.type === 'tool-call')
-  const signature = tools.map((item) => `${item.id}:${item.toolPhase ?? ''}:${item.runId ?? ''}`).join('|')
-  if (signature !== memoSignature) {
-    memoSignature = signature
-    memoRows = tools.map((item) => ({
-      toolName: item.toolName,
-      runId: item.runId,
-      toolDetail: item.toolDetail,
-      toolArgs: item.toolArgs,
-    }))
+  if (tools.length === 0) {
+    memoToolTouchByItems.set(items, EMPTY_TOOL_TOUCH_ROWS)
+    return EMPTY_TOOL_TOUCH_ROWS
   }
-  return memoRows
+
+  const signature = tools.map((item) => `${item.id}:${item.toolPhase ?? ''}:${item.runId ?? ''}`).join('|')
+  const existing = memoToolTouchBySignature.get(signature)
+  if (existing) {
+    memoToolTouchBySignature.delete(signature)
+    memoToolTouchBySignature.set(signature, existing)
+    memoToolTouchByItems.set(items, existing)
+    return existing
+  }
+
+  const next = tools.map((item) => ({
+    toolName: item.toolName,
+    runId: item.runId,
+    toolDetail: item.toolDetail,
+    toolArgs: item.toolArgs,
+  }))
+  memoToolTouchBySignature.set(signature, next)
+  if (memoToolTouchBySignature.size > MAX_TOOL_TOUCH_SIGNATURE_CACHE) {
+    const oldest = memoToolTouchBySignature.keys().next().value
+    if (oldest !== undefined) memoToolTouchBySignature.delete(oldest)
+  }
+  memoToolTouchByItems.set(items, next)
+  return next
 }
 
 function totals(groups: ReviewFileGroups): { files: number; additions: number; deletions: number } {

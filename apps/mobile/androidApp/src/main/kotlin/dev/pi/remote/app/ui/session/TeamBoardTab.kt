@@ -34,6 +34,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import dev.pi.remote.R
+import dev.pi.remote.app.data.FileRefs
 import dev.pi.remote.app.data.RemoteRepository
 import dev.pi.remote.app.theme.Pi
 import dev.pi.remote.app.theme.PiIcon
@@ -51,13 +52,21 @@ private val boardStatuses = mapOf(
     "待办" to R.string.team_todo,
     "进行中" to R.string.team_active,
     "待审查" to R.string.team_review,
+    "已通过" to R.string.team_passed,
     "阻塞" to R.string.team_blocked,
-    "实现完成" to R.string.team_implemented,
     "已验收" to R.string.team_accepted,
+)
+private val legacyStatusLabels = mapOf(
+    "实现完成" to R.string.team_implemented,
 )
 
 @Composable
-internal fun TeamBoardTab(repo: RemoteRepository, sessionKey: String) {
+internal fun TeamBoardTab(
+    repo: RemoteRepository,
+    sessionKey: String,
+    onOpenFile: (String) -> Unit = {},
+    onQuoteTask: (String) -> Unit = {},
+) {
     var result by remember(sessionKey) { mutableStateOf<Result<TeamBoardResult>?>(null) }
     var refresh by remember(sessionKey) { mutableStateOf(0) }
     var loading by remember(sessionKey) { mutableStateOf(true) }
@@ -95,7 +104,14 @@ internal fun TeamBoardTab(repo: RemoteRepository, sessionKey: String) {
 
     val counts = remember(board) { board.tasks.groupingBy { it.status }.eachCount() }
     val visible = remember(board, filter) { if (filter == null) board.tasks else board.tasks.filter { it.status == filter } }
-    board.tasks.firstOrNull { it.id == detailId }?.let { task -> TeamTaskDetail(task) { detailId = null } }
+    board.tasks.firstOrNull { it.id == detailId }?.let { task ->
+        TeamTaskDetail(
+            task = task,
+            onOpenFile = { p -> detailId = null; onOpenFile(p) },
+            onQuoteTask = { q -> detailId = null; onQuoteTask(q) },
+            onDismiss = { detailId = null },
+        )
+    }
     LazyColumn(
         Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(14.dp),
@@ -106,12 +122,18 @@ internal fun TeamBoardTab(repo: RemoteRepository, sessionKey: String) {
                 Text(board.batch.ifBlank { stringResource(R.string.panel_tab_team) }, style = Pi.t.title.copy(color = Pi.c.fg))
                 if (board.goal.isNotBlank()) Text(board.goal, style = Pi.t.secondary.copy(color = Pi.c.fg2))
                 val accepted = counts["已验收"] ?: 0
-                val progress = if (board.tasks.isEmpty()) 0f else accepted.toFloat() / board.tasks.size
-                Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(Pi.c.line)) {
-                    Box(Modifier.fillMaxWidth(progress).height(6.dp).background(Pi.c.blue))
+                val passed = (counts["已通过"] ?: 0) + (counts["实现完成"] ?: 0)
+                val acceptedRatio = if (board.tasks.isEmpty()) 0f else accepted.toFloat() / board.tasks.size
+                val passedRatio = if (board.tasks.isEmpty()) 0f else passed.toFloat() / board.tasks.size
+                Row(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(Pi.c.line)) {
+                    if (acceptedRatio > 0f) Box(Modifier.weight(acceptedRatio).height(6.dp).background(Pi.c.blue))
+                    if (passedRatio > 0f) Box(Modifier.weight(passedRatio).height(6.dp).background(Pi.c.ok))
+                    val rest = (1f - acceptedRatio - passedRatio).coerceAtLeast(0f)
+                    if (rest > 0f) Box(Modifier.weight(rest).height(6.dp))
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(stringResource(R.string.team_progress, accepted, board.tasks.size), style = Pi.t.meta.copy(color = Pi.c.fg2), modifier = Modifier.weight(1f))
+                    if (passed > 0) Text(stringResource(R.string.team_passed_count, passed), style = Pi.t.meta.copy(color = Pi.c.ok))
                     val blocked = counts["阻塞"] ?: 0
                     if (blocked > 0) Text(stringResource(R.string.team_blocked_count, blocked), style = Pi.t.meta.copy(color = Pi.c.bad))
                 }
@@ -168,13 +190,23 @@ private fun TeamStatus(status: String) {
         "阻塞" -> Pi.c.bad
         "待审查" -> Pi.c.warn
         "进行中" -> Pi.c.blue
+        "已通过", "实现完成", "已验收" -> Pi.c.ok
         else -> Pi.c.fg2
     }
-    Text(boardStatuses[status]?.let { stringResource(it) } ?: status, style = Pi.t.meta.copy(color = color))
+    val res = boardStatuses[status] ?: legacyStatusLabels[status]
+    Text(res?.let { stringResource(it) } ?: status, style = Pi.t.meta.copy(color = color))
 }
 
 @Composable
-private fun TeamTaskDetail(task: TeamBoardTask, onDismiss: () -> Unit) {
+private fun TeamTaskDetail(
+    task: TeamBoardTask,
+    onOpenFile: (String) -> Unit = {},
+    onQuoteTask: (String) -> Unit = {},
+    onDismiss: () -> Unit,
+) {
+    val fileRefs = remember(task.id, task.input, task.output) {
+        FileRefs.find("${task.input}\n${task.output}", max = 6)
+    }
     PiSheet(onDismiss) {
         Column(Modifier.fillMaxWidth().heightIn(max = 560.dp).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(task.title.ifBlank { task.id }, style = Pi.t.title.copy(color = Pi.c.fg))
@@ -183,6 +215,9 @@ private fun TeamTaskDetail(task: TeamBoardTask, onDismiss: () -> Unit) {
             TaskField(R.string.team_dependencies, task.dependsOn.joinToString(", "))
             TaskField(R.string.team_input, task.input)
             TaskField(R.string.team_output, task.output)
+            if (fileRefs.isNotEmpty()) {
+                FileRefChips(fileRefs, onOpen = onOpenFile)
+            }
             TaskField(R.string.team_block_reason, task.blockType)
             TaskField(R.string.team_note, task.note)
             TaskField(R.string.team_approval, task.approval)
@@ -205,6 +240,13 @@ private fun TeamTaskDetail(task: TeamBoardTask, onDismiss: () -> Unit) {
                 else -> null
             }
             if (dispatch != null) TaskField(R.string.team_dispatch, stringResource(dispatch))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                QuietButton(
+                    stringResource(R.string.team_quote_task),
+                    { onQuoteTask("[${task.id}] ${task.title.ifBlank { task.id }}") },
+                    icon = PiIcons.At,
+                )
+            }
         }
     }
 }

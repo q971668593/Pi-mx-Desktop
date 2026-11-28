@@ -39,6 +39,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.pi.remote.R
+import dev.pi.remote.app.data.FileRefs
 import dev.pi.remote.app.data.RemoteRepository
 import dev.pi.remote.app.theme.Pi
 import dev.pi.remote.app.theme.PiIcon
@@ -47,8 +48,10 @@ import dev.pi.remote.app.ui.Hairline
 import dev.pi.remote.app.ui.IconAction
 import dev.pi.remote.app.ui.PiSheet
 import dev.pi.remote.app.ui.SectionLabel
+import dev.pi.remote.app.ui.Segmented
 import dev.pi.remote.app.ui.Spinner
 import dev.pi.remote.app.ui.formatAgo
+import dev.pi.remote.app.ui.rich.MermaidSource
 import dev.pi.remote.protocol.FileEntry
 import dev.pi.remote.protocol.FileReadResult
 import dev.pi.remote.protocol.GitCommit
@@ -121,9 +124,15 @@ private fun CommitRow(commit: GitCommit) {
     }
 }
 
-/** 项目文件：逐级浏览 + 点开读内容（文本按等宽排版，图片直接显示）。 */
+/** 项目文件：逐级浏览 + 点开读内容（MD/HTML/SVG/图片/代码统一富预览）。 */
 @Composable
-fun FilesSheet(repo: RemoteRepository, sessionKey: String, onDismiss: () -> Unit) {
+fun FilesSheet(
+    repo: RemoteRepository,
+    sessionKey: String,
+    mermaid: MermaidSource? = null,
+    onOpenFullscreen: (String) -> Unit = {},
+    onDismiss: () -> Unit,
+) {
     var path by remember { mutableStateOf("") }
     var entries by remember { mutableStateOf<List<FileEntry>?>(null) }
     var query by remember { mutableStateOf("") }
@@ -147,7 +156,7 @@ fun FilesSheet(repo: RemoteRepository, sessionKey: String, onDismiss: () -> Unit
             SheetHeader(stringResource(R.string.projfiles_title), onDismiss)
             val shown = open
             if (shown != null) {
-                FileViewer(shown, onBack = { open = null })
+                FileViewer(shown, mermaid = mermaid, onOpenFullscreen = { onOpenFullscreen(shown.path) }, onBack = { open = null })
                 return@Column
             }
 
@@ -214,11 +223,19 @@ fun FilesSheet(repo: RemoteRepository, sessionKey: String, onDismiss: () -> Unit
 }
 
 @Composable
-private fun FileViewer(file: FileReadResult, onBack: () -> Unit) {
+private fun FileViewer(
+    file: FileReadResult,
+    mermaid: MermaidSource? = null,
+    onOpenFullscreen: () -> Unit = {},
+    onBack: () -> Unit,
+) {
+    var viewMode by remember(file.path) { mutableStateOf("preview") }
+    val isRichDoc = (file.kind == "text" && (FileRefs.isMarkdown(file.path) || FileRefs.isHtml(file.path) || FileRefs.isSvg(file.path))) ||
+        (file.kind == "image" && FileRefs.isSvg(file.path))
     Column(Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             IconAction(PiIcons.ChevronLeft, stringResource(R.string.back), onBack)
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(4.dp))
             Text(
                 file.path.substringAfterLast('/'),
                 style = Pi.t.meta.copy(color = Pi.c.fg2),
@@ -226,37 +243,23 @@ private fun FileViewer(file: FileReadResult, onBack: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            Text(
-                buildString {
-                    append(humanSize(file.size))
-                    if (file.truncated) append(" · ").append(stringResource(R.string.projfiles_truncated))
-                },
-                style = Pi.t.meta.copy(color = Pi.c.fg3),
-            )
+            if (isRichDoc) {
+                Segmented(
+                    listOf("preview" to stringResource(R.string.file_preview_mode), "source" to stringResource(R.string.file_source_mode)),
+                    viewMode,
+                    { viewMode = it },
+                )
+            }
+            IconAction(PiIcons.Expand, stringResource(R.string.fullscreen), onOpenFullscreen, size = 16.dp)
         }
         Hairline()
-        when (file.kind) {
-            "image" -> {
-                val bytes = remember(file.data) { file.data?.let { Base64.decode(it, Base64.DEFAULT) } }
-                val bitmap = remember(bytes) { bytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) } }
-                if (bitmap != null) {
-                    Image(
-                        bitmap.asImageBitmap(),
-                        contentDescription = file.path,
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier.fillMaxWidth().padding(12.dp).clip(RoundedCornerShape(Pi.radius)),
-                    )
-                } else EmptyHint(stringResource(R.string.projfiles_image_failed))
-            }
-            "text" -> {
-                Box(Modifier.fillMaxWidth().heightIn(max = 440.dp).padding(horizontal = 16.dp, vertical = 10.dp)) {
-                    Text(
-                        file.text.orEmpty(),
-                        style = Pi.t.meta.copy(fontFamily = FontFamily.Monospace, color = Pi.c.fg),
-                    )
-                }
-            }
-            else -> EmptyHint(stringResource(R.string.projfiles_binary))
+        Box(Modifier.fillMaxWidth().heightIn(max = 440.dp)) {
+            RichFileContent(
+                file = file,
+                viewMode = viewMode,
+                mermaid = mermaid,
+                onOpenFileLink = { onOpenFullscreen() },
+            )
         }
     }
 }

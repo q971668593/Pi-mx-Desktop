@@ -50,6 +50,7 @@ import { StatusBar } from '@renderer/features/shell/status-bar'
 import { clearExitedSessionRuntime } from '@renderer/lib/worker-exit-runtime'
 import { handleSdkRuntimeChanged } from '@renderer/lib/sdk-runtime-changed'
 import { prefetchAvailableModels } from '@renderer/lib/available-models-cache'
+import { refreshEnabledModels } from '@renderer/lib/enabled-models'
 import { activateAdapterWorkspace, invalidateAdapterSnapshots, revalidateActiveAdapterCatalog } from '@renderer/lib/adapter-catalog'
 import { invalidateRightPanelCatalog } from '@renderer/lib/right-panel-runtime'
 
@@ -222,6 +223,7 @@ export default function App() {
         })
         .catch(() => {})
       prefetchAvailableModels()
+      void refreshEnabledModels()
       // The composer menus open from a chip click; load their code ahead so the first open is instant.
       window.setTimeout(() => {
         void import('@renderer/features/composer/model-picker')

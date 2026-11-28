@@ -23,7 +23,10 @@ import dev.pi.remote.R
  * anchors, file:// on the desktop) cannot open on the phone, so it is copied with a hint
  * instead of crashing on ActivityNotFoundException like the default handler.
  */
-class PiUriHandler(private val context: Context) : UriHandler {
+class PiUriHandler(
+    private val context: Context,
+    private val onOpenFile: ((String) -> Boolean)? = null,
+) : UriHandler {
     override fun openUri(uri: String) {
         val trimmed = uri.trim()
         val normalized = if (trimmed.startsWith("www.", ignoreCase = true)) "https://$trimmed" else trimmed
@@ -37,6 +40,7 @@ class PiUriHandler(private val context: Context) : UriHandler {
                 // fall through to copy
             }
         }
+        if (onOpenFile?.invoke(trimmed) == true) return
         (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("link", trimmed))
         Toast.makeText(context, context.getString(R.string.link_copied, trimmed.take(80)), Toast.LENGTH_SHORT).show()
     }

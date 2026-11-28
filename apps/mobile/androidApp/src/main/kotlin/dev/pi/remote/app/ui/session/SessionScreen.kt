@@ -46,12 +46,16 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.core.content.ContextCompat
 import dev.pi.remote.app.data.Attachment
 import dev.pi.remote.app.data.AttachmentPrep
 import dev.pi.remote.app.data.AttachmentTooLarge
+import dev.pi.remote.app.data.FileRefs
 import dev.pi.remote.app.data.PreparedAttachment
 import dev.pi.remote.app.data.PromptAttachments
+import dev.pi.remote.app.ui.PiUriHandler
+import androidx.compose.runtime.CompositionLocalProvider
 import kotlinx.coroutines.flow.first
 import dev.pi.remote.app.ui.rich.MarkdownCache
 import kotlinx.coroutines.Dispatchers
@@ -254,10 +258,35 @@ fun SessionScreen(repo: RemoteRepository, sessionKey: String, onBack: () -> Unit
     var branchSheet by remember { mutableStateOf(false) }
     // 选中后立刻回显：不等下一轮 run 的 timeline.state 更新
     var modelOverride by remember(sessionKey) { mutableStateOf<String?>(null) }
+    var thinkingOverride by remember(sessionKey) { mutableStateOf<String?>(null) }
+    fun quoteToComposer(target: String) {
+        val text = target.trim()
+        if (text.isEmpty()) return
+        draft = if (text.startsWith("[") || text.contains('\n')) {
+            val base = draft.text.trimEnd()
+            val merged = if (base.isEmpty()) text else "$base\n$text"
+            TextFieldValue(merged, androidx.compose.ui.text.TextRange(merged.length))
+        } else {
+            insertMentions(draft, listOf(text))
+        }
+    }
     var gitSheet by remember { mutableStateOf(false) }
     var filesSheet by remember { mutableStateOf(false) }
     var imagePreview by remember { mutableStateOf<Pair<android.graphics.Bitmap, String>?>(null) }
     var filePreview by remember { mutableStateOf<String?>(null) }
+    var sending by remember(sessionKey) { mutableStateOf(false) }
+    val mermaidSource = remember(repo) { MermaidSource { repo.mermaidScript() } }
+    val sessionUriHandler = remember(context) {
+        PiUriHandler(context) { raw ->
+            if (FileRefs.isLikelyFileUri(raw)) {
+                val norm = FileRefs.normalizePath(raw)
+                if (norm.isNotEmpty()) {
+                    filePreview = norm
+                    true
+                } else false
+            } else false
+        }
+    }
     fun loadBranches() {
         branchesFailed = false
         scope.launch { repo.branches(sessionKey).onSuccess { branches = it }.onFailure { branchesFailed = true } }
@@ -294,6 +323,7 @@ fun SessionScreen(repo: RemoteRepository, sessionKey: String, onBack: () -> Unit
     }
     androidx.compose.runtime.DisposableEffect(sessionKey) { onDispose { repo.closeSession(sessionKey) } }
 
+    CompositionLocalProvider(LocalUriHandler provides sessionUriHandler) {
     SessionContent(
         title = timeline?.title?.ifEmpty { null } ?: summary?.title?.ifEmpty { null } ?: stringResource(R.string.session_untitled),
         project = summary?.projectId?.trimEnd('/', '\\')?.substringAfterLast('/')?.substringAfterLast('\\').orEmpty(),
@@ -315,37 +345,54 @@ fun SessionScreen(repo: RemoteRepository, sessionKey: String, onBack: () -> Unit
         },
         onRetryAttachment = { id -> attachments.firstOrNull { it.id == id }?.let { upload(it.id, it.uri) } },
         onReceiveUris = { addAll(it) },
-        mermaid = remember(repo) { MermaidSource { repo.mermaidScript() } },
+        mermaid = mermaidSource,
         onBack = onBack,
         onRetry = repo::retry,
         onLoadOlder = { scope.launch { repo.loadOlder(sessionKey) } },
         onSend = { mode ->
+            if (sending) return@SessionContent
             val typed = draft.text.trim()
             if (typed in BUILTIN_SLASH && attachments.isEmpty()) {
                 draft = TextFieldValue("")
                 runBuiltin(typed)
             } else if (typed.isNotEmpty() || attachments.isNotEmpty()) {
                 askNotificationsOnce()
+                sending = true
                 scope.launch {
-                    // Uploads started when each file was added; wait only for the ones still in flight.
-                    snapshotFlow { attachments.none { it.status == Attachment.Status.Uploading } }.first { it }
-                    if (attachments.any { it.status == Attachment.Status.Failed }) {
-                        notice = attachPending
-                        return@launch
-                    }
-                    val sent = attachments.toList()
-                    val text = PromptAttachments.compose(typed, sent.mapNotNull { it.path })
-                    if (text.isEmpty()) return@launch
-                    draft = TextFieldValue("")
-                    attachments.clear()
-                    when (val r = repo.send(sessionKey, text, mode)) {
-                        SendOutcome.Sent -> notice = null
-                        SendOutcome.Unknown -> notice = maybeLost
-                        is SendOutcome.Failed -> {
-                            notice = r.message
-                            draft = TextFieldValue(typed)
-                            attachments.addAll(sent)
+                    try {
+                        // Uploads started when each file was added; wait only for the ones still in flight.
+                        snapshotFlow { attachments.none { it.status == Attachment.Status.Uploading } }.first { it }
+                        if (attachments.any { it.status == Attachment.Status.Failed }) {
+                            notice = attachPending
+                            return@launch
                         }
+                        val sent = attachments.toList()
+                        val text = PromptAttachments.compose(typed, sent.mapNotNull { it.path })
+                        if (text.isEmpty()) return@launch
+                        draft = TextFieldValue("")
+                        attachments.clear()
+                        when (val r = repo.send(sessionKey, text, mode)) {
+                            SendOutcome.Sent -> notice = null
+                            SendOutcome.Unknown -> notice = null
+                            is SendOutcome.Failed -> {
+                                val latestTimeline = repo.timelines.value[sessionKey]
+                                val alreadyDelivered = latestTimeline?.turns?.takeLast(2)?.any {
+                                    val ut = it.user.text.trim()
+                                    ut == text.trim() || ut == typed
+                                } == true || (latestTimeline?.state?.running == true && repo.pendingSends.value[sessionKey] == null)
+                                if (alreadyDelivered) {
+                                    notice = null
+                                } else {
+                                    notice = r.message
+                                    val currentTyped = currentDraft.text
+                                    val restored = if (currentTyped.isBlank()) typed else if (typed.isBlank()) currentTyped else "$typed\n$currentTyped"
+                                    draft = TextFieldValue(restored, androidx.compose.ui.text.TextRange(restored.length))
+                                    attachments.addAll(sent)
+                                }
+                            }
+                        }
+                    } finally {
+                        sending = false
                     }
                 }
             }
@@ -395,12 +442,15 @@ fun SessionScreen(repo: RemoteRepository, sessionKey: String, onBack: () -> Unit
         onProjectFiles = { filesSheet = true },
         loadImage = { path -> repo.projectImage(sessionKey, path) },
         onOpenImage = { bitmap, path -> imagePreview = bitmap to path },
+        onOpenFile = { path -> filePreview = FileRefs.normalizePath(path).ifEmpty { path } },
         panelRepo = repo,
         panelSessionKey = sessionKey,
         panelCanWrite = repo.canWrite,
         modelLabelOverride = modelOverride?.let { id ->
             models?.models?.firstOrNull { it.id == id }?.let { it.name ?: it.id.substringAfter('/') } ?: id.substringAfter('/')
         },
+        thinkingOverride = thinkingOverride,
+        onQuote = ::quoteToComposer,
         onFork = { anchor ->
             scope.launch {
                 repo.fork(sessionKey, anchor)
@@ -426,6 +476,8 @@ fun SessionScreen(repo: RemoteRepository, sessionKey: String, onBack: () -> Unit
             }
         },
         onDequeue = { scope.launch { repo.dequeue(sessionKey)?.let(::restore) } },
+        onFlushQueue = { scope.launch { repo.flushQueue(sessionKey) } },
+        onRestoreDeferred = { deferred = emptySet() },
         onModel = {
             sheet = "model"
             scope.launch { models = repo.models(sessionKey) }
@@ -440,6 +492,7 @@ fun SessionScreen(repo: RemoteRepository, sessionKey: String, onBack: () -> Unit
         onDefer = { id -> deferred = deferred + id },
         loadDetail = { step -> repo.toolDetail(sessionKey, step.toolCallId)?.output },
     )
+    }
 
     if (branchSheet) {
         BranchSheet(
@@ -463,7 +516,13 @@ fun SessionScreen(repo: RemoteRepository, sessionKey: String, onBack: () -> Unit
     }
 
     if (filesSheet) {
-        FilesSheet(repo = repo, sessionKey = sessionKey, onDismiss = { filesSheet = false })
+        FilesSheet(
+            repo = repo,
+            sessionKey = sessionKey,
+            mermaid = mermaidSource,
+            onOpenFullscreen = { p -> filesSheet = false; filePreview = p },
+            onDismiss = { filesSheet = false },
+        )
     }
 
     imagePreview?.let { (bitmap, path) ->
@@ -471,7 +530,15 @@ fun SessionScreen(repo: RemoteRepository, sessionKey: String, onBack: () -> Unit
     }
 
     filePreview?.let { path ->
-        FilePreviewSheet(repo = repo, sessionKey = sessionKey, path = path, onDismiss = { filePreview = null })
+        FilePreviewSheet(
+            repo = repo,
+            sessionKey = sessionKey,
+            path = path,
+            mermaid = mermaidSource,
+            onOpenLink = { next -> filePreview = next },
+            onQuote = { p -> quoteToComposer(p); filePreview = null },
+            onDismiss = { filePreview = null },
+        )
     }
 
     review?.let { target ->
@@ -548,13 +615,20 @@ fun SessionScreen(repo: RemoteRepository, sessionKey: String, onBack: () -> Unit
                 models = models?.copy(current = id)
                 modelOverride = id
                 sheet = null
-                scope.launch { repo.setModel(sessionKey, id) }
+                scope.launch {
+                    repo.setModel(sessionKey, id)
+                    repo.models(sessionKey)?.let { refreshed ->
+                        models = refreshed
+                        refreshed.thinking?.let { thinkingOverride = it }
+                    }
+                }
             },
             onDismiss = { sheet = null },
         )
         "thinking" -> ThinkingSheet(
-            models?.thinking ?: timeline?.state?.thinking, models?.availableThinking.orEmpty(), repo.canWrite,
+            thinkingOverride ?: models?.thinking ?: timeline?.state?.thinking, models?.availableThinking.orEmpty(), repo.canWrite,
             onCommit = { level ->
+                thinkingOverride = level
                 models = models?.copy(thinking = level)
                 scope.launch { repo.setThinking(sessionKey, level) }
             },
@@ -590,6 +664,8 @@ fun SessionContent(
     onStop: () -> Unit,
     stopping: Boolean = false,
     onDequeue: () -> Unit = {},
+    onFlushQueue: () -> Unit = {},
+    onRestoreDeferred: () -> Unit = {},
     slashItems: List<SlashItem> = emptyList(),
     onSlashPick: (SlashItem) -> Unit = {},
     onCommands: () -> Unit = {},
@@ -599,6 +675,8 @@ fun SessionContent(
     onProjectFiles: () -> Unit = {},
     /** 刚选完的模型名：先回显，等下一轮 run 的 timeline.state 再接管。 */
     modelLabelOverride: String? = null,
+    thinkingOverride: String? = null,
+    onQuote: (String) -> Unit = {},
     /** ⋯ 面板要给 tab 读远端数据（文件 / Git / 团队）。 */
     panelRepo: dev.pi.remote.app.data.RemoteRepository? = null,
     panelSessionKey: String = "",
@@ -607,6 +685,8 @@ fun SessionContent(
     loadImage: suspend (String) -> android.graphics.Bitmap? = { null },
     /** 点缩略图看大图：外层负责弹全屏。 */
     onOpenImage: (android.graphics.Bitmap, String) -> Unit = { _, _ -> },
+    /** 点回复里的文件引用/链接：外层打开富文件查看器。 */
+    onOpenFile: (String) -> Unit = {},
     onRewind: (String) -> Unit = {},
     projectPath: String = "",
     stats: ContextStats? = null,
@@ -640,6 +720,7 @@ fun SessionContent(
     val question: UiRequest? = timeline?.pendingUi?.firstOrNull { it !is UiNotify && it.id !in deferredUi }
     val offset = remember { java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()).toLong() }
     val reviewNow by androidx.compose.runtime.rememberUpdatedState(onReview)
+    val openFileNow by androidx.compose.runtime.rememberUpdatedState(onOpenFile)
     // One instance for the screen's lifetime: a fresh object per recomposition would defeat skipping on every turn.
     val callbacks = remember {
         TurnCallbacks(
@@ -654,6 +735,7 @@ fun SessionContent(
             onActions = { turn, part -> acting = turn.id to part },
             loadImage = loadImage,
             onOpenImage = onOpenImage,
+            onOpenFile = { path -> openFileNow(path) },
         )
     }
     // Parse settled markdown off the main thread so items entering the viewport render from cache.
@@ -775,6 +857,14 @@ fun SessionContent(
         }
 
         if (question == null) state?.todo?.let { TodoTray(it, todoOpen) { todoOpen = !todoOpen } }
+        val deferredCount = timeline?.pendingUi?.count { it !is UiNotify && it.id in deferredUi } ?: 0
+        if (question == null && deferredCount > 0) {
+            Banner(
+                stringResource(R.string.question_deferred_banner, deferredCount),
+                stringResource(R.string.expand),
+                onRestoreDeferred,
+            )
+        }
         if (question != null) {
             QuestionCard(question, enabled = canWrite && connection is HostConnection.State.Ready, onAnswer = onAnswer, onSkip = { onSkip(question.id) }, onDesktop = { onDefer(question.id) })
         } else {
@@ -785,7 +875,7 @@ fun SessionContent(
                 enabled = canWrite && connection is HostConnection.State.Ready,
                 editable = canWrite,
                 modelLabel = modelLabelOverride?.ifEmpty { null } ?: state?.model?.substringAfter('/')?.ifEmpty { null } ?: stringResource(R.string.model),
-                thinkingLabel = thinkingLabel(state?.thinking),
+                thinkingLabel = thinkingLabel(thinkingOverride ?: state?.thinking),
                 onThinking = onThinkingSheet,
                 toolsOn = toolsOn,
                 queue = state?.queue,
@@ -793,6 +883,7 @@ fun SessionContent(
                 onStop = onStop,
                 stopping = stopping,
                 onDequeue = onDequeue,
+                onFlushQueue = onFlushQueue,
                 slashItems = slashItems,
                 onSlashPick = onSlashPick,
                 onCommands = onCommands,
@@ -831,6 +922,9 @@ fun SessionContent(
         repo = panelRepo,
         sessionKey = panelSessionKey,
         canWrite = panelCanWrite,
+        mermaid = mermaid,
+        onOpenFile = { p -> onOpenFile(p) },
+        onQuote = { p -> onQuote(p); settlePanel(1000f) },
         onChanges = {
             settlePanel(1000f)
             onReview(ReviewTarget("git", turns.lastOrNull()?.id))

@@ -59,7 +59,7 @@ export function delegateRunFromItem(item: TimelineItem): DelegateRun | null {
     agent: nonEmptyString(details.agent) ?? 'subagent',
     task: nonEmptyString(details.task) ?? '',
     state,
-    startedAt: typeof item.timestamp === 'number' ? item.timestamp : Date.now(),
+    startedAt: typeof item.timestamp === 'number' ? item.timestamp : 0,
     durationMs,
     file: nonEmptyString(details.file),
     preview: nonEmptyString(details.preview),
@@ -101,24 +101,42 @@ export function runningDelegateRuns(runs: DelegateRun[]): DelegateRun[] {
   return runs.filter((run) => run.state === 'running')
 }
 
-let memoItems: TimelineItem[] | null = null
-let memoRuns: DelegateRun[] = []
 const EMPTY_RUNS: DelegateRun[] = []
+const MAX_SIGNATURE_CACHE = 32
+const memoByItems = new WeakMap<TimelineItem[], DelegateRun[]>()
+const memoBySignature = new Map<string, DelegateRun[]>()
 
 /**
- * Store selector：时间线每个 token 都会换新数组，这里按内容签名缓存，
- * 内容没变就返回同一个实例，底部条不会跟着流式输出抖。
+ * Store selector：时间线每个 token 都会换新数组，这里按输入引用和内容签名缓存，
+ * 多分屏/多会话并发订阅时不会互相踩缓存，内容没变就返回同一个实例。
  */
 export function selectDelegateRuns(items: TimelineItem[]): DelegateRun[] {
-  if (items === memoItems) return memoRuns
-  memoItems = items
+  if (items.length === 0) return EMPTY_RUNS
+  const cached = memoByItems.get(items)
+  if (cached) return cached
+
   const next = collectDelegateRuns(items)
+  if (next.length === 0) {
+    memoByItems.set(items, EMPTY_RUNS)
+    return EMPTY_RUNS
+  }
+
   const signature = next
     .map((run) => `${run.runId}\u0001${run.state}\u0001${run.agent}\u0001${run.task}\u0001${run.startedAt}`)
     .join('\u0002')
-  const previousSignature = memoRuns
-    .map((run) => `${run.runId}\u0001${run.state}\u0001${run.agent}\u0001${run.task}\u0001${run.startedAt}`)
-    .join('\u0002')
-  if (signature !== previousSignature) memoRuns = next.length ? next : EMPTY_RUNS
-  return memoRuns
+  const existing = memoBySignature.get(signature)
+  if (existing) {
+    memoBySignature.delete(signature)
+    memoBySignature.set(signature, existing)
+    memoByItems.set(items, existing)
+    return existing
+  }
+
+  memoBySignature.set(signature, next)
+  if (memoBySignature.size > MAX_SIGNATURE_CACHE) {
+    const oldest = memoBySignature.keys().next().value
+    if (oldest !== undefined) memoBySignature.delete(oldest)
+  }
+  memoByItems.set(items, next)
+  return next
 }

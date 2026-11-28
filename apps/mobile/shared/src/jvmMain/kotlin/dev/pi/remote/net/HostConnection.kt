@@ -101,7 +101,9 @@ class HostConnection(
     private val sendLock = Mutex()
     @Volatile private var sender: (suspend (ByteArray) -> Unit)? = null
     @Volatile private var channel: SecureChannel? = null
+    @Volatile private var activeCloser: (() -> Unit)? = null
     private val pingSentAt = ConcurrentHashMap<String, Long>()
+    private val pingWaiters = ConcurrentHashMap<String, CompletableDeferred<Unit>>()
 
     val isReady: Boolean get() = _state.value is State.Ready
 
@@ -113,6 +115,8 @@ class HostConnection(
     fun stop() {
         _latencyMs.value = null
         pingSentAt.clear()
+        pingWaiters.values.forEach { it.cancel() }
+        pingWaiters.clear()
         loop?.cancel()
         loop = null
         failPending()
@@ -123,6 +127,33 @@ class HostConnection(
     fun kick() {
         kicks.trySend(Unit)
         if (loop?.isActive != true && _state.value !is State.Refused) start()
+    }
+
+    /**
+     * App 回到前台时快速探活：表面上还是 Ready 但系统在后台已经掐断 TCP 时，
+     * 立即发一次 ping，3.5 秒内收不到 pong 就主动断开，让重连循环立刻拉起新连接。
+     */
+    fun probeAlive() {
+        if (!isReady) {
+            kick()
+            return
+        }
+        scope.launch {
+            val pingId = "probe-${ids.incrementAndGet()}"
+            val waiter = CompletableDeferred<Unit>()
+            pingSentAt[pingId] = System.currentTimeMillis()
+            pingWaiters[pingId] = waiter
+            try {
+                rawSend(Frame(v = PROTOCOL_VERSION, k = "ping", id = pingId))
+                val ok = withTimeoutOrNull(3_500) { waiter.await() } != null
+                if (!ok) activeCloser?.invoke()
+            } catch (_: Exception) {
+                activeCloser?.invoke()
+            } finally {
+                pingWaiters.remove(pingId)
+                pingSentAt.remove(pingId)
+            }
+        }
     }
 
     private suspend fun runLoop() {
@@ -213,6 +244,7 @@ class HostConnection(
             val ch = SecureChannel.forClient(keys)
             channel = ch
             sender = { bytes -> send(WsFrame.Binary(true, bytes)) }
+            activeCloser = { scope.launch { runCatching { close() } } }
             val lastPong = AtomicLong(System.currentTimeMillis())
 
             val reader = launch {
@@ -233,7 +265,10 @@ class HostConnection(
                         "res" -> frame.id?.let { pending.remove(it)?.complete(frame) }
                         "pong" -> {
                             lastPong.set(System.currentTimeMillis())
-                            frame.id?.let { id -> pingSentAt.remove(id)?.let { at -> _latencyMs.value = System.currentTimeMillis() - at } }
+                            frame.id?.let { id ->
+                                pingWaiters.remove(id)?.complete(Unit)
+                                pingSentAt.remove(id)?.let { at -> _latencyMs.value = System.currentTimeMillis() - at }
+                            }
                         }
                         "evt" -> if (frame.m != null && frame.p != null) _events.emit(Event(frame.m, frame.p))
                     }
@@ -264,6 +299,7 @@ class HostConnection(
             } finally {
                 heartbeat.cancel()
                 reader.cancel()
+                activeCloser = null
                 sender = null
                 channel = null
             }
@@ -273,7 +309,13 @@ class HostConnection(
     private suspend fun rawSend(frame: Frame) {
         val ch = channel ?: throw ConnectionLost()
         val s = sender ?: throw ConnectionLost()
-        sendLock.withLock { s(ch.encrypt(RemoteJson.encodeToString(Frame.serializer(), frame))) }
+        try {
+            sendLock.withLock { s(ch.encrypt(RemoteJson.encodeToString(Frame.serializer(), frame))) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            throw ConnectionLost()
+        }
     }
 
     private fun failPending() {

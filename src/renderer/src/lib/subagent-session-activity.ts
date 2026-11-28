@@ -52,10 +52,9 @@ export function collectActiveSubagentSessionChildren(items: TimelineItem[]): Sub
 }
 
 const EMPTY_CHILDREN: SubagentSessionChild[] = []
-let memoItems: TimelineItem[] | null = null
-let memoVersion = -1
-let memoSignature = ''
-let memoChildren: SubagentSessionChild[] = EMPTY_CHILDREN
+const MAX_SIGNATURE_CACHE = 32
+const memoByItems = new WeakMap<TimelineItem[], Map<number, SubagentSessionChild[]>>()
+const memoBySignature = new Map<string, SubagentSessionChild[]>()
 
 /**
  * Store selector for the sidebar: the same array instance comes back until the active children
@@ -66,18 +65,43 @@ export function selectActiveSubagentSessionChildren(
   items: TimelineItem[],
   version = 0,
 ): SubagentSessionChild[] {
-  if (items === memoItems && version === memoVersion) return memoChildren
-  memoItems = items
-  memoVersion = version
-  const next = collectActiveSubagentSessionChildren(items)
-  const signature = next
-    .map((child) => `${child.key}\u0001${child.state}\u0001${child.sessionFile ?? ''}\u0001${child.agent}\u0001${child.task ?? ''}`)
-    .join('\u0002')
-  if (signature !== memoSignature) {
-    memoSignature = signature
-    memoChildren = next.length ? next : EMPTY_CHILDREN
+  if (items.length === 0) return EMPTY_CHILDREN
+  let byVersion = memoByItems.get(items)
+  const cached = byVersion?.get(version)
+  if (cached) return cached
+
+  const setCached = (value: SubagentSessionChild[]) => {
+    if (!byVersion) {
+      byVersion = new Map()
+      memoByItems.set(items, byVersion)
+    }
+    byVersion.set(version, value)
   }
-  return memoChildren
+
+  const next = collectActiveSubagentSessionChildren(items)
+  if (next.length === 0) {
+    setCached(EMPTY_CHILDREN)
+    return EMPTY_CHILDREN
+  }
+
+  const signature = `${version}\u0003${next
+    .map((child) => `${child.key}\u0001${child.state}\u0001${child.sessionFile ?? ''}\u0001${child.agent}\u0001${child.task ?? ''}`)
+    .join('\u0002')}`
+  const existing = memoBySignature.get(signature)
+  if (existing) {
+    memoBySignature.delete(signature)
+    memoBySignature.set(signature, existing)
+    setCached(existing)
+    return existing
+  }
+
+  memoBySignature.set(signature, next)
+  if (memoBySignature.size > MAX_SIGNATURE_CACHE) {
+    const oldest = memoBySignature.keys().next().value
+    if (oldest !== undefined) memoBySignature.delete(oldest)
+  }
+  setCached(next)
+  return next
 }
 
 export function reduceSubagentSessionGroupToolEvent(

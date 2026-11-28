@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { EmptyState } from '@renderer/components/ui/empty-state'
 import { MainColRightPanelToggle } from '@renderer/components/app/main-col-right-panel-toggle'
@@ -102,13 +102,16 @@ export function SessionPaneView({
     !currentSessionId && timelineItemCount === 0 && !ephemeralSandboxDraft && !historyLoading
   const showHome = active ? isHomeMode || ephemeralSandboxDraft : false
 
-  const binding: PaneSessionBinding = {
-    isActive: active,
-    paneId: pane?.id ?? 'main',
-    sessionFile: session?.sessionFile ?? null,
-    sessionId: session?.sessionId ?? null,
-    workspace: session?.workspace ?? null,
-  }
+  const binding: PaneSessionBinding = useMemo(
+    () => ({
+      isActive: active,
+      paneId: pane?.id ?? 'main',
+      sessionFile: session?.sessionFile ?? null,
+      sessionId: session?.sessionId ?? null,
+      workspace: session?.workspace ?? null,
+    }),
+    [active, pane?.id, session?.sessionFile, session?.sessionId, session?.workspace],
+  )
 
   return (
     <PaneSessionProvider value={binding}>

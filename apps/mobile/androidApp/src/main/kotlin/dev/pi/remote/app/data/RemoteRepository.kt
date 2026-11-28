@@ -211,7 +211,7 @@ class RemoteRepository(
         stopJob?.cancel()
         stopJob = null
         val c = conn
-        if (c == null) connect() else c.kick()
+        if (c == null) connect() else c.probeAlive()
     }
 
     fun onBackground() {
@@ -424,18 +424,45 @@ class RemoteRepository(
     }
 
     suspend fun send(key: String, text: String, mode: String): SendOutcome {
-        val a = api ?: return SendOutcome.Failed("offline")
+        val clientMessageId = "m_${UUID.randomUUID()}"
+        val a = api ?: run {
+            retry()
+            val ready = withTimeoutOrNull(8_000) { _connection.first { it is HostConnection.State.Ready } }
+            if (ready == null) return SendOutcome.Failed("offline")
+            api ?: return SendOutcome.Failed("offline")
+        }
         if (mode == "prompt") _pendingSends.update { it + (key to text.trim()) }
         return try {
-            a.send(key, text, mode, "m_${UUID.randomUUID()}")
+            a.send(key, text, mode, clientMessageId)
             // 宿主收下之后立刻补一次同步：万一补丁在路上丢了，也不会出现「发了没反应、退出再进才看到」。
             if (mode == "prompt") scope.launch { delay(700); resync(key) }
             SendOutcome.Sent
         } catch (e: HostConnection.ConnectionLost) {
+            // 断在半路：同一 clientMessageId 走重连重试一次（PC 端已做幂等去重，不会重复发送）。
+            conn?.kick()
+            val ready = withTimeoutOrNull(8_000) { _connection.first { it is HostConnection.State.Ready } }
+            val nextApi = api
+            if (ready != null && nextApi != null) {
+                val retried = runCatching { nextApi.send(key, text, mode, clientMessageId) }
+                if (retried.isSuccess) {
+                    if (mode == "prompt") scope.launch { delay(700); resync(key) }
+                    return SendOutcome.Sent
+                }
+            }
+            scope.launch { resync(key) }
             SendOutcome.Unknown
-        } catch (e: Exception) {
+        } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
+            // 常见于冷会话唤醒或长链路响应慢：宿主大概率已收下并开始跑，绝不回退输入框！
+            scope.launch { resync(key) }
+            SendOutcome.Unknown
+        } catch (e: HostConnection.CallException) {
             _pendingSends.update { it - key }
             SendOutcome.Failed(e.message ?: "send failed")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            scope.launch { resync(key) }
+            SendOutcome.Unknown
         }
     }
 
@@ -443,6 +470,14 @@ class RemoteRepository(
     suspend fun resync(key: String) {
         if (conn?.isReady != true) return
         reopen(key)
+    }
+
+    /** 排队消息「立即发送」：中断当前轮并把队列里的消息合并立即发出去。 */
+    suspend fun flushQueue(key: String): Boolean {
+        val restored = abort(key) ?: return false
+        val merged = restored.map { it.trim() }.filter { it.isNotEmpty() }.joinToString("\n\n")
+        if (merged.isEmpty()) return false
+        return send(key, merged, "prompt") != SendOutcome.Failed("offline")
     }
 
     /** Queued texts the host pulled back, or null when the stop did not reach it. */
@@ -460,7 +495,11 @@ class RemoteRepository(
 
     fun cachedCommands(key: String): List<CommandInfo>? = commandCache[key]?.second
 
-    suspend fun listFiles(key: String, path: String): FileListResult? = runCatching { api?.listFiles(key, path) }.getOrNull()
+    suspend fun listFiles(key: String, path: String, dotfiles: Boolean = false): FileListResult? =
+        runCatching { api?.listFiles(key, path, dotfiles) }.getOrNull()
+
+    suspend fun listFilesResult(key: String, path: String, dotfiles: Boolean = false): Result<FileListResult> =
+        runCatching { (api ?: error("offline")).listFiles(key, path, dotfiles) }
 
     suspend fun searchFiles(key: String, query: String): List<FileEntry>? = runCatching { api?.searchFiles(key, query) }.getOrNull()
 

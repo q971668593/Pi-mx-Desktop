@@ -89,11 +89,11 @@ class RemoteApi(private val c: HostConnection) {
     suspend fun page(sessionKey: String, before: String, limit: Int = 20) = c.typedCall("turn.page", PageParams.serializer(), PageParams(sessionKey, before, limit), PageResult.serializer())
     suspend fun toolDetail(sessionKey: String, toolCallId: String) = c.typedCall("turn.toolDetail", ToolDetailParams.serializer(), ToolDetailParams(sessionKey, toolCallId), ToolDetailResult.serializer())
     suspend fun send(sessionKey: String, text: String, mode: String, clientMessageId: String) =
-        c.typedCall("turn.send", SendParams.serializer(), SendParams(sessionKey, text, mode, clientMessageId), SendResult.serializer())
+        c.typedCall("turn.send", SendParams.serializer(), SendParams(sessionKey, text, mode, clientMessageId), SendResult.serializer(), timeoutMs = 90_000L)
     suspend fun abort(sessionKey: String) = c.typedCall("turn.abort", SessionKeyParams.serializer(), SessionKeyParams(sessionKey), AbortResult.serializer())
     suspend fun commands(sessionKey: String) = c.typedCall("command.list", SessionKeyParams.serializer(), SessionKeyParams(sessionKey), CommandListResult.serializer()).commands
     suspend fun listFiles(sessionKey: String, path: String, dotfiles: Boolean = false) =
-        c.typedCall("file.list", FileListParams.serializer(), FileListParams(sessionKey, path, dotfiles.takeIf { it }), FileListResult.serializer())
+        c.typedCall("file.list", FileListParams.serializer(), FileListParams(sessionKey, path, dotfiles.takeIf { it }), FileListResult.serializer(), timeoutMs = 45_000L)
     suspend fun searchFiles(sessionKey: String, query: String) =
         c.typedCall("file.search", FileSearchParams.serializer(), FileSearchParams(sessionKey, query), FileSearchResult.serializer()).entries
     suspend fun teamBoard(sessionKey: String) =

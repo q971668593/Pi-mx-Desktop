@@ -168,10 +168,12 @@ fun ToolsSheet(caps: List<CapabilityRow>, cacheMode: String?, canWrite: Boolean,
         Column(Modifier.padding(bottom = 18.dp)) {
             Text(stringResource(R.string.tools), style = Pi.t.bodyMedium.copy(color = Pi.c.fg), modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
             Text(stringResource(R.string.tools_session), style = Pi.t.meta.copy(color = Pi.c.fg3), modifier = Modifier.padding(start = 20.dp, top = 14.dp, bottom = 6.dp))
-            for (c in caps.filter { it.id == "pi-ui" || it.id == "work-team" }) {
-                val team = c.id == "work-team"
-                val label = stringResource(if (team) R.string.panel_tab_team else R.string.tool_piui)
-                val description = stringResource(if (team) R.string.team_tool_desc else R.string.tool_piui_desc)
+            for (c in caps.filter { it.id == "pi-ui" || it.id == "work-team" || (it.id == "web-search" && it.available) }) {
+                val (label, description) = when (c.id) {
+                    "work-team" -> stringResource(R.string.panel_tab_team) to stringResource(R.string.team_tool_desc)
+                    "web-search" -> stringResource(R.string.tool_web_search) to stringResource(R.string.tool_web_search_desc)
+                    else -> stringResource(R.string.tool_piui) to stringResource(R.string.tool_piui_desc)
+                }
                 Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.Top) {
                     PiIcon(PiIcons.Sparkles, Pi.c.fg3, 18.dp, Modifier.padding(top = 1.dp))
                     Spacer(Modifier.width(12.dp))

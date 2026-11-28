@@ -87,6 +87,8 @@ fun Composer(
     stopping: Boolean = false,
     /** Pull queued messages back into the composer. */
     onDequeue: () -> Unit = {},
+    /** Interrupt current turn and send queued messages immediately. */
+    onFlushQueue: () -> Unit = {},
     /** Commands for inline `/` suggestions. */
     slashItems: List<SlashItem> = emptyList(),
     onSlashPick: (SlashItem) -> Unit = {},
@@ -108,7 +110,7 @@ fun Composer(
         Hairline()
         Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             val queued = queue?.let { it.steering + it.followUp }.orEmpty()
-            if (queued.isNotEmpty()) QueuedRows(queued, enabled, onDequeue)
+            if (queued.isNotEmpty()) QueuedRows(queued, enabled, onDequeue, onFlushQueue)
             val token = slashToken(text)
             val suggestions = remember(token, text.text, slashItems) { token?.let { filterSlash(slashItems, text.text.substring(it)) }.orEmpty() }
             SlashSuggestions(editable && token != null, suggestions, onSlashPick)
@@ -218,9 +220,9 @@ fun Composer(
     }
 }
 
-/** Queued steer / follow-up messages (last two shown) with one action that pulls them all back. */
+/** Queued steer / follow-up messages (last two shown) with restore + flush-now actions. */
 @Composable
-private fun QueuedRows(queued: List<String>, enabled: Boolean, onDequeue: () -> Unit) {
+private fun QueuedRows(queued: List<String>, enabled: Boolean, onDequeue: () -> Unit, onFlushQueue: () -> Unit) {
     val haptic = LocalHapticFeedback.current
     Row(Modifier.fillMaxWidth().padding(start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -233,6 +235,14 @@ private fun QueuedRows(queued: List<String>, enabled: Boolean, onDequeue: () -> 
                 }
             }
         }
+        Text(
+            stringResource(R.string.queue_flush),
+            style = Pi.t.meta.copy(color = if (enabled) Pi.c.blue else Pi.c.fg3),
+            modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(enabled = enabled, role = Role.Button) {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onFlushQueue()
+            }.padding(horizontal = 8.dp, vertical = 8.dp),
+        )
         Text(
             stringResource(R.string.queue_restore),
             style = Pi.t.meta.copy(color = if (enabled) Pi.c.fg2 else Pi.c.fg3),

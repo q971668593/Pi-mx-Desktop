@@ -94,6 +94,8 @@
     <string name="tools_global">全部会话 · 与电脑同步</string>
     <string name="tool_piui">可视化回答</string>
     <string name="tool_piui_desc">图表、表格、甘特图等。下一条消息起生效。</string>
+    <string name="tool_web_search">联网搜索</string>
+    <string name="tool_web_search_desc">搜索并抓取网页核实最新信息。下一条消息起生效。</string>
     <string name="tool_tokens">每次请求约多 %1$s tokens</string>
     <string name="cache">缓存保活</string>
     <string name="cache_desc">保持提示词缓存不过期，少付重复的输入费用。仅对声明了缓存寿命的模型生效。</string>
@@ -118,7 +120,8 @@
     <string name="thinking">思考</string>
     <string name="question_title">pi 在等你确认</string>
     <string name="question_desktop">在桌面处理</string>
-    <string name="question_skip">跳过</string>
+    <string name="question_skip">取消提问</string>
+    <string name="question_deferred_banner">有 %d 个待回答的提问</string>
     <string name="question_submit">提交</string>
     <string name="question_unanswered">还有 %1$d 题未答</string>
     <string name="question_multi_hint">可多选</string>
@@ -293,6 +296,7 @@
     <string name="stopping">正在停止…</string>
     <string name="stop_failed">停止失败，未连上电脑</string>
     <string name="queue_restore">撤回</string>
+    <string name="queue_flush">立即发送</string>
     <string name="queued_more">还有 %1$d 条排队</string>
     <string name="slash_model">切换模型</string>
     <string name="slash_thinking">思考等级</string>
@@ -491,4 +495,18 @@
     <string name="team_dispatch_stale">已超时</string>
     <string name="team_tool_desc">使用团队角色协作，在项目看板跟踪任务。</string>
     <string name="team_tool_update_failed">工具开关更新失败，请重试。</string>
+    <string name="team_passed">已通过</string>
+    <string name="file_preview_mode">预览</string>
+    <string name="file_source_mode">源码</string>
+    <string name="file_open_failed">无法打开该文件（可能不在项目内或已被移动）</string>
+    <string name="file_retry">重新加载</string>
+    <string name="file_too_large_preview">文档较长，已自动切换为源码模式以保持流畅</string>
+    <string name="file_quote">引用</string>
+    <string name="file_quoted_toast">已引用到输入框</string>
+    <string name="projfiles_show_hidden">隐藏文件</string>
+    <string name="projfiles_loading_file">正在读取文件…</string>
+    <string name="projfiles_open_failed">打开文件失败</string>
+    <string name="team_passed_count">已通过 %d 项</string>
+    <string name="team_quote_task">引用任务到输入框</string>
+    <string name="live_tok_per_sec">%1$d tok/s</string>
 </resources>
