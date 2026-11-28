@@ -151,6 +151,7 @@ export function registerModelRuntimeHandlers(): void {
       await workerManager.reloadModels()
     } catch (error) {
       console.warn('[IPC] model.reload worker reload failed:', error)
+      return { ok: false, models: [], error: errorMessage(error) || 'model_reload_failed' }
     }
     try {
       const models = await listModelsOffThread('available')
@@ -252,7 +253,8 @@ export function registerModelRuntimeHandlers(): void {
     if (sessionFile) {
       try {
         const state = await workerManager.getState(sessionFile, stateOpts)
-        if (state?.bound === false && !state.model) {
+        if (!state?.model) {
+          // worker 正忙超时回包缺 model，或冷槽未载入模型：用该会话的待生效覆盖顶上，避免前端清空成“选择模型”。
           const pending = getSessionModelOverrides().get(normalizeSessionKey(sessionFile))
           if (pending) {
             return {

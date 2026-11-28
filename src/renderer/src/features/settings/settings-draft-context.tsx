@@ -113,6 +113,10 @@ export function useSettingsDraft(): SettingsDraftContextValue {
   return ctx
 }
 
+export function useOptionalSettingsDraft(): SettingsDraftContextValue | null {
+  return useContext(SettingsDraftContext)
+}
+
 function isAgentRuntimeChanged(
   next: SettingsDraft | null,
   baseline: SettingsDraft | null,

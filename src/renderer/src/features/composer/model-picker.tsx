@@ -21,6 +21,7 @@ import { commitSessionDisplayMeta } from '@renderer/lib/session-display-meta'
 import { loadModelThinkingBindings } from '@renderer/lib/model-thinking-bindings'
 import { openSettingsPage } from '@renderer/lib/settings-navigation'
 import { draftModelThinking } from './thinking-level-actions'
+import { filterEnabledModels, peekEnabledModels, refreshEnabledModels, subscribeEnabledModels } from '@renderer/lib/enabled-models'
 
 type ModelRow = { id: string; provider: string; name?: string; available?: boolean; availableThinkingLevels?: string[] }
 
@@ -57,6 +58,7 @@ export function ModelPicker() {
   const setOpen = useUIStore((s) => s.setModelPickerOpen)
   const currentModel = useUIStore((s) => s.runState.model)
   const sessionFile = useUIStore((s) => s.historySessionFile)
+  const [enabledScope, setEnabledScope] = useState(peekEnabledModels)
   const [models, setModels] = useState<ModelRow[]>(() => peekAvailableModels())
   const [query, setQuery] = useState('')
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -95,6 +97,8 @@ export function ModelPicker() {
     }
   }
 
+  useEffect(() => subscribeEnabledModels(setEnabledScope), [])
+
   useEffect(
     () =>
       subscribeAvailableModels((next) => {
@@ -116,6 +120,7 @@ export function ModelPicker() {
     setPendingModel(null)
     void loadModelThinkingBindings()
     void reload()
+    void refreshEnabledModels()
     const unsub = onAppEvent((event) => {
       // Worker bound a session and pushed its runtime model state → the picker's
       // earlier SDK fallback may have been empty (worker not ready yet). Reload.
@@ -126,16 +131,18 @@ export function ModelPicker() {
     return unsub
   }, [open, sessionFile])
 
+  const enabledModels = useMemo(() => filterEnabledModels(models, enabledScope), [models, enabledScope])
+
   const filtered = useMemo(() => {
-    if (!query) return models
+    if (!query) return enabledModels
     const q = query.toLowerCase()
-    return models.filter(
+    return enabledModels.filter(
       (m) =>
         `${m.provider}/${m.id}`.toLowerCase().includes(q) ||
         (m.name || '').toLowerCase().includes(q) ||
         m.provider.toLowerCase().includes(q),
     )
-  }, [models, query])
+  }, [enabledModels, query])
 
   const groups = useMemo(() => groupByProvider(filtered), [filtered])
 
@@ -206,9 +213,9 @@ export function ModelPicker() {
       searching
         ? []
         : recents
-            .map((key) => models.find((m) => `${m.provider}/${m.id}` === key))
+            .map((key) => enabledModels.find((m) => `${m.provider}/${m.id}` === key))
             .filter((m): m is ModelRow => !!m),
-    [recents, models, searching],
+    [recents, enabledModels, searching],
   )
   const navRows = useMemo(
     () => [...recentRows, ...groups.flatMap((g) => (isProviderOpen(g.provider) ? g.models : []))],
@@ -346,7 +353,7 @@ export function ModelPicker() {
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto py-1">
         {filtered.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-2.5 px-4 py-6 text-center text-[12px] text-muted-foreground/70">
-            {models.length > 0 ? (
+            {enabledModels.length > 0 ? (
               t('composer:noMatch')
             ) : loading ? (
               <div className="flex items-center gap-1.5">

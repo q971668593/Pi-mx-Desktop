@@ -513,8 +513,13 @@
     },
     "card": {
       "usingTools": "正在调用工具 · 本轮 {{count}} 次",
-      "turns": "{{count}} 轮"
+      "turns": "{{count}} 轮",
+      "replyingInline": "正在回复，可直接追问"
     },
+    "quickInputPh": "在此输入，直接发到这个分屏……",
+    "send": "发送",
+    "steer": "追问",
+    "sending": "发送中…",
     "focusHint": "窗口太窄，暂以标签显示；可在此切换布局"
   },
   "gitBoard": {

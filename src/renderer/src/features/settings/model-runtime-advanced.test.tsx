@@ -52,6 +52,25 @@ describe('changedModelAdvancedSettings', () => {
 })
 
 describe('ModelRuntimeAdvanced', () => {
+  it('persists explicit cycle selection without rewriting thinking bindings', async () => {
+    stored.enabledModels = undefined
+    render(<ModelRuntimeAdvanced />)
+    const checkbox = await screen.findByRole('checkbox', { name: 'openai/gpt-6' })
+    fireEvent.click(checkbox)
+    await act(async () => { await commitAllSettingsSlices() })
+    expect(invoke.mock.calls.filter(([name]) => name === 'pi.settings.set')[0][1]).toEqual({
+      patch: { enabledModels: ['anthropic/opus'] },
+    })
+    expect(stored.modelThinkingLevels).toEqual({ 'anthropic/opus': 'max' })
+  })
+
+  it('keeps wildcard scopes editable without expanding or rewriting them', async () => {
+    render(<ModelRuntimeAdvanced />)
+    expect(await screen.findByText('settings:models.cycleSelectionPatterns')).toBeTruthy()
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    expect(invoke.mock.calls.filter(([name]) => name === 'pi.settings.set')).toHaveLength(0)
+  })
+
   it('shows the cycle scope and bindings, and saves an edited level', async () => {
     render(<ModelRuntimeAdvanced />)
 

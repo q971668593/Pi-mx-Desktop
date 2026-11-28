@@ -201,7 +201,7 @@ export function ProviderConfigDialog({
                 type={keyVisible ? 'text' : 'password'}
                 value={apiKey}
                 onChange={(event) => setApiKey(event.target.value)}
-                placeholder="$OPENAI_API_KEY"
+                placeholder={preset?.config.apiKey || '$API_KEY'}
                 spellCheck={false}
               />
               <button

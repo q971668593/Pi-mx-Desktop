@@ -59,9 +59,11 @@ export function PromptInjectSettings() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
 
+  const workspaceId = workspace ?? undefined
+
   const load = useCallback(async () => {
     try {
-      const result = (await ipcClient.invoke('promptInject.get', { workspaceId: workspace })) as { state: State }
+      const result = (await ipcClient.invoke('promptInject.get', { workspaceId })) as { state: State }
       setState(result.state)
       setText(result.state.text)
     } catch (error) {
@@ -69,16 +71,18 @@ export function PromptInjectSettings() {
     } finally {
       setLoading(false)
     }
-  }, [workspace])
+  }, [workspaceId])
 
   useEffect(() => {
     void load()
   }, [load])
 
+  const errMsg = (error: unknown) => (error instanceof Error && error.message ? `: ${error.message}` : '')
+
   const save = async (patch: { enabled?: boolean; text?: string; scope?: Scope }) => {
     setBusy(true)
     try {
-      const result = (await ipcClient.invoke('promptInject.save', { workspaceId: workspace, ...patch })) as {
+      const result = (await ipcClient.invoke('promptInject.save', { workspaceId, ...patch })) as {
         state: State
       }
       setState(result.state)
@@ -86,7 +90,7 @@ export function PromptInjectSettings() {
       toast.success(t('settings:promptInject.applied'))
     } catch (error) {
       console.error('promptInject.save failed', error)
-      toast.error(t('settings:promptInject.failed'))
+      toast.error(`${t('settings:promptInject.failed')}${errMsg(error)}`)
     } finally {
       setBusy(false)
     }
@@ -95,13 +99,13 @@ export function PromptInjectSettings() {
   const revert = async () => {
     setBusy(true)
     try {
-      const result = (await ipcClient.invoke('promptInject.revert', { workspaceId: workspace })) as { state: State }
+      const result = (await ipcClient.invoke('promptInject.revert', { workspaceId })) as { state: State }
       setState(result.state)
       setText(result.state.text)
       toast.success(t('settings:promptInject.reverted'))
     } catch (error) {
       console.error('promptInject.revert failed', error)
-      toast.error(t('settings:promptInject.failed'))
+      toast.error(`${t('settings:promptInject.failed')}${errMsg(error)}`)
     } finally {
       setBusy(false)
     }
@@ -111,14 +115,14 @@ export function PromptInjectSettings() {
     setBusy(true)
     try {
       const result = (await ipcClient.invoke('promptInject.restoreBackup', {
-        workspaceId: workspace,
+        workspaceId,
         name,
       })) as { state: State }
       setState(result.state)
       toast.success(t('settings:promptInject.restored'))
     } catch (error) {
       console.error('promptInject.restoreBackup failed', error)
-      toast.error(t('settings:promptInject.failed'))
+      toast.error(`${t('settings:promptInject.failed')}${errMsg(error)}`)
     } finally {
       setBusy(false)
     }
@@ -126,25 +130,58 @@ export function PromptInjectSettings() {
 
   const openTarget = async () => {
     if (!state.targetPath) return
-    await ipcClient.invoke('shell.showItemInFolder', { path: state.targetPath }).catch(() => {})
+    await ipcClient.invoke('shell.showItemInFolder', { path: state.targetPath }).catch((error) => {
+      console.error('promptInject.reveal failed', error)
+      toast.error(`${t('settings:promptInject.failed')}${errMsg(error)}`)
+    })
   }
 
-  const scopeButton = (value: Scope) => (
-    <button
-      type="button"
-      key={value}
-      disabled={busy}
-      onClick={() => void save({ scope: value })}
-      className={cn(
-        'rounded-md border px-2.5 py-1.5 text-sm transition-colors disabled:opacity-40',
-        state.scope === value
-          ? 'border-primary/50 bg-primary/10 text-foreground'
-          : 'border-border bg-background text-muted-foreground hover:bg-accent',
-      )}
-    >
-      {t(`settings:promptInject.scope_${value}`)}
-    </button>
-  )
+  const openFile = async () => {
+    if (!state.targetPath) return
+    try {
+      const res = (await ipcClient.invoke('shell.openPath', { path: state.targetPath })) as { ok?: boolean; revealed?: boolean; error?: string }
+      if (res && res.ok === false) throw new Error(res.error || 'open_failed')
+      if (res && res.revealed) toast.success(t('settings:promptInject.revealed'))
+    } catch (error) {
+      console.error('promptInject.openFile failed', error)
+      toast.error(`${t('settings:promptInject.failed')}${errMsg(error)}`)
+    }
+  }
+
+  const removeBackup = async (name: string) => {
+    setBusy(true)
+    try {
+      const result = (await ipcClient.invoke('promptInject.deleteBackup', { workspaceId, name })) as { state: State }
+      setState(result.state)
+      toast.success(t('settings:promptInject.deleted'))
+    } catch (error) {
+      console.error('promptInject.deleteBackup failed', error)
+      toast.error(`${t('settings:promptInject.failed')}${errMsg(error)}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const scopeButton = (value: Scope) => {
+    const noProject = value === 'project' && !workspaceId
+    return (
+      <button
+        type="button"
+        key={value}
+        disabled={busy || noProject}
+        title={noProject ? t('settings:promptInject.noProject') : undefined}
+        onClick={() => void save({ scope: value })}
+        className={cn(
+          'rounded-md border px-2.5 py-1.5 text-sm transition-colors disabled:opacity-40',
+          state.scope === value
+            ? 'border-primary/50 bg-primary/10 text-foreground'
+            : 'border-border bg-background text-muted-foreground hover:bg-accent',
+        )}
+      >
+        {t(`settings:promptInject.scope_${value}`)}
+      </button>
+    )
+  }
 
   const statusText = state.injected
     ? t('settings:promptInject.statusInjected')
@@ -181,9 +218,14 @@ export function PromptInjectSettings() {
 
         <SettingRow label={t('settings:promptInject.target')} description={state.targetPath || '—'}>
           <div className="flex flex-col items-end gap-1">
-            <button type="button" disabled={!state.targetPath} onClick={() => void openTarget()} className={btnOutline}>
-              {t('settings:promptInject.reveal')}
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button type="button" disabled={!state.targetPath} onClick={() => void openFile()} className={btnOutline}>
+                {t('settings:promptInject.openFile')}
+              </button>
+              <button type="button" disabled={!state.targetPath} onClick={() => void openTarget()} className={btnOutline}>
+                {t('settings:promptInject.reveal')}
+              </button>
+            </div>
             <span className="text-2xs text-muted-foreground/70">{statusText}</span>
           </div>
         </SettingRow>
@@ -239,14 +281,24 @@ export function PromptInjectSettings() {
               label={formatTime(backup.mtime)}
               description={`${backup.name} · ${formatSize(backup.size)}`}
             >
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void restore(backup.name)}
-                className={btnOutline}
-              >
-                {t('settings:promptInject.restore')}
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void restore(backup.name)}
+                  className={btnOutline}
+                >
+                  {t('settings:promptInject.restore')}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void removeBackup(backup.name)}
+                  className={btnOutline}
+                >
+                  {t('settings:promptInject.delete')}
+                </button>
+              </div>
             </SettingRow>
           ))
         )}

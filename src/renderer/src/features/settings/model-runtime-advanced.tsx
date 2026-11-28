@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2 } from '@renderer/components/icons'
+import { toast } from 'sonner'
 import { cn } from '@renderer/lib/utils'
 import { ipcClient } from '@renderer/lib/ipc-client'
 import {
@@ -8,6 +9,7 @@ import {
   peekAvailableModels,
   subscribeAvailableModels,
 } from '@renderer/lib/available-models-cache'
+import { publishEnabledModels } from '@renderer/lib/enabled-models'
 import { loadModelThinkingBindings } from '@renderer/lib/model-thinking-bindings'
 import { useSettingsDirtySlice } from './use-settings-dirty-slice'
 import { notifySettingsDirtyChanged } from './settings-dirty-registry'
@@ -70,7 +72,8 @@ export function ModelRuntimeAdvanced() {
   baselineRef.current = baseline
 
   const load = useCallback(async () => {
-    const res = await ipcClient.invoke('pi.settings.get').catch(() => null)
+    const res = await ipcClient.invoke('pi.settings.get')
+    if (!res?.settings) throw new Error(res?.error || 'settings_load_failed')
     const snapshot = fromSettings((res?.settings as Record<string, unknown> | null) ?? null)
     setBaseline(snapshot)
     setDraft(snapshot)
@@ -78,7 +81,7 @@ export function ModelRuntimeAdvanced() {
   }, [])
 
   useEffect(() => {
-    void load()
+    void load().catch((error: unknown) => toast.error(error instanceof Error ? error.message : String(error)))
     void ensureAvailableModels().catch(() => {})
     return subscribeAvailableModels(setModels)
   }, [load])
@@ -101,11 +104,12 @@ export function ModelRuntimeAdvanced() {
       if (Object.keys(changes).length === 0) return
       const res = await ipcClient.invoke('pi.settings.set', { patch: changes })
       if (res?.ok === false) throw new Error(String(res.error || t('common:saveFailed')))
+      if ('enabledModels' in changes) publishEnabledModels(draftRef.current.enabledModels)
       await load()
       await loadModelThinkingBindings(true)
     },
     discard: () => {
-      void load()
+      void load().catch((error: unknown) => toast.error(error instanceof Error ? error.message : String(error)))
     },
   })
 
@@ -136,7 +140,31 @@ export function ModelRuntimeAdvanced() {
     setNewModel('')
   }
 
+  const explicitScope = !draft.enabledModels || draft.enabledModels.every((key) => key.includes('/') && !/[*?:\[\]]/.test(key))
+  const selected = new Set(draft.enabledModels?.length ? draft.enabledModels : modelKeys)
+
   return (
+    <>
+    <section className="settings-card space-y-2 px-4 py-3" data-testid="model-cycle-selection">
+      <h3 className="text-sm font-semibold">{t('settings:models.cycleSelectionTitle')}</h3>
+      <p className="text-xs text-foreground-secondary">{t('settings:models.cycleSelectionDescription')}</p>
+      <button type="button" className={btnOutline} onClick={() => { patch({ enabledModels: undefined }); setScopeText('') }}>{t('settings:models.cycleSelectionAll')}</button>
+      {!explicitScope ? <p className="text-xs text-foreground-secondary">{t('settings:models.cycleSelectionPatterns')}</p> : modelKeys.length === 0 ? <p className="text-xs text-foreground-secondary">{t('settings:models.cycleSelectionEmpty')}</p> : (
+        <div className="max-h-64 space-y-1 overflow-y-auto">
+          {modelKeys.map((key) => <label key={key} className="flex items-center gap-2 text-xs">
+            <input type="checkbox" checked={selected.has(key)} disabled={selected.has(key) && selected.size <= 1} onChange={(event) => {
+              const next = new Set(selected)
+              if (event.target.checked) next.add(key)
+              else next.delete(key)
+              const patterns = [...next]
+              patch({ enabledModels: patterns })
+              setScopeText(patterns.join(', '))
+            }} />
+            <span className="break-all font-mono">{key}</span>
+          </label>)}
+        </div>
+      )}
+    </section>
     <details className="settings-card group overflow-hidden" data-testid="model-advanced">
       <summary className="flex cursor-pointer list-none items-center gap-2.5 px-4 py-3 transition hover:bg-[var(--bg-hover)]/50">
         <span className="text-base font-semibold text-foreground">{t('settings:models.advanced.title')}</span>
@@ -255,5 +283,6 @@ export function ModelRuntimeAdvanced() {
         </div>
       </div>
     </details>
+    </>
   )
 }

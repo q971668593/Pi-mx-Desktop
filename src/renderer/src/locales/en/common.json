@@ -493,6 +493,10 @@
     "dropReplace": "Open in this pane",
     "dropSwap": "Swap",
     "splitThis": "Split",
+    "quickInputPh": "Type here, sent straight to this pane…",
+    "send": "Send",
+    "steer": "Follow up",
+    "sending": "Sending…",
     "splitRight": "Split right",
     "splitDown": "Split down",
     "layout": "Layout",
@@ -524,7 +528,8 @@
       "usingTools_one": "Using tools · {{count}} call this turn",
       "usingTools_other": "Using tools · {{count}} calls this turn",
       "turns_one": "{{count}} turn",
-      "turns_other": "{{count}} turns"
+      "turns_other": "{{count}} turns",
+      "replyingInline": "Replying — you can follow up here"
     },
     "focusHint": "Too narrow for all panes; shown as tabs. Change the layout here"
   },

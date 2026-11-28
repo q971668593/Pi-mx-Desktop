@@ -11,7 +11,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
 import { app } from 'electron'
 import { resolveActiveAgentDir } from './agent-dir'
 import { configStore, type PromptInjectConfig, type PromptInjectScope } from './config-store'
@@ -124,7 +124,7 @@ export function listPromptInjectBackups(): PromptInjectBackup[] {
 }
 
 function writeTarget(targetPath: string, content: string): void {
-  mkdirSync(join(targetPath, '..'), { recursive: true })
+  mkdirSync(dirname(targetPath), { recursive: true })
   writeFileSync(targetPath, content, 'utf-8')
 }
 
@@ -179,7 +179,7 @@ export function revertPromptInject(workspaceId?: string): PromptInjectState {
 /** 用某份备份覆盖目标文件。 */
 export function restorePromptInjectBackup(name: string, workspaceId?: string): PromptInjectState {
   const safe = String(name || '')
-  if (!/^[\w.-]+\.md$/.test(safe)) throw new Error('invalid_backup_name')
+  if (!/^(?=.*[A-Za-z0-9])[\w.-]+\.md$/.test(safe)) throw new Error('invalid_backup_name')
   const path = join(backupDir(), safe)
   if (!existsSync(path)) throw new Error('backup_not_found')
   const content = readFileSync(path, 'utf-8')
@@ -188,4 +188,13 @@ export function restorePromptInjectBackup(name: string, workspaceId?: string): P
   backupCurrent(targetPath, config.scope)
   writeTarget(targetPath, content)
   return getPromptInjectState(workspaceId)
+}
+
+/** 删除单份备份，防止越积越多。 */
+export function deletePromptInjectBackup(name: string): void {
+  const safe = String(name || '')
+  if (!/^(?=.*[A-Za-z0-9])[\w.-]+\.md$/.test(safe)) throw new Error('invalid_backup_name')
+  const path = join(backupDir(), safe)
+  if (!existsSync(path)) throw new Error('backup_not_found')
+  unlinkSync(path)
 }

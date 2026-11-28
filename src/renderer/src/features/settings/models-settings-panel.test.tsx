@@ -1,11 +1,9 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ipcClient } from '@renderer/lib/ipc-client'
 import i18n from '@renderer/lib/i18n'
-import {
-  commitAllSettingsSlices,
-  getDirtySettingsSlices,
-} from './settings-dirty-registry'
+import { clearAvailableModelsCacheForTests } from '@renderer/lib/available-models-cache'
+import { getDirtySettingsSlices } from './settings-dirty-registry'
 import { ModelsSettingsPanel } from './models-settings-panel'
 
 const appEventListeners = new Set<(event: { type: string }) => void>()
@@ -38,43 +36,10 @@ vi.mock('./model-runtime-advanced', () => ({ ModelRuntimeAdvanced: () => null })
 // Default-model picking has its own slice and ipc cadence; covered by model-default-section.test.tsx.
 vi.mock('./model-default-section', () => ({ ModelDefaultSection: () => null }))
 
-vi.mock('./models-provider-card', () => ({
-  ModelsProviderCard: ({
-    onUpdateProvider,
-    remoteIds = [],
-    config,
-    pid = '',
-  }: {
-    onUpdateProvider: (patch: { name: string }) => void
-    remoteIds?: string[]
-    config?: { providers?: Record<string, { name?: string; models?: Array<{ id: string }> }> }
-    pid?: string
-  }) => (
-    <div data-testid={`editable-provider-${pid}`}>
-      <span>{config?.providers?.[pid]?.name || pid}</span>
-      <button type="button" onClick={() => onUpdateProvider({ name: 'Changed provider' })}>
-        edit provider
-      </button>
-      <div>{remoteIds.map((id) => <span key={`remote:${id}`}>{id}</span>)}</div>
-      <div>{(config?.providers?.[pid]?.models || []).map(({ id }) => <span key={`configured:${id}`}>{id}</span>)}</div>
-    </div>
-  ),
-}))
-
 const initialConfig = {
   providers: {
     custom: {
       name: 'Original provider',
-      baseUrl: 'https://example.invalid/v1',
-      models: [{ id: 'model-a' }],
-    },
-  },
-}
-
-const normalizedConfig = {
-  providers: {
-    custom: {
-      name: 'Changed provider',
       baseUrl: 'https://example.invalid/v1',
       models: [{ id: 'model-a' }],
     },
@@ -96,293 +61,308 @@ function getRequest(method: string) {
   return vi.mocked(ipcClient.invoke).mock.calls.filter(([name]) => name === method)
 }
 
+function getCallPayloads(method: string) {
+  return getRequest(method).map(([, payload]) => payload)
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** Method-keyed stub: mount also calls pi.settings.get (useModelPreferences) and
+ *  model.list { scope: 'available' } (ensureAvailableModels), so per-call
+ *  mockResolvedValueOnce chains are order-fragile. */
+function stubInvoke(handler: (method: string, args?: any) => unknown) {
+  vi.mocked(ipcClient.invoke).mockImplementation(async (...invokeArgs: any[]) =>
+    handler(invokeArgs[0], invokeArgs[1]),
+  )
+}
+
+function defaultHandler(state: {
+  getConfig: () => unknown
+  setConfig?: (config: unknown) => unknown
+  settingsModels?: () => unknown[]
+  reloadResult?: () => unknown
+}) {
+  return (method: string, args?: any): unknown => {
+    if (method === 'pi.models.get') return { path: 'models.json', config: state.getConfig() }
+    if (method === 'pi.models.set') {
+      if (state.setConfig) return state.setConfig(args?.config)
+      return { ok: true, path: 'models.json' }
+    }
+    if (method === 'pi.settings.get') return { settings: {} }
+    if (method === 'pi.settings.set') return { ok: true }
+    if (method === 'model.reload') {
+      if (state.reloadResult) return state.reloadResult()
+      return { ok: true, models: availableModels }
+    }
+    if (method === 'model.list') {
+      if (args?.scope === 'settings') return { models: state.settingsModels?.() ?? [] }
+      return { models: [] }
+    }
+    return {}
+  }
+}
+
+/** Drive the real workbench UI: open "Edit config" for the selected provider,
+ *  rename it in ProviderConfigDialog, and submit. */
+async function editProviderName(next = 'Changed provider') {
+  fireEvent.click(await screen.findByRole('button', { name: 'Edit config' }))
+  const dialog = await screen.findByRole('dialog')
+  fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: next } })
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+}
+
+async function clickRefreshCatalog() {
+  fireEvent.click(await screen.findByRole('button', { name: /refresh local catalog/i }))
+}
+
 beforeEach(() => {
   vi.mocked(ipcClient.invoke).mockReset()
+  clearAvailableModelsCacheForTests()
   appEventListeners.clear()
 })
 
 afterEach(() => {
   cleanup()
+  clearAvailableModelsCacheForTests()
 })
 
 describe('ModelsSettingsPanel save', () => {
-  it('separates editable user providers from the active Pi SDK catalog', async () => {
-    vi.mocked(ipcClient.invoke)
-      .mockResolvedValueOnce({ path: 'models.json', config: initialConfig })
-      .mockResolvedValueOnce({
-        models: [{
-          ...availableModels[0],
-          managedBy: 'active-sdk',
-          auth: { supported: true, configured: true, source: 'stored', type: 'oauth' },
-        }],
-      })
-
+  it('shows configured OAuth accounts beside custom providers and omits the SDK directory', async () => {
+    stubInvoke(
+      defaultHandler({
+        getConfig: () => initialConfig,
+        settingsModels: () => [
+          { ...availableModels[0], provider: 'openai-codex', auth: { supported: true, configured: true, type: 'oauth' } },
+          { ...availableModels[0], provider: 'unconfigured', auth: { supported: true, configured: false } },
+        ],
+      }),
+    )
     render(<ModelsSettingsPanel />)
-
-    const userSection = await screen.findByTestId('user-provider-section')
-    const sdkSection = screen.getByTestId('sdk-provider-section')
-    expect(userSection).toHaveTextContent(/Configured providers/i)
-    expect(userSection).toHaveTextContent(/Original provider/i)
-    expect(userSection).toContainElement(screen.getByRole('button', { name: /Add Provider/i }))
-    expect(sdkSection).toHaveTextContent(/Pi SDK provider catalog/i)
-    expect(sdkSection).toHaveTextContent('store-only')
-    expect(sdkSection).not.toContainElement(screen.getByRole('button', { name: /Add Provider/i }))
+    const section = await screen.findByTestId('user-provider-section')
+    expect(section).toHaveTextContent('Original provider')
+    expect(section).toHaveTextContent('openai-codex')
+    expect(section).not.toHaveTextContent('unconfigured')
+    expect(screen.queryByTestId('sdk-provider-section')).toBeNull()
   })
 
-  it('keeps overlapping provider ids in separate ownership sections', async () => {
-    vi.mocked(ipcClient.invoke)
-      .mockResolvedValueOnce({ path: 'models.json', config: initialConfig })
-      .mockResolvedValueOnce({ models: availableModels })
-
+  it('refreshes the local catalog without replacing an unsaved provider draft', async () => {
+    let stored: any = structuredClone(initialConfig)
+    let settingsCalls = 0
+    stubInvoke(
+      defaultHandler({
+        getConfig: () => structuredClone(stored),
+        setConfig: (config) => {
+          stored = structuredClone(config)
+          return { ok: true, path: 'models.json' }
+        },
+        settingsModels: () =>
+          settingsCalls++
+            ? [{ ...availableModels[0], provider: 'openai-codex', auth: { supported: true, configured: true, type: 'oauth' } }]
+            : [],
+      }),
+    )
     render(<ModelsSettingsPanel />)
+    await screen.findAllByText('Original provider')
+    await editProviderName()
+    await screen.findAllByText('Changed provider')
+    await clickRefreshCatalog()
+    // Catalog refresh surfaced the newly configured OAuth row while the draft edit stays visible.
+    expect(await screen.findAllByText('openai-codex')).not.toHaveLength(0)
+    expect(screen.getAllByText('Changed provider').length).toBeGreaterThan(0)
+    // Worker reload ran exactly once for the refresh.
+    expect(getRequest('model.reload')).toHaveLength(1)
+    // The unsaved draft is the new "dirty": the debounced autosave writes the edited config,
+    // and the refresh itself must not have reloaded models.json on top of it (every
+    // pi.models.get before the first pi.models.set is the initial mount read).
+    await waitFor(() => expect(getRequest('pi.models.set')).toHaveLength(1))
+    const setPayloads = getCallPayloads('pi.models.set')
+    expect((setPayloads[0] as any)?.config?.providers?.custom?.name).toBe('Changed provider')
+    const allMethods = vi.mocked(ipcClient.invoke).mock.calls.map(([name]) => name)
+    const firstSet = allMethods.indexOf('pi.models.set')
+    expect(allMethods.slice(0, firstSet).filter((m) => m === 'pi.models.get')).toHaveLength(1)
+  })
 
-    const userSection = await screen.findByTestId('user-provider-section')
-    const sdkSection = screen.getByTestId('sdk-provider-section')
-    expect(userSection).toHaveTextContent('Original provider')
-    expect(sdkSection).toHaveTextContent('custom')
-    expect(userSection).toHaveTextContent('model-a')
-    expect(sdkSection).toHaveTextContent('store-only')
+  it('reloads externally changed config when the draft is clean', async () => {
+    let reads = 0
+    const external = { providers: { custom: { ...initialConfig.providers.custom, name: 'External provider' } } }
+    stubInvoke(
+      defaultHandler({
+        getConfig: () => (reads++ ? structuredClone(external) : structuredClone(initialConfig)),
+        settingsModels: () => [],
+      }),
+    )
+    render(<ModelsSettingsPanel />)
+    await screen.findAllByText('Original provider')
+    await clickRefreshCatalog()
+    await screen.findAllByText('External provider')
+    // Clean draft: no write scheduled by the refresh.
+    expect(getRequest('pi.models.set')).toHaveLength(0)
+    expect(getDirtySettingsSlices()).toEqual([])
+    await editProviderName()
+    await waitFor(() => expect(getRequest('pi.models.set')).toHaveLength(1))
+    const setPayload = getCallPayloads('pi.models.set')[0] as any
+    expect(setPayload?.config?.providers?.custom?.name).toBe('Changed provider')
+    expect(setPayload?.config?.providers?.custom?.baseUrl).toBe(external.providers.custom.baseUrl)
+  })
+
+  it('reports reload failures instead of showing success', async () => {
+    const { toast } = await import('sonner')
+    vi.mocked(toast.success).mockClear()
+    vi.mocked(toast.error).mockClear()
+    stubInvoke(
+      defaultHandler({
+        getConfig: () => initialConfig,
+        settingsModels: () => [],
+        reloadResult: () => ({ ok: false, models: [], error: 'worker failed' }),
+      }),
+    )
+    render(<ModelsSettingsPanel />)
+    await screen.findAllByText('Original provider')
+    await clickRefreshCatalog()
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('worker failed'))
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('preserves edits made while the refreshed config is loading', async () => {
+    let resolveRead!: (value: unknown) => void
+    let reads = 0
+    const base = defaultHandler({
+      getConfig: () => structuredClone(initialConfig),
+      settingsModels: () => [],
+    })
+    stubInvoke((method: string, args?: any) => {
+      if (method === 'pi.models.get') {
+        // Second read (refresh) must stay a raw pending promise so the refresh
+        // genuinely stays in flight while the user edits.
+        if (reads++ === 0) return { path: 'models.json', config: structuredClone(initialConfig) }
+        return new Promise((resolve) => {
+          resolveRead = resolve
+        })
+      }
+      return base(method, args)
+    })
+    render(<ModelsSettingsPanel />)
+    await screen.findAllByText('Original provider')
+    await clickRefreshCatalog()
+    await waitFor(() => expect(reads).toBe(2))
+    await editProviderName()
+    await act(async () => {
+      resolveRead({ path: 'models.json', config: { providers: {} } })
+    })
+    // The late external response must not clobber the newer draft edit.
+    expect(screen.getAllByText('Changed provider').length).toBeGreaterThan(0)
+    await waitFor(() => expect(getRequest('pi.models.set')).toHaveLength(1))
+    expect(getDirtySettingsSlices().map((slice) => slice.id)).not.toContain('pi-models')
   })
 
   it('writes the edited provider, reloads the normalized config, and clears dirty state', async () => {
-    vi.mocked(ipcClient.invoke)
-      .mockResolvedValueOnce({ path: 'models.json', config: initialConfig })
-      .mockResolvedValueOnce({ models: availableModels })
-      .mockResolvedValueOnce({ ok: true, path: 'models.json' })
-      .mockResolvedValueOnce({ path: 'models.json', config: normalizedConfig })
-      .mockResolvedValueOnce({ models: availableModels })
+    let stored: any = structuredClone(initialConfig)
+    stubInvoke(
+      defaultHandler({
+        getConfig: () => structuredClone(stored),
+        setConfig: (config) => {
+          stored = structuredClone(config)
+          return { ok: true, path: 'models.json' }
+        },
+        settingsModels: () => [],
+      }),
+    )
 
     render(<ModelsSettingsPanel />)
-    fireEvent.click(await screen.findByRole('button', { name: 'edit provider' }))
-    await waitFor(() => expect(getDirtySettingsSlices().map((slice) => slice.id)).toEqual(['pi-models']))
-
-    await act(async () => {
-      await commitAllSettingsSlices()
-    })
-
-    expect(getRequest('pi.models.set')).toEqual([
-      ['pi.models.set', { config: normalizedConfig }],
-    ])
-    expect(getRequest('pi.models.get')).toHaveLength(2)
-    expect(getRequest('model.list')).toEqual([
-      ['model.list', { scope: 'settings' }],
-      ['model.list', { scope: 'settings' }],
-      ['model.list', { scope: 'available' }],
-    ])
-    await waitFor(() => expect(getDirtySettingsSlices()).toEqual([]))
+    await screen.findAllByText('Original provider')
+    await editProviderName()
+    // Debounced autosave persists the draft without any manual bottom-bar commit.
+    await waitFor(() => expect(getRequest('pi.models.set')).toHaveLength(1))
+    const setPayload = getCallPayloads('pi.models.set')[0] as any
+    expect(setPayload?.config?.providers?.custom?.name).toBe('Changed provider')
+    expect(setPayload?.config?.providers?.custom?.models).toEqual(initialConfig.providers.custom.models)
+    // Autosave reloads models.json afterwards (mount read + post-save reload).
+    await waitFor(() => expect(getRequest('pi.models.get').length).toBeGreaterThanOrEqual(2))
+    // Normalized reload echoes the saved name, so the row stays renamed.
+    expect(await screen.findAllByText('Changed provider')).not.toHaveLength(0)
+    // Settled: nothing left to save (legacy bottom-bar registry stays out of it).
+    await sleep(700)
+    expect(getRequest('pi.models.set')).toHaveLength(1)
+    expect(getDirtySettingsSlices()).toEqual([])
   })
 
-  it('keeps the edited provider dirty and displays the write error', async () => {
-    vi.mocked(ipcClient.invoke)
-      .mockResolvedValueOnce({ path: 'models.json', config: initialConfig })
-      .mockResolvedValueOnce({ models: [] })
-      .mockResolvedValueOnce({ ok: false, path: 'models.json', error: 'invalid provider config' })
-
-    render(<ModelsSettingsPanel />)
-    fireEvent.click(await screen.findByRole('button', { name: 'edit provider' }))
-
-    await act(async () => {
-      await expect(commitAllSettingsSlices()).rejects.toThrow('invalid provider config')
-    })
-
-    expect(getRequest('pi.models.get')).toHaveLength(1)
-    expect(getDirtySettingsSlices().map((slice) => slice.id)).toEqual(['pi-models'])
-    expect(screen.getByText('invalid provider config')).toBeTruthy()
-  })
-
-  it('keeps the edited provider dirty when post-save reload fails', async () => {
-    vi.mocked(ipcClient.invoke)
-      .mockResolvedValueOnce({ path: 'models.json', config: initialConfig })
-      .mockResolvedValueOnce({ models: [] })
-      .mockResolvedValueOnce({ ok: true, path: 'models.json' })
-      .mockRejectedValueOnce(new Error('reload failed'))
-
-    render(<ModelsSettingsPanel />)
-    fireEvent.click(await screen.findByRole('button', { name: 'edit provider' }))
-
-    await act(async () => {
-      await expect(commitAllSettingsSlices()).rejects.toThrow('reload failed')
-    })
-
-    expect(getDirtySettingsSlices().map((slice) => slice.id)).toEqual(['pi-models'])
-    expect(screen.getByText('reload failed')).toBeTruthy()
-  })
-
-  it('shows configured models plus the non-network SDK settings snapshot', async () => {
-    const providerSettingsModels = [
-      ...availableModels,
-      {
-        id: 'model-a',
-        name: 'Configured duplicate',
-        provider: 'custom',
-        contextWindow: 128000,
-        maxOutput: 4096,
-        available: true,
-      },
-      {
-        id: 'logged-in',
-        name: 'Logged in',
-        provider: 'anthropic',
-        contextWindow: 200000,
-        maxOutput: 8192,
-        available: true,
-      },
-    ]
-    vi.mocked(ipcClient.invoke)
-      .mockResolvedValueOnce({ path: 'models.json', config: initialConfig })
-      .mockResolvedValueOnce({ models: providerSettingsModels })
-
-    render(<ModelsSettingsPanel />)
-
-    expect(await screen.findByText('store-only')).toBeTruthy()
-    expect(screen.getByText('logged-in')).toBeTruthy()
-    expect(screen.getAllByText('model-a')).toHaveLength(2)
-    expect(getRequest('model.list')).toEqual([
-      ['model.list', { scope: 'settings' }],
-    ])
-    expect(providerSettingsModels[0].available).toBe(true)
-    expect(getRequest('pi.models.set')).toEqual([])
-  })
-
-  it('keeps SDK runtime rows read-only when the provider also exists in models.json', async () => {
-    vi.mocked(ipcClient.invoke)
-      .mockResolvedValueOnce({ path: 'models.json', config: initialConfig })
-      .mockResolvedValueOnce({
-        models: [{
-          ...availableModels[0],
-          managedBy: 'active-sdk',
-          auth: { supported: true, configured: true, source: 'environment', type: 'api_key' },
-        }],
-      })
-      .mockResolvedValueOnce({ ok: true, path: 'models.json' })
-      .mockResolvedValueOnce({ path: 'models.json', config: normalizedConfig })
-      .mockResolvedValueOnce({ models: availableModels })
-
-    render(<ModelsSettingsPanel />)
-
-    expect(await screen.findByText('store-only')).toBeTruthy()
-    expect(screen.getByTestId('sdk-provider-section')).toHaveTextContent(/read-only/i)
-    expect(screen.getByText(/API key.*environment/i)).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'edit provider' }))
-    await waitFor(() => expect(getDirtySettingsSlices().map((slice) => slice.id)).toEqual(['pi-models']))
-    await act(async () => {
-      await commitAllSettingsSlices()
-    })
-
-    expect(getRequest('pi.models.set')).toEqual([
-      ['pi.models.set', { config: normalizedConfig }],
-    ])
-  })
-
-  it('reloads the active-SDK projection after a runtime change event', async () => {
-    vi.mocked(ipcClient.invoke)
-      .mockResolvedValueOnce({ path: 'models.json', config: { providers: {} } })
-      .mockResolvedValueOnce({ models: availableModels })
-      .mockResolvedValueOnce({ path: 'models.json', config: { providers: {} } })
-      .mockResolvedValueOnce({ models: [{ ...availableModels[0], id: 'after-switch' }] })
-
-    render(<ModelsSettingsPanel />)
-    expect(await screen.findByText('store-only')).toBeTruthy()
-
-    act(() => {
-      for (const listener of appEventListeners) listener({ type: 'sdk-runtime-changed' })
-    })
-
-    expect(await screen.findByText('after-switch')).toBeTruthy()
-    expect(getRequest('model.list')).toEqual([
-      ['model.list', { scope: 'settings' }],
-      ['model.list', { scope: 'settings' }],
-    ])
-  })
-
-  it('shows SDK catalog providers as active-SDK managed read-only with redacted auth status', async () => {
-    vi.mocked(ipcClient.invoke)
-      .mockResolvedValueOnce({ path: 'models.json', config: { providers: {} } })
-      .mockResolvedValueOnce({
-        models: [{
-          ...availableModels[0],
-          managedBy: 'active-sdk',
-          auth: { supported: true, configured: true, source: 'stored', type: 'oauth' },
-        }],
-      })
-
-    render(<ModelsSettingsPanel />)
-
-    expect(await screen.findByText('custom')).toBeTruthy()
-    expect(screen.getByText('store-only')).toBeTruthy()
-    expect(screen.getByTestId('sdk-provider-section')).toHaveTextContent(/read-only/i)
-    expect(screen.getByText(/OAuth.*stored/i)).toBeTruthy()
-    expect(getRequest('pi.models.set')).toEqual([])
-  })
-
-  it('shows missing and unknown auth states without guessing from editable fields', async () => {
-    vi.mocked(ipcClient.invoke)
-      .mockResolvedValueOnce({ path: 'models.json', config: { providers: {} } })
-      .mockResolvedValueOnce({
-        models: [
-          {
-            ...availableModels[0],
-            available: false,
-            managedBy: 'active-sdk',
-            auth: { supported: true, configured: false },
-          },
-          {
-            ...availableModels[0],
-            id: 'unknown-auth',
-            provider: 'legacy',
-            managedBy: 'active-sdk',
-            auth: { supported: false },
-          },
-        ],
-      })
-
-    render(<ModelsSettingsPanel />)
-
-    expect(await screen.findByText(/auth not configured/i)).toBeTruthy()
-    expect(screen.getByText(/auth status unavailable/i)).toBeTruthy()
-  })
-
-  it('displays SDK catalog models when models.json only has overrides and saves only the config draft', async () => {
-    const overrideOnlyConfig = {
+  it('preserves configured model metadata and overrides when editing a provider', async () => {
+    const config = {
       providers: {
         custom: {
-          name: 'Custom provider',
-          models: [{ id: 'override-only' }],
-          modelOverrides: { 'store-only': { contextWindow: 64000 } },
+          name: 'Custom',
+          baseUrl: 'https://example.invalid/v1',
+          models: [{ id: 'model-a', contextWindow: 1234 }],
+          modelOverrides: { 'sdk-model': { contextWindow: 64000 } },
         },
       },
     }
-    vi.mocked(ipcClient.invoke)
-      .mockResolvedValueOnce({ path: 'models.json', config: overrideOnlyConfig })
-      .mockResolvedValueOnce({ models: availableModels })
-      .mockResolvedValueOnce({ ok: true, path: 'models.json' })
-      .mockResolvedValueOnce({ path: 'models.json', config: overrideOnlyConfig })
-      .mockResolvedValueOnce({ models: availableModels })
+    stubInvoke(
+      defaultHandler({
+        getConfig: () => structuredClone(config),
+        settingsModels: () => [],
+      }),
+    )
+    render(<ModelsSettingsPanel />)
+    await screen.findAllByText('Custom')
+    await editProviderName()
+    await waitFor(() => expect(getRequest('pi.models.set')).toHaveLength(1))
+    const saved = (getCallPayloads('pi.models.set')[0] as any)?.config?.providers?.custom
+    expect(saved?.name).toBe('Changed provider')
+    expect(saved?.models).toEqual([{ id: 'model-a', contextWindow: 1234 }])
+    expect(saved?.modelOverrides).toEqual({ 'sdk-model': { contextWindow: 64000 } })
+  })
+
+  it('keeps the edited provider dirty and displays the write error', async () => {
+    const { toast } = await import('sonner')
+    vi.mocked(toast.error).mockClear()
+    stubInvoke(
+      defaultHandler({
+        getConfig: () => structuredClone(initialConfig),
+        setConfig: () => ({ ok: false, path: 'models.json', error: 'invalid provider config' }),
+        settingsModels: () => [],
+      }),
+    )
 
     render(<ModelsSettingsPanel />)
+    await screen.findAllByText('Original provider')
+    await editProviderName()
 
-    expect(await screen.findByText('store-only')).toBeTruthy()
+    await waitFor(() => expect(screen.getByText('invalid provider config')).toBeTruthy())
 
-    fireEvent.click(screen.getByRole('button', { name: 'edit provider' }))
-    await waitFor(() => expect(getDirtySettingsSlices().map((slice) => slice.id)).toEqual(['pi-models']))
-    await act(async () => {
-      await commitAllSettingsSlices()
+    // Failed write: no reload attempted, draft kept, autosave does not spin on the same sig.
+    expect(getRequest('pi.models.get')).toHaveLength(1)
+    expect(screen.getAllByText('Changed provider').length).toBeGreaterThan(0)
+    await sleep(600)
+    expect(getRequest('pi.models.set')).toHaveLength(1)
+    expect(toast.error).toHaveBeenCalled()
+  })
+
+  it('keeps the edited provider dirty when post-save reload fails', async () => {
+    let reads = 0
+    stubInvoke((method: string, args?: any) => {
+      if (method === 'pi.models.get') {
+        reads++
+        if (reads === 1) return { path: 'models.json', config: structuredClone(initialConfig) }
+        throw new Error('reload failed')
+      }
+      return defaultHandler({
+        getConfig: () => structuredClone(initialConfig),
+        settingsModels: () => [],
+      })(method, args)
     })
 
-    expect(getRequest('pi.models.set')).toEqual([
-      ['pi.models.set', { config: expect.objectContaining({
-        providers: expect.objectContaining({
-          custom: expect.objectContaining({
-            models: [{ id: 'override-only' }],
-            modelOverrides: { 'store-only': { contextWindow: 64000 } },
-          }),
-        }),
-      }) }],
-    ])
-    expect(getRequest('model.list')).toEqual([
-      ['model.list', { scope: 'settings' }],
-      ['model.list', { scope: 'settings' }],
-      ['model.list', { scope: 'available' }],
-    ])
+    render(<ModelsSettingsPanel />)
+    await screen.findAllByText('Original provider')
+    await editProviderName()
+
+    await waitFor(() => expect(screen.getByText('reload failed')).toBeTruthy())
+
+    // The write itself went through, but the post-save reload failed: baseline was not
+    // advanced, so the draft is still pending and stays visible.
+    expect(getRequest('pi.models.set')).toHaveLength(1)
+    expect(screen.getAllByText('Changed provider').length).toBeGreaterThan(0)
   })
 })

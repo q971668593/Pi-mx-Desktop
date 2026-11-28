@@ -14,11 +14,13 @@ export function ComposerMetricsInline({ metrics, isRunning }: { metrics: Metrics
   const { t } = useTranslation()
   const showCtx = metrics.contextWindow != null || metrics.estContextTokens != null
   const pct = Math.max(0, Math.min(100, metrics.ctxPct ?? 0))
-  const tpsLabel = metrics.tps != null && metrics.tps > 0 ? `${Math.round(metrics.tps)} tps` : null
+  // tps 仅保留计算逻辑（metrics.tps 在 hook 内维护），行内不再显示速度。
+  void isRunning
+
   // 钩子必须在提前返回之前：上下文指标时有时无，写在后面会触发 React #310 直接白屏。
   const [showPop, setShowPop] = useState(false)
 
-  if (!showCtx && !tpsLabel) return null
+  if (!showCtx) return null
 
   const contextTitle = t('composer:contextRing', {
     used: metrics.estContextTokens == null ? '?' : formatTokens(metrics.estContextTokens),
@@ -37,7 +39,6 @@ export function ComposerMetricsInline({ metrics, isRunning }: { metrics: Metrics
 
   return (
     <div className="composer-metrics-inline flex shrink-0 items-center gap-1.5 text-[10.5px] tabular-nums leading-none text-foreground-secondary/60">
-      {tpsLabel && isRunning ? <span title={t('composer:tpsHint')}>{tpsLabel}</span> : null}
       {showCtx && (
         <span
           className="relative flex"

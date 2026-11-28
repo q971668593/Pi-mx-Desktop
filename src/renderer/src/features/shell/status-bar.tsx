@@ -14,9 +14,10 @@ import { useUIStore } from '@renderer/stores/ui-store'
 import { SessionAttentionDot } from '@renderer/features/workspace/session-attention-dot'
 import { BranchStatusTrigger } from '@renderer/features/git/branch-status'
 import { ShellPopover } from './shell-popover'
-import { StatusSpeed } from './status-speed'
 import { ComposerToolsMenu } from '@renderer/features/composer/composer-tools-menu'
 import { FeedbackInboxButton } from '@renderer/features/feedback/feedback-inbox-button'
+import { useMagpieQuotas } from '@renderer/features/quota/use-magpie-quotas'
+import { MagpieQuotaDetails, StatusQuotaButton, buildQuotaTitle, formatQuotaSummary } from '@renderer/features/quota/status-quota'
 
 type WorkerRow = { sessionFile: string; running: boolean; cwd: string }
 type TerminalRow = { id: string; cwd: string; workspace: string; profileName: string; command?: string; owner: string; state: string }
@@ -47,7 +48,7 @@ function sameDesktopStatus(previous: DesktopStatus | null, next: DesktopStatus):
     }) && cpuSame && termsSame
   )
 }
-type Popover = 'workers' | 'board' | null
+type Popover = 'workers' | 'board' | 'quota' | null
 const GROUPS: SessionAttention[] = ['needs-you', 'working', 'done']
 
 export function StatusBar() {
@@ -65,6 +66,10 @@ export function StatusBar() {
   const [stopping, setStopping] = useState(false)
   const boardAnchor = useRef<HTMLButtonElement>(null)
   const workersAnchor = useRef<HTMLButtonElement>(null)
+  const quotaAnchor = useRef<HTMLButtonElement>(null)
+  const quota = useMagpieQuotas(popover === 'quota')
+  const quotaSummary = formatQuotaSummary(quota.codex, quota.opencode)
+  const quotaTitle = buildQuotaTitle(quota.codex, quota.opencode)
   const close = useCallback(() => {
     setPopover(null)
     setConfirmStop(null)
@@ -224,19 +229,19 @@ export function StatusBar() {
       {/* 当前项目与分支：曾经在侧栏改版时丢了入口（命令面板的「切换分支」因此变成空操作），挂回状态栏左侧 */}
       <BranchStatusTrigger />
       <div className="hidden min-w-0 items-center overflow-hidden md:flex">
-        <StatusSpeed />
         <ComposerToolsMenu location="status" running={runRunning} />
         {/* 教训档案入口：我批评过的点、让模型判断该不该沉淀成规则，都在这里攒着 */}
         <FeedbackInboxButton />
       </div>
       <div className="ml-auto flex shrink-0 items-center">
+        {quotaSummary ? <StatusQuotaButton anchorRef={quotaAnchor} open={popover === 'quota'} label={quotaSummary} title={quota.error ?? quotaTitle} onClick={() => { setPopover((v) => v === 'quota' ? null : 'quota'); void quota.refresh() }} /> : null}
         <button ref={workersAnchor} type="button" className="workbench-status-trigger tabular-nums" data-level={level} aria-haspopup="dialog" aria-expanded={popover === 'workers'} aria-label={t('common:statusBar.resources')} title={t('common:statusBar.memoryHint')} onClick={() => { setPopover((v) => v === 'workers' ? null : 'workers'); void refresh() }}>
           <Cpu className="h-3 w-3" /><span>{memory} · {cpuText}</span>
         </button>
       </div>
 
       {popover && (
-        <ShellPopover title={popover === 'board' ? t('common:board.title') : t('common:statusBar.resources')} anchorRef={popover === 'board' ? boardAnchor : workersAnchor} onClose={close}>
+        <ShellPopover title={popover === 'board' ? t('common:board.title') : popover === 'quota' ? '剩余额度' : t('common:statusBar.resources')} anchorRef={popover === 'board' ? boardAnchor : popover === 'quota' ? quotaAnchor : workersAnchor} onClose={close}>
           {actionError && <p role="alert" className="workbench-error">{actionError}</p>}
           {popover === 'board' ? (
             live === 0 ? <div className="workbench-empty"><SessionAttentionDot attention="done" /><p>{t('common:board.empty')}</p><span>{t('common:board.emptyHint')}</span></div> : (
@@ -257,6 +262,8 @@ export function StatusBar() {
                 </section>
               })
             )
+          ) : popover === 'quota' ? (
+            <MagpieQuotaDetails codex={quota.codex} opencode={quota.opencode} error={quota.error} />
           ) : (
             <>
               <div className="workbench-resource-summary"><div><span className="workbench-row-detail">{t('common:statusBar.memory')}</span><strong className="block text-xl font-medium tabular-nums">{memory}</strong></div><div><span className="workbench-row-detail">{t('common:statusBar.cpu')}</span><strong className="block text-xl font-medium tabular-nums">{cpuText}</strong></div><button type="button" className="workbench-button ml-auto" disabled={stopping} onClick={() => void cleanIdleResources()}>{t('common:statusBar.cleanIdle')}</button><button type="button" className="workbench-icon" aria-label={t('common:refresh')} onClick={() => void refresh()}><RefreshCw className="h-4 w-4" /></button></div>

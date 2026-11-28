@@ -36,6 +36,7 @@ import { registerImageGenHandlers } from './ipc/handlers/image-gen'
 import { registerPurgeHandlers } from './ipc/handlers/purge'
 import { registerFeedbackHandlers } from './ipc/handlers/feedback'
 import { registerDelegateHandlers } from './ipc/handlers/delegate'
+import { registerMagpieQuotaHandlers } from './ipc/handlers/magpie-quotas'
 
 export { registerHandler, sendEvent } from './ipc/registry'
 
@@ -78,4 +79,5 @@ export function registerAllHandlers(): void {
   registerPurgeHandlers()
   registerFeedbackHandlers()
   registerDelegateHandlers()
+  registerMagpieQuotaHandlers()
 }

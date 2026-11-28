@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const invoke = vi.fn()
 const setRunState = vi.fn()
 const toastWarning = vi.fn()
-const view = vi.hoisted(() => ({ historySessionFile: '/proj/sessions/a.jsonl' as string | null }))
+const view = vi.hoisted(() => ({ historySessionFile: '/proj/sessions/a.jsonl' as string | null, runModel: 'jsonl/stale-display' as string | undefined, sessionList: [] as Array<{ sessionId: string; sessionFile?: string; title?: string; updatedAt?: number; modelId?: string }> }))
 
 vi.mock('@renderer/lib/ipc-client', () => ({
   ipcClient: { invoke: (...args: unknown[]) => invoke(...args) },
@@ -14,14 +14,13 @@ const setSessionRunState = vi.fn()
 vi.mock('@renderer/stores/ui-store', () => ({
   useUIStore: {
     getState: () => {
-      const runState = { model: 'jsonl/stale-display', thinkingLevel: 'medium' }
+      const runState = { model: view.runModel, thinkingLevel: 'medium' }
       const viewSessionKey = view.historySessionFile ?? 'draft:pending:/proj'
       return {
         historySessionFile: view.historySessionFile,
         viewSessionKey,
         sessionStates: { [viewSessionKey]: { key: viewSessionKey, runState } },
-        sessions: [],
-        lastModel: 'anthropic/claude-from-last',
+        sessions: view.sessionList,
         lastThinking: 'low',
         runState,
         setRunState,
@@ -58,6 +57,8 @@ describe('session-display-meta model authority', () => {
     toastWarning.mockReset()
     forgetSessionDisplayMeta()
     view.historySessionFile = '/proj/sessions/a.jsonl'
+    view.runModel = 'jsonl/stale-display'
+    view.sessionList = []
   })
 
   function deferred<T>() {
@@ -230,14 +231,8 @@ describe('session-display-meta model authority', () => {
     })
   })
 
-  it('when worker bound but model empty, clears stale display model', async () => {
-    invoke.mockResolvedValue({
-      state: {
-        sessionFile: '/proj/sessions/a.jsonl',
-        model: undefined,
-        thinkingLevel: 'medium',
-      },
-    })
+  it('when worker bound but model empty, keeps current display instead of blanking', async () => {
+    invoke.mockReset()
     invoke.mockImplementation(async (method: string) => {
       if (method === 'runtime.getState') {
         return {
@@ -255,12 +250,56 @@ describe('session-display-meta model authority', () => {
 
     await applyComposerDisplayMeta({ model: 'anthropic/claude-from-jsonl' })
 
+    // 运行中切回时 worker 回包缺 model 是瞬态：保住当前显示，不清空成“选择模型”。
     expect(setRunState).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: undefined,
+        model: 'jsonl/stale-display',
         thinkingLevel: 'medium',
       }),
     )
+  })
+
+  it('falls back to the sidebar session model when current display is empty', async () => {
+    view.runModel = undefined
+    view.sessionList = [
+      { sessionId: 'a', sessionFile: '/proj/sessions/a.jsonl', title: 'A', updatedAt: 1, modelId: 'sidebar/model-x' },
+    ]
+    invoke.mockImplementation(async (method: string) => {
+      if (method === 'runtime.getState') {
+        return { state: { sessionFile: '/proj/sessions/a.jsonl', thinkingLevel: 'medium' } }
+      }
+      if (method === 'pi.settings.get') {
+        return { settings: { defaultProvider: 'anthropic', defaultModel: 'claude-opus-4-8' } }
+      }
+      return {}
+    })
+
+    await applyComposerDisplayMeta()
+
+    expect(setRunState).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'sidebar/model-x', thinkingLevel: 'medium' }),
+    )
+  })
+
+  it('does not match a sidebar session when the live snapshot id is missing', async () => {
+    view.runModel = undefined
+    view.sessionList = [
+      { sessionId: 'other', sessionFile: '/other/session.jsonl', title: 'O', updatedAt: 1, modelId: 'other/model' },
+    ]
+    invoke.mockImplementation(async (method: string) => {
+      if (method === 'runtime.getState') {
+        return { state: { sessionFile: '/proj/sessions/a.jsonl', thinkingLevel: 'medium' } }
+      }
+      if (method === 'pi.settings.get') return { settings: {} }
+      return {}
+    })
+
+    await applyComposerDisplayMeta()
+
+    // target 工单：空 liveId 时不许用别人的 sessionId 误命中，只能省略 model 键。
+    const lastCall = setRunState.mock.calls.at(-1)?.[0] as Record<string, unknown>
+    expect(lastCall).not.toMatchObject({ model: 'other/model' })
+    expect('model' in (lastCall ?? {})).toBe(false)
   })
 
   it('when unbound preview, keeps JSONL meta for display', async () => {

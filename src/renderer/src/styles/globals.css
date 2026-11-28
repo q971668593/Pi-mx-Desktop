@@ -1946,6 +1946,10 @@
   .prose-chat > :first-child { margin-top: 0; }
   .prose-chat > :last-child { margin-bottom: 0; }
   .prose-chat p { margin-block: 0.45em; }
+  .file-md-preview { line-height: 1.7; }
+  .file-md-preview .prose-chat { font-size: var(--file-md-font-size, 12px); line-height: 1.7; }
+  .file-md-preview p { margin-block: 0.3em; }
+  .file-md-preview p:empty { min-height: 1em; }
   .prose-chat > p:first-child { margin-top: 0; }
   .prose-chat > p:last-child { margin-bottom: 0; }
   .prose-chat strong { font-weight: 600; color: var(--text-primary); }

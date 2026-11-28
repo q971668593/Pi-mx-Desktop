@@ -10,6 +10,7 @@ export type ProviderPresetId =
   | 'openrouter'
   | 'moonshot'
   | 'zhipu'
+  | 'opencode'
   | 'custom-openai'
 
 export type ProviderPreset = {
@@ -164,6 +165,25 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     starterModels: [{ id: 'glm-4-plus', name: 'GLM-4 Plus' }],
   },
   {
+    id: 'opencode',
+    label: 'OpenCode',
+    tagline: 'OpenCode Console 推理接口（OpenAI 兼容）',
+    defaultKey: 'opencode',
+    accentClass: 'bg-rose-500',
+    config: {
+      name: 'OpenCode',
+      baseUrl: 'https://opencode.ai/inference/openai/v1',
+      api: 'openai-completions',
+      apiKey: '$OPENCODE_API_KEY',
+    },
+    starterModels: [
+      { id: 'kimi-k2.5', name: 'Kimi K2.5' },
+      { id: 'glm-5.3', name: 'GLM 5.3' },
+      { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro' },
+      { id: 'qwen3.8-max', name: 'Qwen3.8 Max' },
+    ],
+  },
+  {
     id: 'custom-openai',
     label: 'Custom relay',
     tagline: 'Custom baseUrl',
@@ -195,6 +215,7 @@ export function guessPresetForProvider(
   if (url.includes('openrouter')) return PROVIDER_PRESETS.find((p) => p.id === 'openrouter')
   if (url.includes('moonshot')) return PROVIDER_PRESETS.find((p) => p.id === 'moonshot')
   if (url.includes('zhipu')) return PROVIDER_PRESETS.find((p) => p.id === 'zhipu')
+  if (url.includes('opencode.ai')) return PROVIDER_PRESETS.find((p) => p.id === 'opencode')
   if (api === 'anthropic-messages') return PROVIDER_PRESETS.find((p) => p.id === 'anthropic')
   if (api === 'google-generative-ai') return PROVIDER_PRESETS.find((p) => p.id === 'gemini')
   return undefined

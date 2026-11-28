@@ -51,19 +51,29 @@ export function invalidateSdkManagerCaches(): void {
   sdkStatusCache = null
   wslSdkCache = null
   registryCache = null
+  npmAvailableCache = null
   invalidateWslSdkResolveCache()
   invalidateWslEnvCaches()
 }
 
-/** 检测系统 npm 是否可用（超时 3s 或非 0 视为不可用）。结果缓存。 */
-export function checkNpmAvailable(): boolean {
-  if (npmAvailableCache !== null) return npmAvailableCache
-  try {
-    const r = spawnSync('npm', ['--version'], { encoding: 'utf-8', shell: true, timeout: 3000, windowsHide: true })
-    npmAvailableCache = !r.error && r.status === 0 && !!(r.stdout || '').trim()
-  } catch (e) {
-    npmAvailableCache = false
+/** 检测系统 npm 是否可用（超时 1.5s 或非 0 视为不可用）。结果缓存，refresh=true 强制重测。
+ * 注意：spawnSync 会短暂阻塞主进程；超时保持小是为了把最坏阻塞压在 ~3s 内。 */
+export function checkNpmAvailable(opts?: { refresh?: boolean }): boolean {
+  if (!opts?.refresh && npmAvailableCache !== null) return npmAvailableCache
+  const attempts = process.platform === 'win32' ? ['npm', 'npm.cmd'] : ['npm']
+  let ok = false
+  for (const cmd of attempts) {
+    try {
+      const r = spawnSync(cmd, ['--version'], { encoding: 'utf-8', shell: true, timeout: 1500, windowsHide: true })
+      if (!r.error && r.status === 0 && !!(r.stdout || '').trim()) {
+        ok = true
+        break
+      }
+    } catch {
+      /* 试下一个候选 */
+    }
   }
+  npmAvailableCache = ok
   return npmAvailableCache
 }
 
@@ -82,10 +92,12 @@ export function readSdkStatus(userDataDir: string): SdkStatus {
 /** 设置页等高频读取：默认 TTL 缓存，避免每次清全局 SDK 缓存并重复 spawn npm/where。 */
 export function readSdkStatusCached(userDataDir: string, opts?: { refresh?: boolean }): SdkStatus {
   const now = Date.now()
+  if (opts?.refresh) npmAvailableCache = null
   if (!opts?.refresh && sdkStatusCache && now - sdkStatusCache.at < SDK_STATUS_TTL_MS) {
     return sdkStatusCache.value
   }
-  const value = readSdkStatus(userDataDir)
+  const npmAvailable = checkNpmAvailable()
+  const value = { ...readSdkStatus(userDataDir), npmAvailable }
   sdkStatusCache = { at: now, value }
   return value
 }

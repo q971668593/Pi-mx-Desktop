@@ -21,7 +21,7 @@ export const purgeSetModeSchema = z.object({
 })
 
 // ── 提示词注入（设置 › Agent › 提示词注入） ──
-const promptInjectWorkspaceId = z.string().max(4096).optional()
+const promptInjectWorkspaceId = z.string().max(4096).nullable().optional()
 
 export const promptInjectTargetSchema = z.object({
   workspaceId: promptInjectWorkspaceId,
@@ -35,6 +35,11 @@ export const promptInjectSaveSchema = z.object({
 })
 
 export const promptInjectRestoreBackupSchema = z.object({
+  workspaceId: promptInjectWorkspaceId,
+  name: z.string().min(1).max(200),
+})
+
+export const promptInjectDeleteBackupSchema = z.object({
   workspaceId: promptInjectWorkspaceId,
   name: z.string().min(1).max(200),
 })

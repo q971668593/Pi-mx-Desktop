@@ -203,10 +203,22 @@ export async function applyComposerDisplayMeta(meta?: SessionDisplayMeta | null)
   if (!target) return
 
   const cur = target.runState
-  // Bound without a model key: clear stale display rather than keep JSONL/lastModel
-  let finalModel = patch.model ?? (!workerBoundToView ? normalizeModelKey(cur.model) : undefined)
+  const curModel = normalizeModelKey(cur.model)
+  // 切回正在执行的会话时，worker 可能正忙导致 getState 超时/回包无 model。
+  // 此时回包缺 model 是瞬态，不代表会话真没模型：优先保住当前显示，不清空成“选择模型”。
+  let finalModel = patch.model ?? curModel
   if (workerBoundToView && workerModel) finalModel = workerModel
-  if (workerBoundToView && !workerModel) finalModel = undefined
+  if (!finalModel) {
+    const remembered = sessionDisplayMeta.get(sessionKey)?.model
+    if (remembered) finalModel = remembered
+  }
+  if (!finalModel) {
+    const liveId = target.workerLiveSnapshot?.sessionId
+    const sessionRow = latest.sessions.find((s) => sessionFilesEqual(s.sessionFile, sessionKey))
+      ?? (liveId ? latest.sessions.find((s) => s.sessionId === liveId) : undefined)
+    const sessionModel = normalizeModelKey(sessionRow?.modelId)
+    if (sessionModel) finalModel = sessionModel
+  }
 
   const finalThink =
     patch.thinkingLevel ??
@@ -214,8 +226,9 @@ export async function applyComposerDisplayMeta(meta?: SessionDisplayMeta | null)
     normalizeThinkingLevel(cur.thinkingLevel) ??
     'off'
 
+  // finalModel 为空才显式清空（确实无记录）；有值才带 key，避免瞬态空回包误删已有模型。
   latest.setSessionRunState(sessionKey, {
-    model: finalModel,
+    ...(finalModel ? { model: finalModel } : {}),
     thinkingLevel: finalThink,
   })
 

@@ -1212,7 +1212,9 @@ export class WorkerManager {
       if (this.hasPendingTurn(slot)) this.pendingModelReload.add(slot.poolKey)
       else idle.push(slot)
     }
-    await Promise.allSettled(idle.map((slot) => this.requestOnSlot(slot, 'reloadModels')))
+    const results = await Promise.allSettled(idle.map((slot) => this.requestOnSlot(slot, 'reloadModels')))
+    const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+    if (failures.length) throw new AggregateError(failures.map((failure) => failure.reason), `Worker model reload failed: ${failures.map((failure) => failure.reason instanceof Error ? failure.reason.message : String(failure.reason)).join('; ')}`)
   }
   async getPiSettings(): Promise<Record<string, unknown>> {
     return ((await this.request('getPiSettings')).settings as Record<string, unknown>) || {}

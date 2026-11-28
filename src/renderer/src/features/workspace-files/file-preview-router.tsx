@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { WORKSPACE_TEXT_MAX_BYTES } from '@shared/workspace-preview'
 import MarkdownView from '@renderer/features/timeline/markdown-view'
@@ -46,6 +46,53 @@ function PlainTextFill({ content }: { content: string }) {
   )
 }
 
+const FILE_MD_FONT_SIZE_KEY = 'pi-desktop:file-md-font-size'
+const FILE_MD_FONT_SIZE_MIN = 10
+const FILE_MD_FONT_SIZE_MAX = 18
+const FILE_MD_FONT_SIZE_DEFAULT = 12
+
+function clampFileMdFontSize(value: number) {
+  if (Number.isNaN(value)) return FILE_MD_FONT_SIZE_DEFAULT
+  return Math.min(FILE_MD_FONT_SIZE_MAX, Math.max(FILE_MD_FONT_SIZE_MIN, Math.round(value)))
+}
+
+/**
+ * 保留 markdown 预览中的连续空行：跳过 ``` 围栏代码块，只处理非代码段。
+ * 每组连续空行中，第一个空行保留为段落分隔，其余每个空行替换为 `&nbsp;` 独占一行。
+ * 例如 "a\n\n\nb"（2 个空行）变成 "a\n\n&nbsp;\n\nb"。
+ */
+export function preserveBlankLinesForPreview(content: string): string {
+  const lines = content.split('\n')
+  const out: string[] = []
+  let inFence = false
+  let segment: string[] = []
+  const flushSegment = () => {
+    if (segment.length === 0) return
+    let text = segment.join('\n')
+    text = text.replace(/\n([ \t\r]*\n)+/g, (match) => {
+      const nlCount = (match.match(/\n/g) || []).length
+      const extras = nlCount - 2
+      if (extras <= 0) return match
+      return '\n\n' + '&nbsp;\n\n'.repeat(extras)
+    })
+    out.push(text)
+    segment = []
+  }
+  for (const line of lines) {
+    if (line.trimStart().startsWith('```')) {
+      flushSegment()
+      inFence = !inFence
+      out.push(line)
+    } else if (inFence) {
+      out.push(line)
+    } else {
+      segment.push(line)
+    }
+  }
+  flushSegment()
+  return out.join('\n')
+}
+
 // Opaque-origin sandbox: scripts cannot access host APIs; HTTPS preview assets remain available.
 const htmlPolicy = "default-src 'none'; script-src 'unsafe-inline' https: data: blob:; style-src 'unsafe-inline' https:; img-src https: data: blob:; font-src https: data:; media-src https: data: blob:; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
 const escapeScript = "window.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();parent.postMessage('pi-desktop:exit-file-preview','*')}else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'){e.preventDefault();parent.postMessage('pi-desktop:find-file-preview','*')}},true);window.addEventListener('message',e=>{if(e.data?.type==='pi-desktop:find-in-preview'&&e.data.query)window.find(e.data.query,false,!!e.data.backwards,true)})"
@@ -83,6 +130,18 @@ export function FilePreviewRouter({
   const [saving, setSaving] = useState(false)
   const [saveConflict, setSaveConflict] = useState<{ path: string; revision: string; content: string } | null>(null)
   const [finding, setFinding] = useState(false)
+  const [fileMdFontSize, setFileMdFontSize] = useState(() => {
+    try {
+      const raw = localStorage.getItem(FILE_MD_FONT_SIZE_KEY)
+      if (raw != null) return clampFileMdFontSize(Number(raw))
+    } catch { void 0 }
+    return FILE_MD_FONT_SIZE_DEFAULT
+  })
+  const setFileMdFontSizeAndPersist = (next: number) => {
+    const clamped = clampFileMdFontSize(next)
+    setFileMdFontSize(clamped)
+    try { localStorage.setItem(FILE_MD_FONT_SIZE_KEY, String(clamped)) } catch { void 0 }
+  }
   const [gitPreviewView, setGitPreviewView] = useState<'file' | 'diff'>('file')
   const frameRef = useRef<HTMLIFrameElement>(null)
   const previewRef = useRef<HTMLDivElement>(null)
@@ -304,6 +363,13 @@ export function FilePreviewRouter({
         <button type="button" aria-pressed={!editing} className={cn('rounded px-2 py-1 text-foreground', !editing ? 'bg-muted font-semibold' : 'hover:bg-muted')} onClick={() => { if (editing && (!dirty || window.confirm(t('preview.discardEdits')))) { if (relativePath) clearFileDraft(workspaceRoot, relativePath); setEditing(false); if (dirty) setLocalRefresh((current) => current + 1) } }}>{t('preview.ready')}</button>
       </div>
       {dirty ? <span className="text-amber-600">{t('preview.unsaved')}</span> : null}
+      {!editing ? (
+        <div className="flex shrink-0 items-center gap-1 text-foreground-secondary" role="group" aria-label="markdown-preview-font-size">
+          <button type="button" title="调小" aria-label="调小" disabled={fileMdFontSize <= FILE_MD_FONT_SIZE_MIN} className="rounded px-1.5 py-1 hover:bg-muted disabled:opacity-40" onClick={() => setFileMdFontSizeAndPersist(fileMdFontSize - 1)}>A-</button>
+          <button type="button" title="重置" aria-label="重置" className="rounded px-1.5 py-1 hover:bg-muted" onClick={() => setFileMdFontSizeAndPersist(FILE_MD_FONT_SIZE_DEFAULT)}>{Math.round((fileMdFontSize / FILE_MD_FONT_SIZE_DEFAULT) * 100)}%</button>
+          <button type="button" title="调大" aria-label="调大" disabled={fileMdFontSize >= FILE_MD_FONT_SIZE_MAX} className="rounded px-1.5 py-1 hover:bg-muted disabled:opacity-40" onClick={() => setFileMdFontSizeAndPersist(fileMdFontSize + 1)}>A+</button>
+        </div>
+      ) : null}
       <button type="button" className="ml-auto shrink-0 rounded px-2 py-1 font-medium text-text-action hover:underline" title={t('preview.attachToChat')} onClick={attachToChat}>{t('preview.attachToChat')}</button>
       {editing ? <label className="flex shrink-0 items-center gap-1 text-foreground-secondary"><input type="checkbox" checked={wordWrap} onChange={(event) => { const enabled = event.target.checked; setWordWrap(enabled); try { localStorage.setItem('pi-desktop:file-word-wrap', String(enabled)) } catch { void 0 } }} />{t('preview.wordWrap')}</label> : null}
       {editing ? <button type="button" className="font-medium text-text-action hover:underline disabled:opacity-50" disabled={!dirty || saving} onClick={() => void save()}>{saving ? t('preview.saving') : t('preview.save')}</button> : null}
@@ -342,7 +408,7 @@ export function FilePreviewRouter({
   if (editing) return wrap(<>{editorBar}{conflictPreview}<FileTextEditor path={relativePath} value={draft} saving={saving} wordWrap={wordWrap} onChange={(value) => { setDraft(value); putFileDraft(workspaceRoot, relativePath, content, value) }} onSave={() => void save()} /></>)
   if (sourceLocation) return wrap(<FileSourcePreview code={content} lang={guessLangFromPath(relativePath)} path={relativePath} fill={fill} sourceLocation={sourceLocation} />)
   if (mode === 'html' && !truncated) return wrap(<><div>{editorBar}</div><iframe ref={frameRef} title="html-preview" sandbox="allow-scripts" referrerPolicy="no-referrer" srcDoc={htmlDocument} className="min-h-0 w-full flex-1 border-0 bg-[var(--bg-base)]" /></>)
-  if (mode === 'markdown' && !truncated && content.length <= PREVIEW_MD_MAX_CHARS && content.split('\n').length <= PREVIEW_MD_MAX_LINES) return wrap(<><div>{editorBar}</div><FilePreviewScroll scrollClassName="px-4 py-3"><MarkdownView baseDirectory={joinWorkspacePath(workspaceRoot, relativePath.split('/').slice(0, -1).join('/'))}>{content}</MarkdownView></FilePreviewScroll></>)
+  if (mode === 'markdown' && !truncated && content.length <= PREVIEW_MD_MAX_CHARS && content.split('\n').length <= PREVIEW_MD_MAX_LINES) return wrap(<><div>{editorBar}</div><FilePreviewScroll scrollClassName="px-4 py-3"><div className="file-md-preview" style={{ '--file-md-font-size': `${fileMdFontSize}px` } as CSSProperties}><MarkdownView baseDirectory={joinWorkspacePath(workspaceRoot, relativePath.split('/').slice(0, -1).join('/'))}>{preserveBlankLinesForPreview(content)}</MarkdownView></div></FilePreviewScroll></>)
   if (mode === 'markdown' && !truncated) return wrap(<>{editorBar}<div role="status" className="shrink-0 border-b border-border/40 px-3 py-2 text-[11px] text-foreground-secondary">{t('preview.markdownPlainText')}</div><PlainTextFill content={content} /></>)
   if (mode === 'code') return wrap(<><div>{editorBar}</div><FileSourcePreview code={content} lang={guessLangFromPath(relativePath)} path={relativePath} fill={fill} /></>)
   return wrap(<><div>{editorBar}</div><PlainTextFill content={content} /></>)

@@ -21,6 +21,7 @@ export function PiSettingsSdkSection({
   installOutput,
   onSwitchEnv,
   onInstall,
+  onRetryDetect,
   isWslRuntime = false,
 }: {
   info: PiInfo | null
@@ -35,6 +36,7 @@ export function PiSettingsSdkSection({
   installOutput: string[]
   onSwitchEnv: (target: EnvKind) => void
   onInstall: () => void
+  onRetryDetect?: () => void
   isWslRuntime?: boolean
 }) {
   const { t } = useTranslation()
@@ -144,7 +146,14 @@ export function PiSettingsSdkSection({
               {installing ? t('settings:pi.installing') : sdkStatus?.globalVersion ? t('settings:pi.installGlobalSwitch') : t('settings:pi.installGlobal')}
             </button>
             {!sdkStatus?.npmAvailable && sdkStatus ? (
-              <span className="text-[11.5px] text-amber-600 dark:text-amber-400">{t('settings:pi.npmNotDetected')}</span>
+              <span className="flex items-center gap-1.5">
+                <span className="text-[11.5px] text-amber-600 dark:text-amber-400">{t('settings:pi.npmNotDetected')}</span>
+                {onRetryDetect ? (
+                  <button type="button" className={btnOutline} disabled={installing || switching} onClick={onRetryDetect}>
+                    {t('settings:pi.retryDetect')}
+                  </button>
+                ) : null}
+              </span>
             ) : null}
           </>
         )}

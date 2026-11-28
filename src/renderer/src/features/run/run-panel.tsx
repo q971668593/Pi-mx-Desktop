@@ -111,6 +111,9 @@ export function RunPanel() {
   const fromHistory = live == null && historyTps != null
   const speedLabel = formatTokenSpeed(live ?? historyTps, liveTps != null ? '~' : '')
   const speedHint = t(fromHistory ? 'run:genSpeedHistoryHint' : 'run:genSpeedHint')
+  // 速度仅保留计算逻辑，界面不再显示（避免未使用变量告警）。
+  void speedLabel
+  void speedHint
 
   const roleSlices = useMemo(
     () =>
@@ -188,10 +191,6 @@ export function RunPanel() {
           ) : null}
         </div>
         <dl className="mt-2">
-          <div className="panel-kv">
-            <dt title={speedHint}>{t('run:genSpeed')}</dt>
-            <dd title={speedHint}>{speedLabel}</dd>
-          </div>
           {runState.usage ? (
             <div className="panel-kv">
               <dt>{t('run:output')}</dt>

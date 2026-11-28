@@ -17,14 +17,12 @@ function ComposerMetricsFooterImpl({
   metrics: Metrics
 }) {
   const { t } = useTranslation()
-  const tokPerSec =
-    metrics.tps != null && metrics.tps > 0 ? Math.round(metrics.tps / 4) : null
 
   const hasContext =
     metrics.estContextTokens != null ||
     (metrics.contextPreview != null && metrics.contextPreview.messageCount > 0)
 
-  if (!hasContext && !tokPerSec && !usage && !isRunning) return null
+  if (!hasContext && !usage && !isRunning) return null
 
   const muted = 'text-[11px] text-foreground-secondary/55 tabular-nums leading-relaxed'
   const sep = <span className="mx-1.5 text-foreground-secondary/18">|</span>
@@ -54,16 +52,9 @@ function ComposerMetricsFooterImpl({
         </span>
       )}
 
-      {tokPerSec != null && (
-        <>
-          {hasContext && sep}
-          <span className="text-foreground-secondary/50">{tokPerSec} tok/s</span>
-        </>
-      )}
-
       {usage && (usage.input > 0 || usage.output > 0) && (
         <>
-          {(hasContext || tokPerSec) && sep}
+          {hasContext && sep}
           <span>
             {t('composer:turnUsage', { in: formatTokens(usage.input), out: formatTokens(usage.output) })}
           </span>

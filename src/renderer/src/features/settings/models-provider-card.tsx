@@ -8,6 +8,22 @@ import { ModelCatalogPicker } from '@renderer/features/settings/model-catalog-pi
 import { ModelEntryEditor, type LocalModelEntry } from '@renderer/features/settings/model-entry-editor'
 import { ProviderConfigDialog } from './provider-config-dialog'
 import { API_OPTS, ProviderAvatar, btnDanger, btnOutline, maskApiKey } from './models-settings-shared'
+import { useMagpieQuotas } from '@renderer/features/quota/use-magpie-quotas'
+import { buildQuotaTitle, pickPrimaryWindow } from '@renderer/features/quota/status-quota'
+
+/** magpie 卡片 summary 下的额度小字（独立组件：只在 pid==='magpie' 时挂载，避免全卡轮询）。 */
+function MagpieQuotaLine() {
+  const quota = useMagpieQuotas(false)
+  const codexLeft = pickPrimaryWindow(quota.codex)?.remainingPercent
+  const opencodeLeft = pickPrimaryWindow(quota.opencode)?.remainingPercent
+  const fmt = (v: number | undefined) => typeof v === 'number' && Number.isFinite(v) ? `${v}%` : '--'
+  const has = quota.codex || quota.opencode
+  return (
+    <div className="mt-0.5 truncate text-[12px] text-foreground-secondary" title={quota.error ?? buildQuotaTitle(quota.codex, quota.opencode)}>
+      {has ? `Codex剩${fmt(codexLeft)} · opencode剩${fmt(opencodeLeft)}` : '额度 --'}
+    </div>
+  )
+}
 
 /**
  * One configured provider.
@@ -90,6 +106,7 @@ export function ModelsProviderCard({
             <span className="mx-1.5 text-border">·</span>
             {maskApiKey(p.apiKey)}
           </div>
+          {pid === 'magpie' ? <MagpieQuotaLine /> : null}
         </div>
         <span className="shrink-0 text-[12px] tabular-nums text-foreground-secondary">{t('models.modelCount', { count: modelCount })}</span>
       </button>

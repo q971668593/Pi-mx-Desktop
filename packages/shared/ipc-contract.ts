@@ -204,6 +204,32 @@ export interface PiModelsFetchResponse {
   error?: string
 }
 
+// ── Magpie 剩余额度（网关本地 http://127.0.0.1:3425，读 models.json 的 providers.magpie） ──
+export interface MagpieQuotaWindow {
+  name: string
+  usedPercent: number
+  remainingPercent: number
+  resetsAt?: string
+}
+export interface MagpieQuotaEntry {
+  provider: string
+  user?: string
+  plan?: string
+  balance?: number | string
+  windows: MagpieQuotaWindow[]
+}
+export interface MagpieQuotasResponse {
+  ok: boolean
+  data?: MagpieQuotaEntry[]
+  cached?: boolean
+  error?: string
+}
+export interface MagpieStatuslineResponse {
+  ok: boolean
+  text?: string
+  error?: string
+}
+
 // ── ThinkingLevel ──
 export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 export interface ThinkingLevelSetRequest {
@@ -390,6 +416,8 @@ export interface IpcMethodMap {
   'pi.models.get': { request: PiModelsGetRequest; response: PiModelsGetResponse }
   'pi.models.set': { request: PiModelsSetRequest; response: PiModelsSetResponse }
   'pi.models.fetch': { request: PiModelsFetchRequest; response: PiModelsFetchResponse }
+  'magpie.quotas': { request: Record<string, never>; response: MagpieQuotasResponse }
+  'magpie.statusline': { request: Record<string, never>; response: MagpieStatuslineResponse }
   'thinkingLevel.set': { request: ThinkingLevelSetRequest; response: ThinkingLevelSetResponse }
   'commands.list': { request: CommandsListRequest; response: CommandsListResponse }
   'review.getDiff': { request: ReviewGetDiffRequest; response: ReviewGetDiffResponse }

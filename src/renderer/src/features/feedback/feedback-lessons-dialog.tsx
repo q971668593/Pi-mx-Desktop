@@ -11,6 +11,7 @@ import {
   reportLesson,
   setLessonStatus,
   summarizeLessons,
+  updateLessonRule,
   type FeedbackSnapshot,
   type Lesson,
   type LessonRule,
@@ -183,6 +184,7 @@ export function FeedbackLessonsDialog({ onClose }: { onClose: () => void }) {
                   key={rule.id}
                   rule={rule}
                   onDelete={async () => { await deleteLessonRule(rule.id); await refresh() }}
+                  onSave={async (patch) => { await updateLessonRule(rule.id, patch); await refresh() }}
                   onCopy={() => {
                     void navigator.clipboard.writeText(`${rule.title}\n${rule.body}`)
                     toast.success(t('composer:lessonRuleCopied'))
@@ -294,12 +296,83 @@ function LessonCard({ lesson, checked, onToggle, onDelete, onDrop, onKeep }: {
   )
 }
 
-function RuleCard({ rule, onDelete, onCopy }: {
+function RuleCard({ rule, onDelete, onCopy, onSave }: {
   rule: LessonRule
   onDelete: () => Promise<void> | void
   onCopy: () => void
+  onSave: (patch: { title: string; body: string }) => Promise<void> | void
 }) {
   const { t } = useTranslation()
+  const [editing, setEditing] = useState(false)
+  const [editTitle, setEditTitle] = useState(rule.title)
+  const [editBody, setEditBody] = useState(rule.body)
+  const [saving, setSaving] = useState(false)
+
+  // 后台刷新导致 rule 变化时，非编辑态跟上新值；编辑中不覆盖用户输入。
+  useEffect(() => {
+    if (!editing) {
+      setEditTitle(rule.title)
+      setEditBody(rule.body)
+    }
+  }, [editing, rule.body, rule.title])
+
+  const cancelEdit = () => {
+    if (saving) return
+    setEditTitle(rule.title)
+    setEditBody(rule.body)
+    setEditing(false)
+  }
+
+  const startEdit = () => {
+    setEditTitle(rule.title)
+    setEditBody(rule.body)
+    setEditing(true)
+  }
+
+  const saveEdit = async () => {
+    const title = editTitle.trim()
+    const body = editBody.trim()
+    if (!body || saving) return
+    setSaving(true)
+    try {
+      await onSave({ title, body })
+      setEditing(false)
+      toast.success(t('composer:lessonRuleUpdated'))
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (editing) {
+    return (
+      <article className="feedback-card">
+        <input
+          className="feedback-edit-input"
+          value={editTitle}
+          maxLength={120}
+          onChange={(event) => setEditTitle(event.target.value)}
+          onKeyDown={(event) => { if (event.key === 'Escape') cancelEdit() }}
+          placeholder={t('composer:lessonRuleTitlePh')}
+          aria-label={t('composer:lessonRuleTitlePh')}
+        />
+        <textarea
+          className="feedback-edit-input feedback-edit-area"
+          value={editBody}
+          maxLength={4000}
+          onChange={(event) => setEditBody(event.target.value)}
+          onKeyDown={(event) => { if (event.key === 'Escape') cancelEdit() }}
+          rows={4}
+        />
+        <div className="feedback-meta">
+          <span className="ml-auto" />
+          <button type="button" disabled={saving || !editBody.trim()} onClick={() => void saveEdit()}>{t('composer:lessonRuleSave')}</button>
+          <button type="button" disabled={saving} onClick={cancelEdit}>{t('composer:lessonRuleCancel')}</button>
+        </div>
+      </article>
+    )
+  }
   return (
     <article className="feedback-card">
       <div className="feedback-card-top">
@@ -312,6 +385,7 @@ function RuleCard({ rule, onDelete, onCopy }: {
       <div className="feedback-meta">
         <span>{new Date(rule.createdAt).toLocaleDateString()}</span>
         <span className="ml-auto" />
+        <button type="button" onClick={startEdit}>{t('composer:lessonRuleEdit')}</button>
         <button type="button" onClick={onCopy}>{t('composer:lessonRuleCopy')}</button>
         <button type="button" onClick={() => void onDelete()} aria-label={t('composer:lessonDelete')}>
           <Trash2 size={12} />

@@ -6,6 +6,7 @@ import {
   refreshAvailableModels,
 } from '@renderer/lib/available-models-cache'
 import { ipcClient, onAppEvent } from '@renderer/lib/ipc-client'
+import { publishEnabledModels } from '@renderer/lib/enabled-models'
 import { useUIStore } from '@renderer/stores/ui-store'
 import type { AppEvent } from '@shared/app-events'
 
@@ -47,6 +48,7 @@ beforeEach(() => {
     return () => {}
   })
   clearAvailableModelsCacheForTests()
+  publishEnabledModels(undefined)
   useUIStore.setState({
     modelPickerOpen: true,
     historySessionFile: 'C:/sessions/one.jsonl',
@@ -55,11 +57,32 @@ beforeEach(() => {
 })
 
 describe('ModelPicker runtime confirmation', () => {
+  it('filters the composer, search and recents using the persisted model scope', async () => {
+    localStorage.setItem('pi-desktop:recent-models', JSON.stringify(['openai/hidden']))
+    invoke.mockImplementation(async (method: string) => {
+      if (method === 'pi.settings.get') return { settings: { enabledModels: ['openai/visible', 'other/*'] } }
+      if (method === 'model.list') return { models: [
+        { provider: 'openai', id: 'visible', available: true },
+        { provider: 'openai', id: 'hidden', available: true },
+        { provider: 'other', id: 'included', available: true },
+      ] }
+      return {}
+    })
+    render(<ModelPicker />)
+    const provider = await screen.findByRole('button', { name: /openai/i })
+    await waitFor(() => expect(screen.getByRole('button', { name: /other/i })).toBeTruthy())
+    fireEvent.click(provider)
+    expect(await screen.findByRole('button', { name: /visible/i })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /hidden/i })).toBeNull()
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'hidden' } })
+    expect(screen.queryByRole('button', { name: /hidden/i })).toBeNull()
+  })
+
   it('renders a warm cached list before the open refresh resolves', async () => {
     invoke.mockResolvedValueOnce({ models: [{ provider: 'openai', id: 'cached', available: true }] })
     await refreshAvailableModels()
     let resolveRefresh: ((value: { models: Array<{ provider: string; id: string; available: boolean }> }) => void) | undefined
-    invoke.mockImplementation(() => new Promise((resolve) => { resolveRefresh = resolve }))
+    invoke.mockImplementation((method) => method === 'model.list' ? new Promise((resolve) => { resolveRefresh = resolve }) : Promise.resolve({ settings: {} }))
 
     render(<ModelPicker />)
 

@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
     isRunning: false,
     cwd: '/running-workspace',
     start: vi.fn(),
+    reloadModels: vi.fn(),
     setThinkingLevel: vi.fn(),
     hasLiveSession: vi.fn(() => false),
     setModelWithThinking: vi.fn(async () => ({ modelId: 'warm/model', thinkingLevel: 'medium' })),
@@ -69,6 +70,7 @@ beforeEach(() => {
   mocks.handlers.clear()
   mocks.workerManager.isRunning = false
   mocks.workerManager.start.mockReset()
+  mocks.workerManager.reloadModels.mockReset().mockResolvedValue(undefined)
   mocks.workerManager.setThinkingLevel.mockReset()
   mocks.workerManager.hasLiveSession.mockReset().mockReturnValue(false)
   mocks.workerManager.setModelWithThinking.mockReset().mockResolvedValue({ modelId: 'warm/model', thinkingLevel: 'medium' })
@@ -82,6 +84,14 @@ beforeEach(() => {
   mocks.listCatalogModelsWithSdk.mockResolvedValue([hostModel])
   mocks.readModelsConfigRaw.mockReturnValue({ path: '//wsl/models.json', config: { models: [wslModel] } })
   registerModelRuntimeHandlers()
+})
+
+describe('model.reload', () => {
+  it('reports worker failure even when the preview would succeed', async () => {
+    mocks.workerManager.reloadModels.mockRejectedValue(new Error('worker failed'))
+    mocks.previewListModels.mockResolvedValue([wslModel])
+    await expect(mocks.handlers.get('ipc:model.reload')!({})).resolves.toEqual({ ok: false, models: [], error: 'worker failed' })
+  })
 })
 
 describe('thinking level session isolation', () => {

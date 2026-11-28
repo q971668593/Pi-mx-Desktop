@@ -24,6 +24,9 @@ export type AvailableModelProjectionInput = {
   contextWindow?: number
   maxOutput?: number
   maxTokens?: number
+  reasoning?: boolean
+  thinkingLevelMap?: Record<string, string | null>
+  availableThinkingLevels?: string[]
 }
 
 export type ModelAuthProjectionRuntime = {
@@ -93,6 +96,9 @@ export async function projectModelCatalog(
       contextWindow: model.contextWindow,
       maxOutput: model.maxOutput,
       maxTokens: model.maxTokens,
+      ...(model.reasoning !== undefined ? { reasoning: model.reasoning } : {}),
+      ...(model.thinkingLevelMap !== undefined ? { thinkingLevelMap: model.thinkingLevelMap } : {}),
+      ...(model.availableThinkingLevels !== undefined ? { availableThinkingLevels: model.availableThinkingLevels } : {}),
       available: auth.configured === true,
       managedBy: 'active-sdk',
       auth,

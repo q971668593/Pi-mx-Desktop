@@ -194,6 +194,17 @@ describe('run ledger survives a crashed worker', () => {
     expect(fatal?.payload.orphanedRuns).toBe(1)
   })
 
+  it('reports idle worker reload failures after all workers settle', async () => {
+    const first = makeSlot('/sessions/a.jsonl', normalReply)
+    const second = makeSlot('/sessions/b.jsonl', normalReply)
+    const { manager } = setup(first, second)
+    const request = vi.spyOn(manager as never, 'requestOnSlot' as never)
+      .mockRejectedValueOnce(new Error('slot failed') as never)
+      .mockResolvedValueOnce({} as never)
+    await expect(manager.reloadModels()).rejects.toThrow('slot failed')
+    expect(request).toHaveBeenCalledTimes(2)
+  })
+
   it('defers external model reload for a busy session only and refreshes its catalog after settlement', async () => {
     const a = '/sessions/a.jsonl'
     const b = '/sessions/b.jsonl'

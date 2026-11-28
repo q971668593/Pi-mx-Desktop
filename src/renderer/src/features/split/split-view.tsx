@@ -21,6 +21,7 @@ import {
 } from './split-layout'
 import { PANE_MIME, isSplitDrag, readSessionDrag, setDragLabel, zoneAt, type DropZone } from './split-dnd'
 import { PanePreview, paneDigest, usePaneTimeline } from './pane-preview'
+import { PaneQuickComposer } from './pane-quick-composer'
 import { focusedPaneSession, splitActions, useSplitStore } from './split-store'
 
 const GAP = 6
@@ -325,7 +326,8 @@ function PaneCard({ pane, compact }: { pane: Pane; compact: boolean }) {
   const meta = useUIStore((s) => (pane.session ? s.sessions.find((x) => sessionFilesEqual(x.sessionFile, pane.session!.sessionFile)) : undefined))
   const items = usePaneTimeline(pane.session?.sessionFile ?? null)
   const d = paneDigest(items)
-  if (!pane.session) {
+  const sess = pane.session
+  if (!sess) {
     return (
       <div className="flex h-full items-center justify-center px-4 text-center text-[12px] text-foreground-tertiary" data-pane-card="empty">
         {t('common:split.emptyPane')}
@@ -357,6 +359,9 @@ function PaneCard({ pane, compact }: { pane: Pane; compact: boolean }) {
         {meta?.modelId ? <span className="truncate font-mono">{meta.modelId}</span> : null}
         {d.turns ? <span className="shrink-0">{t('common:split.card.turns', { count: d.turns })}</span> : null}
       </div>
+      <div className="-mx-4 -mb-3 mt-1" data-pane-inactive-composer="">
+        <PaneQuickComposer session={sess} />
+      </div>
     </div>
   )
 }
@@ -365,7 +370,16 @@ function PaneBody({ pane, active, rect, children }: { pane: Pane; active: boolea
   const attention = useAttention(pane.session?.sessionFile)
   if (active) return <>{children}</>
   const roomy = rect.w >= PREVIEW_MIN_W && rect.h >= PREVIEW_MIN_H
-  return roomy ? <PanePreview sessionFile={pane.session?.sessionFile ?? null} running={attention === 'working'} /> : <PaneCard pane={pane} compact={rect.h < 170} />
+  if (!roomy) return <PaneCard pane={pane} compact={rect.h < 170} />
+  if (!pane.session) return <PanePreview sessionFile={null} running={false} />
+  return (
+    <div className="flex h-full min-h-0 flex-col" data-pane-inactive-composer="">
+      <div className="min-h-0 flex-1">
+        <PanePreview sessionFile={pane.session.sessionFile} running={attention === 'working'} />
+      </div>
+      <PaneQuickComposer session={pane.session} />
+    </div>
+  )
 }
 
 // ── Resize handles ──────────────────────────────────────────────────────────
@@ -546,7 +560,17 @@ export function SplitView({ children }: { children: ReactNode }) {
                 style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}
               >
                 {focus ? null : <PaneHeader pane={pane} index={index} active={active} />}
-                <div className={cn('relative min-h-0 flex-1', !active && 'cursor-pointer')} onMouseDownCapture={() => !active && splitActions.focus(pane.id)}>
+                <div
+                  className={cn('relative min-h-0 flex-1', !active && 'cursor-pointer')}
+                  onMouseDownCapture={(e) => {
+                    if (!active) {
+                      // 独立输入框里点/写字都不抢激活：只有点预览正文才切换。
+                      const el = e.target as HTMLElement | null
+                      if (el?.closest?.('[data-pane-inactive-composer] input, [data-pane-inactive-composer] textarea, [data-pane-inactive-composer] button')) return
+                      splitActions.focus(pane.id)
+                    }
+                  }}
+                >
                   <PaneBody pane={pane} active={active} rect={rect}>
                     {children}
                   </PaneBody>

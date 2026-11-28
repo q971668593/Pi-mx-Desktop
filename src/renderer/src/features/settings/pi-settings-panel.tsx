@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 import { ipcClient, onAppEvent } from '@renderer/lib/ipc-client'
@@ -55,6 +55,7 @@ export function PiSettingsPanel() {
   const [installing, setInstalling] = useState(false)
   const [installOutput, setInstallOutput] = useState<string[]>([])
   const [switching, setSwitching] = useState(false)
+  const retryingRef = useRef(false)
   const [envTarget, setEnvTarget] = useState<'builtin' | 'global'>('builtin')
   const currentWorkspace = useUIStore((s) => s.currentWorkspace)
   const { draft: settingsDraft } = useSettingsDraft()
@@ -185,6 +186,18 @@ export function PiSettingsPanel() {
     [loadModelsForDropdown, reloadSdk, t],
   )
 
+  const onRetryDetect = useCallback(async () => {
+    if (retryingRef.current) return
+    retryingRef.current = true
+    try {
+      await reloadSdk({ refresh: true })
+    } catch (error) {
+      console.error('sdk retry detect failed', error)
+    } finally {
+      retryingRef.current = false
+    }
+  }, [reloadSdk])
+
   const queuePatch = useCallback((p: Record<string, unknown>) => {
     setDraft((prev) => ({ ...(prev || {}), ...p }))
     notifySettingsDirtyChanged()
@@ -255,6 +268,7 @@ export function PiSettingsPanel() {
           installOutput={installOutput}
           onSwitchEnv={onSwitchEnv}
           onInstall={onInstall}
+          onRetryDetect={onRetryDetect}
           isWslRuntime={isWslRuntime}
         />
         {ui && <PiSettingsEnvAuthRows info={info} ui={ui} />}

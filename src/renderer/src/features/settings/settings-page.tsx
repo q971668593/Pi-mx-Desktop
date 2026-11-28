@@ -199,14 +199,23 @@ function SettingsSubTabs<T extends string>({
   active,
   onSelect,
   ariaLabel,
+  compact = false,
 }: {
   tabs: { key: T; label: string }[]
   active: T
   onSelect: (tab: T) => void
   ariaLabel: string
+  compact?: boolean
 }) {
   return (
-    <div className="settings-subtabs mb-6 flex flex-wrap gap-1 rounded-xl border border-border/50 bg-[var(--bg-1)]/70 p-1" role="tablist" aria-label={ariaLabel}>
+    <div
+      className={cn(
+        'settings-subtabs gap-1 rounded-xl border border-border/50 bg-[var(--bg-1)]/70 p-1',
+        compact ? 'inline-flex flex-wrap items-center' : 'mb-6 flex flex-wrap',
+      )}
+      role="tablist"
+      aria-label={ariaLabel}
+    >
       {tabs.map((tab) => {
         const selected = tab.key === active
         return (
@@ -217,7 +226,8 @@ function SettingsSubTabs<T extends string>({
             aria-selected={selected}
             onClick={() => onSelect(tab.key)}
             className={cn(
-              'settings-subtab rounded-lg px-3 py-1.5 text-[12.5px] font-medium transition-all duration-motion-fast',
+              'settings-subtab rounded-lg font-medium transition-all duration-motion-fast',
+              compact ? 'px-2.5 py-1 text-[12px]' : 'px-3 py-1.5 text-[12.5px]',
               selected
                 ? 'bg-[var(--bg-base)] text-foreground shadow-sm ring-1 ring-border/60'
                 : 'text-foreground-secondary hover:bg-[var(--bg-hover)] hover:text-foreground',
@@ -453,20 +463,26 @@ export function SettingsPage() {
             {page === 'lessons' && <LessonSettingsPanel />}
             {page === 'notifications' && <NotificationsSettings />}
             {page === 'appearance' && <AppearanceSettings />}
-            {page === 'models' && (
-              <>
+            {page === 'models' && (() => {
+              const subTabsNode = (
                 <SettingsSubTabs
+                  compact
                   ariaLabel={t('settings:nav.models')}
                   tabs={MODELS_TABS.map((tab) => ({ key: tab.key, label: t(tab.labelKey) }))}
                   active={modelsTab}
                   onSelect={setModelsTab}
                 />
-                {modelsTab === 'models' && <ModelsSettingsPanel />}
-                {modelsTab === 'imageGen' && <ImageGenSettingsPage />}
-                {modelsTab === 'routing' && <ModelRoutingPanel />}
-                {modelsTab === 'voice' && <VoiceSettingsPanel />}
-              </>
-            )}
+              )
+              return (
+                <>
+                  {modelsTab !== 'models' && <div className="mb-5 flex justify-end">{subTabsNode}</div>}
+                  {modelsTab === 'models' && <ModelsSettingsPanel subTabs={subTabsNode} />}
+                  {modelsTab === 'imageGen' && <ImageGenSettingsPage />}
+                  {modelsTab === 'routing' && <ModelRoutingPanel />}
+                  {modelsTab === 'voice' && <VoiceSettingsPanel />}
+                </>
+              )
+            })()}
             {page === 'resources' && (
               <>
                 <SettingsSubTabs
